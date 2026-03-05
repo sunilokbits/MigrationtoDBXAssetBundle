@@ -1,0 +1,1534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQL → Databricks Migration Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --font: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
+  /* Databricks dark chrome */
+  --db-dark: #1b1f23; --db-darker: #13161a; --db-border: #2a2f35;
+  --sb-bg: var(--db-dark); --sb-border: var(--db-border); --sb-text: #9aa0a8;
+  --sb-text-active: #ffffff; --sb-hover: rgba(255,255,255,.07); --sb-active-bar: #ff3621;
+  /* Databricks red */
+  --db-red: #ff3621; --db-red-dk: #e02d18;
+  /* Content area */
+  --bg: #f7f8fa; --surface: #ffffff; --surface2: #f5f6f7;
+  --border: #e0e2e5; --border2: #c8cbce;
+  --accent: #1b6ac9; --accent-light: #e8f0fb; --accent-fg: #1158a7;
+  --green: #00853d; --green-bg: #e6f5ec; --green-border: #7fd1a0;
+  --red: #d10000; --red-bg: #fde8e8; --red-border: #f5a0a0;
+  --amber: #c87000; --amber-bg: #fef4e0; --amber-border: #f5c86a;
+  --sp-c: #c05c00; --sp-bg: #fff4e6; --sp-b: #f5c08a;
+  --vw-c: #0070b8; --vw-bg: #e0f0fa; --vw-b: #80c4f0;
+  --udf-c: #6222b8; --udf-bg: #f2eafe; --udf-b: #b890f0;
+  --t1: #1a1a2e; --t2: #3c3e4a; --t3: #6c717a; --t4: #9ea3ab;
+  --r-sm: 4px; --r: 6px; --r-lg: 8px;
+  --shadow-xs: 0 1px 2px rgba(0,0,0,.05);
+  --shadow-sm: 0 1px 4px rgba(0,0,0,.08);
+  --shadow-md: 0 3px 10px rgba(0,0,0,.1);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,.14);
+  --ease: 0.14s cubic-bezier(0.4,0,0.2,1);
+  --sw: 228px; --hh: 48px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#c8cbce;border-radius:8px}
+::-webkit-scrollbar-thumb:hover{background:#9ea3ab}
+#app{display:flex;height:100vh}
+/* ── SIDEBAR – Databricks dark chrome ── */
+#sidebar{width:var(--sw);flex-shrink:0;background:var(--sb-bg);border-right:1px solid var(--db-border);display:flex;flex-direction:column;overflow:hidden}
+.sb-logo{padding:0 14px;height:var(--hh);border-bottom:1px solid var(--db-border);display:flex;align-items:center;flex-shrink:0}
+.brand{display:flex;align-items:center;gap:9px}
+/* Databricks diamond/spark logo shape */
+.brand-ico{width:28px;height:28px;flex-shrink:0;display:flex;align-items:center;justify-content:center;position:relative}
+.brand-ico::before{content:'';position:absolute;inset:0;background:var(--db-red);clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);border-radius:2px}
+.brand-ico svg{width:14px;height:14px;fill:none;stroke:#fff;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;position:relative;z-index:1}
+.brand-name{font-size:13.5px;font-weight:700;color:#ffffff;letter-spacing:-0.01em}
+.brand-sub{font-size:10px;color:#6b7280;margin-top:1px;letter-spacing:.01em}
+.sb-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;padding:8px 12px;border-bottom:1px solid var(--db-border);flex-shrink:0}
+.stat-pill{background:rgba(255,255,255,.04);border:1px solid var(--db-border);border-radius:4px;padding:6px 4px;text-align:center}
+.stat-pill .n{font-size:15px;font-weight:700;line-height:1;color:#ffffff}
+.stat-pill .l{font-size:9px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
+.sb-nav{flex:1;padding:8px 8px;display:flex;flex-direction:column;gap:1px;overflow-y:auto}
+.sb-sec{font-size:9px;font-weight:600;color:#4b5563;text-transform:uppercase;letter-spacing:.12em;padding:10px 8px 4px}
+.nav-btn{display:flex;align-items:center;gap:8px;padding:8px 10px;width:100%;border:none;background:transparent;color:var(--sb-text);border-radius:var(--r-sm);cursor:pointer;font-size:12.5px;font-weight:400;text-align:left;font-family:var(--font);transition:var(--ease);position:relative}
+.nav-btn:hover{background:var(--sb-hover);color:#d4d8dd}
+.nav-btn.active{background:rgba(255,255,255,.1);color:#ffffff;font-weight:600}
+.nav-btn.active::before{content:'';position:absolute;left:0;top:4px;bottom:4px;width:3px;background:var(--db-red);border-radius:0 3px 3px 0}
+.nav-ico{width:18px;height:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;opacity:.6}
+.nav-btn.active .nav-ico{opacity:1}
+.nav-btn:hover .nav-ico{opacity:.85}
+.nav-ico svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.nav-badge{margin-left:auto;font-size:9px;font-weight:600;background:rgba(255,255,255,.06);color:#6b7280;padding:1px 6px;border-radius:10px;border:1px solid var(--db-border)}
+.nav-btn.active .nav-badge{background:rgba(255,54,33,.15);color:#ff6b5b;border-color:rgba(255,54,33,.3)}
+.sb-footer{padding:12px 14px;border-top:1px solid var(--db-border);flex-shrink:0}
+.wf-bar{display:flex;gap:3px;margin-bottom:6px}
+.wf-step{flex:1;height:2px;border-radius:2px;background:rgba(255,255,255,.1);transition:background .5s}
+.wf-step.done{background:#00853d}
+.wf-step.active{background:var(--db-red)}
+.wf-lbl{font-size:10px;color:#4b5563;font-weight:500}
+/* ── MAIN ── */
+#main{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden}
+/* Databricks dark top chrome */
+#topbar{height:var(--hh);background:var(--db-dark);border-bottom:1px solid var(--db-border);display:flex;align-items:center;padding:0 20px;gap:10px;flex-shrink:0}
+.top-icon-wrap{width:28px;height:28px;border-radius:var(--r-sm);background:rgba(255,54,33,.15);border:1px solid rgba(255,54,33,.3);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.top-icon-wrap svg{width:14px;height:14px;fill:none;stroke:#ff6b5b;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.top-title{font-size:13.5px;font-weight:600;color:#ffffff}
+.top-sub{font-size:11px;color:#6b7280;margin-top:1px}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.status-chip{display:flex;align-items:center;gap:6px;padding:3px 10px;background:rgba(255,255,255,.05);border:1px solid var(--db-border);border-radius:20px;font-size:11px;color:#9aa0a8;font-weight:500}
+.dot-pulse{width:6px;height:6px;border-radius:50%;background:#00853d;box-shadow:0 0 0 0 rgba(0,133,61,.6);animation:pulse-ring 2s ease-out infinite}
+@keyframes pulse-ring{0%{box-shadow:0 0 0 0 rgba(0,133,61,.5)}70%{box-shadow:0 0 0 5px rgba(0,133,61,0)}100%{box-shadow:0 0 0 0 rgba(0,133,61,0)}}
+/* Databricks crumb strip below topbar */
+#content{flex:1;overflow:hidden;position:relative;background:var(--bg)}
+.tab-pane::before{content:'';display:none}
+.tab-pane{display:none;height:100%;padding:16px 20px;gap:14px;overflow:hidden}
+.tab-pane.active{display:flex;animation:fadeUp .18s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.l-col{width:288px;min-width:252px;display:flex;flex-direction:column;gap:10px;overflow-y:auto}
+.r-col{flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;overflow-y:auto}
+/* ── CARD – Databricks clean panels ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px;position:relative;overflow:hidden}
+.card-hd{display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border)}
+.card-ico{width:26px;height:26px;border-radius:var(--r-sm);background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.card-ico svg{width:13px;height:13px;fill:none;stroke:var(--t3);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.card-title{font-size:12px;font-weight:600;color:var(--t1);letter-spacing:.005em;flex:1}
+/* ── OBJECT LIST ── */
+.sel-toolbar{display:flex;align-items:center;gap:4px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);margin-bottom:10px;box-shadow:var(--shadow-xs)}
+/* ── SOURCE CONNECTION CARD ── */
+.src-conn-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);flex-shrink:0}
+.src-conn-hd{display:flex;align-items:center;gap:8px;padding:11px 14px;cursor:pointer;user-select:none;transition:var(--ease)}
+.src-conn-hd:hover{background:var(--surface2)}
+.src-conn-body{padding:0 14px 14px;display:flex;flex-direction:column;gap:9px}
+.src-conn-body.collapsed{display:none}
+.src-conn-dot{width:8px;height:8px;border-radius:50%;background:#d1d5db;flex-shrink:0;margin-left:auto;transition:background .3s}
+.src-conn-dot.ok{background:var(--green);box-shadow:0 0 0 2px rgba(5,150,105,.2)}
+.src-conn-dot.err{background:var(--red)}
+.src-conn-chv{font-size:10px;color:var(--t3);transition:transform .2s;margin-left:2px}
+.src-conn-chv.open{transform:rotate(180deg)}
+.form-row-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.src-type-sel{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-sm);color:var(--t1);padding:7px 10px;font-size:12.5px;font-family:var(--font);outline:none;width:100%;cursor:pointer;transition:var(--ease)}
+.src-type-sel:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(27,106,201,.12)}
+/* ── ICON DROPDOWN ── */
+.idd{position:relative;width:100%;user-select:none;}
+.idd-trigger{display:flex;align-items:center;gap:9px;padding:7px 10px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-sm);cursor:pointer;transition:var(--ease);min-height:36px;}
+.idd-trigger:hover{border-color:var(--border2);background:var(--surface2);}
+.idd-trigger.open{border-color:var(--accent);box-shadow:0 0 0 2px rgba(27,106,201,.12);}
+.idd-badge{width:26px;height:26px;border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.idd-badge svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.idd-label{flex:1;font-size:12.5px;font-weight:500;color:var(--t1);}
+.idd-chevron{font-size:10px;color:var(--t3);transition:transform .18s;margin-left:4px;flex-shrink:0;}
+.idd-trigger.open .idd-chevron{transform:rotate(180deg);}
+.idd-list{position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:0 6px 20px rgba(0,0,0,.14);z-index:9999;overflow:hidden;display:none;animation:iddIn .14s ease;min-width:240px;}
+.idd-list.open{display:block;}
+@keyframes iddIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+.idd-opt{display:flex;align-items:center;gap:9px;padding:8px 10px;cursor:pointer;transition:background var(--ease);border-bottom:1px solid var(--border);}
+.idd-opt:last-child{border-bottom:none;}
+.idd-opt:hover{background:var(--surface2);}
+.idd-opt.active{background:var(--accent-light);}
+.idd-opt-text{flex:1;}
+.idd-opt-name{font-size:12.5px;font-weight:500;color:var(--t1);}
+.idd-opt-desc{font-size:10.5px;color:var(--t3);margin-top:1px;}
+.src-msg{font-size:11px;padding:6px 9px;border-radius:var(--r-sm);display:none}
+.sel-count{margin-left:auto;font-size:11px;font-weight:600;color:var(--accent-fg);background:var(--accent-light);border:1px solid #bfdbfe;padding:2px 8px;border-radius:20px}
+.obj-scroll{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:1px;padding-right:2px}
+.grp-hd{display:flex;align-items:center;gap:8px;padding:7px 10px;background:#f5f6f7;border:1px solid var(--border);border-radius:var(--r-sm);cursor:pointer;user-select:none;transition:var(--ease);margin-bottom:2px}
+.grp-hd:hover{border-color:var(--border2);background:#ecedf0}
+.grp-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.grp-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;flex:1}
+.grp-badge{font-size:9.5px;font-weight:600;padding:1px 7px;border-radius:10px;background:var(--surface);color:var(--t3);border:1px solid var(--border)}
+.grp-chv{font-size:10px;color:var(--t4);transition:transform .2s}
+.obj-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r-sm);cursor:pointer;border:1px solid transparent;transition:var(--ease);margin-bottom:1px}
+.obj-item:hover{background:var(--surface2);border-color:var(--border)}
+.obj-item.selected{background:#e8f0fb;border-color:#aac4f0}
+.obj-item input[type=checkbox]{display:none}
+.chk{width:15px;height:15px;border:1.5px solid var(--border2);border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;color:transparent;transition:var(--ease)}
+.obj-item.selected .chk{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 0 0 2px rgba(27,106,201,.15)}
+.obj-info{flex:1;min-width:0}
+.obj-name{font-size:12px;font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.obj-desc{font-size:10.5px;color:var(--t4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.badge{font-size:9.5px;font-weight:700;letter-spacing:.03em;padding:2px 6px;border-radius:4px;flex-shrink:0;border:1px solid}
+.bsp{background:var(--sp-bg);color:var(--sp-c);border-color:var(--sp-b)}
+.bvw{background:var(--vw-bg);color:var(--vw-c);border-color:var(--vw-b)}
+.budf{background:var(--udf-bg);color:var(--udf-c);border-color:var(--udf-b)}
+.sql-btn{padding:3px 8px;font-size:10px;font-weight:600;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface);color:var(--t3);cursor:pointer;white-space:nowrap;font-family:var(--font);transition:var(--ease)}
+.sql-btn:hover{border-color:var(--accent);color:var(--accent-fg);background:var(--accent-light)}
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--r-sm);border:none;cursor:pointer;font-size:12.5px;font-weight:600;font-family:var(--font);transition:var(--ease);white-space:nowrap;flex-shrink:0;position:relative;overflow:hidden}
+.btn svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+/* Databricks button styles */
+.btn-primary{background:var(--db-red);color:#fff;box-shadow:none;border:1px solid transparent}
+.btn-primary:not(:disabled):hover{background:var(--db-red-dk);box-shadow:0 2px 8px rgba(255,54,33,.35)}
+.btn-success{background:#00853d;color:#fff;box-shadow:none;border:1px solid transparent}
+.btn-success:not(:disabled):hover{background:#006b31;box-shadow:0 2px 8px rgba(0,133,61,.35)}
+.btn-ghost{background:var(--surface);border:1px solid var(--border2);color:var(--t2)}
+.btn-ghost:not(:disabled):hover{background:var(--surface2);border-color:var(--border2);color:var(--t1)}
+.btn-ghost.active{background:rgba(255,54,33,.06);border-color:rgba(255,54,33,.4);color:var(--db-red);font-weight:700}
+.btn-outline{background:transparent;border:1px solid var(--border2);color:var(--t2)}
+.btn-outline:not(:disabled):hover{border-color:var(--accent);color:var(--accent-fg);background:var(--accent-light)}
+.btn-sm{padding:6px 12px;font-size:12px}
+.btn-xs{padding:4px 9px;font-size:11.5px}
+.btn-full{width:100%;justify-content:center}
+.btn-prog{position:absolute;left:0;top:0;bottom:0;background:rgba(255,255,255,.12);border-radius:inherit;transition:width .25s ease;pointer-events:none}
+/* ── CODE BOX ── */
+.code-box{background:#0d1117;border:1px solid #21262d;border-radius:var(--r-lg);display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;box-shadow:var(--shadow-sm)}
+.code-toolbar{display:flex;align-items:center;gap:8px;padding:9px 14px;background:#161b22;border-bottom:1px solid #21262d;flex-shrink:0}
+.win-btns{display:flex;gap:5px}
+.win-btn{width:11px;height:11px;border-radius:50%;border:none;cursor:default}
+.win-btn.r{background:#ff5f57}.win-btn.a{background:#febc2e}.win-btn.g{background:#28c840}
+.code-fname{font-size:12px;font-weight:600;color:#8b949e;display:flex;align-items:center;gap:7px;flex:1;min-width:0;font-family:var(--font-mono)}
+.py-badge{font-size:9px;font-weight:700;padding:2px 6px;background:rgba(88,166,255,.12);color:#58a6ff;border:1px solid rgba(88,166,255,.25);border-radius:4px;flex-shrink:0;font-family:var(--font)}
+.editor{flex:1;overflow:auto;padding:16px 18px;font-family:var(--font-mono);font-size:12.5px;line-height:1.7;color:#c9d1d9;white-space:pre;tab-size:2;background:#0d1117}
+/* ── NB TABS ── */
+.nb-bar{display:flex;gap:3px;flex-wrap:wrap;padding:8px 12px;background:#161b22;border-bottom:1px solid #21262d;flex-shrink:0}
+.nb-tab{display:flex;align-items:center;gap:5px;padding:4px 10px;font-size:11px;font-weight:600;border-radius:4px;border:1px solid #30363d;background:transparent;color:#4b5563;cursor:pointer;transition:var(--ease);font-family:var(--font);white-space:nowrap}
+.nb-tab:hover{color:#8b949e;background:rgba(255,255,255,.04);border-color:#484f58}
+.nb-tab.active{background:rgba(255,255,255,.06);color:#f0f6fc;border-color:#58a6ff}
+.nb-tab.helper{color:#7c3aed;border-color:rgba(124,58,237,.35)}
+.nb-tab.helper.active{background:rgba(124,58,237,.12);color:#c4b5fd}
+.nb-tab.sp{color:var(--sp-c);border-color:rgba(234,88,12,.25)}.nb-tab.sp.active{background:rgba(234,88,12,.08)}
+.nb-tab.vw{color:var(--vw-c);border-color:rgba(2,132,199,.25)}.nb-tab.vw.active{background:rgba(2,132,199,.08)}
+.nb-tab.ud{color:var(--udf-c);border-color:rgba(124,58,237,.25)}.nb-tab.ud.active{background:rgba(124,58,237,.08)}
+/* ── SOURCE PANEL ── */
+.src-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;flex-shrink:0;animation:slideDown .18s ease;box-shadow:var(--shadow-md)}
+@keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+.src-hd{display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--surface2);border-bottom:1px solid var(--border)}
+.src-hd-lbl{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--t3)}
+.src-body{max-height:180px;overflow-y:auto;padding:12px 16px;font-family:var(--font-mono);font-size:11.5px;line-height:1.65;color:#334155;white-space:pre-wrap;word-break:break-word;background:#f8fafc}
+/* ── FORMS ── */
+.form-grp{display:flex;flex-direction:column;gap:5px}
+.form-lbl{font-size:11.5px;font-weight:600;color:var(--t2)}
+.form-inp{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-sm);color:var(--t1);padding:7px 10px;font-size:12.5px;font-family:var(--font);outline:none;width:100%;transition:var(--ease);}
+.form-inp:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(27,106,201,.12)}
+.form-inp::placeholder{color:var(--t4)}
+textarea.form-inp{resize:vertical;font-family:var(--font-mono);font-size:12px;min-height:90px}
+select.form-inp{cursor:pointer}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+/* ── ALERTS ── */
+.alert{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:var(--r-sm);font-size:12.5px;line-height:1.5;animation:fadeIn .2s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.a-ico{font-size:14px;flex-shrink:0;margin-top:1px}
+.a-ok{background:#e6f5ec;border:1px solid #7fd1a0;color:#005724}
+.a-err{background:#fde8e8;border:1px solid #f5a0a0;color:#8b0000}
+.a-info{background:var(--accent-light);border:1px solid #a3c0ef;color:#1158a7}
+.a-warn{background:#fef4e0;border:1px solid #f5c86a;color:#7a4400}
+/* ── SPINNER ── */
+.spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(37,99,235,.15);border-top-color:var(--accent);border-radius:50%;animation:rot .6s linear infinite;flex-shrink:0}
+.spin-lg{width:28px;height:28px;border-width:3px}
+@keyframes rot{to{transform:rotate(360deg)}}
+.loading-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:48px;color:var(--t3);font-size:13px;text-align:center}
+/* ── DEPLOY LOG ── */
+.dep-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--r-sm);font-size:12px;margin-bottom:3px;animation:slideIn .18s ease;border:1px solid}
+@keyframes slideIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
+.dep-row.ok{background:#e6f5ec;border-color:#7fd1a0}
+.dep-row.err{background:#fde8e8;border-color:#f5a0a0}
+.blt{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.blt-ok{background:var(--green)}.blt-err{background:var(--red)}
+.dep-name{font-weight:600;flex:1}
+.dep-path{font-size:11px;color:var(--t3);margin-left:auto}
+/* ── EMPTY STATE ── */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:36px;color:var(--t3);text-align:center}
+.empty-ico{font-size:28px;opacity:.25}
+.empty-t{font-size:13px;font-weight:600;color:var(--t3)}
+.empty-s{font-size:12px;color:var(--t4);line-height:1.5}
+/* ── TOASTS ── */
+#toasts{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:9999;pointer-events:none}
+.toast{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--db-dark);border:1px solid var(--db-border);border-radius:var(--r);box-shadow:var(--shadow-lg);font-size:12.5px;color:#f0f6fc;animation:tIn .24s cubic-bezier(.34,1.56,.64,1);max-width:340px;pointer-events:auto}
+.toast.hiding{animation:tOut .2s ease forwards}
+@keyframes tIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+@keyframes tOut{to{opacity:0;transform:translateX(40px)}}
+.toast.tok{border-left:3px solid #00853d}.toast.terr{border-left:3px solid var(--db-red)}.toast.tinfo{border-left:3px solid var(--accent)}
+/* ── CLUSTER CARD ── */
+.cl-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 13px;margin-top:6px;transition:var(--ease);box-shadow:var(--shadow-xs)}
+.cl-card:hover{border-color:var(--border2);box-shadow:var(--shadow-sm)}
+.cl-name{font-size:13px;font-weight:600;color:var(--t1);display:flex;align-items:center;gap:8px}
+.cl-meta{font-size:11px;color:var(--t3);margin-top:4px;display:flex;gap:12px}
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:2px 8px;border-radius:20px;border:1px solid;font-weight:700}
+.tag-run{background:var(--green-bg);color:#065f46;border-color:var(--green-border)}
+.tag-stop{background:var(--red-bg);color:#991b1b;border-color:var(--red-border)}
+.tag-pend{background:var(--amber-bg);color:#92400e;border-color:var(--amber-border)}
+/* ── UC TABLE – Databricks catalog style ── */
+.tbl-list{display:flex;flex-direction:column;gap:0;max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden}
+.tbl-item{display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:12px;color:var(--t2);transition:background var(--ease)}
+.tbl-item:last-child{border-bottom:none}
+.tbl-item:hover{background:#f0f3f7;color:var(--t1)}
+.tbl-item.selected{background:#e8f0fb;color:var(--accent-fg);font-weight:500}
+/* ── UC RESULT TABLE – Databricks sample data grid ── */
+.uc-tbl{width:100%;border-collapse:collapse;font-size:12px;}
+.uc-tbl th{background:#f5f6f7;padding:6px 12px;text-align:left;font-weight:600;border-bottom:2px solid #e0e2e5;border-right:1px solid #e0e2e5;color:var(--t1);white-space:nowrap;font-size:11.5px;}
+.uc-tbl th:first-child{border-left:none;}
+.uc-tbl td{padding:5px 12px;border-bottom:1px solid #edeef0;border-right:1px solid #edeef0;color:var(--t2);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.uc-tbl tbody tr:hover td{background:#f7f8fa;}
+.uc-tbl tr:last-child td{border-bottom:none;}
+.uc-step{display:flex;align-items:flex-start;gap:10px;padding:10px 4px;border-bottom:1px solid var(--border);}
+.uc-step:last-child{border-bottom:none;}
+.uc-step-icon{font-size:13px;font-weight:700;flex-shrink:0;margin-top:2px;}
+.uc-step-title{font-size:12px;font-weight:600;color:var(--t1);}
+.uc-step-detail{font-size:11px;color:var(--t3);margin-top:2px;}
+.uc-step-badge{font-size:10px;font-weight:700;flex-shrink:0;padding:2px 7px;border-radius:20px;margin-top:2px;}
+/* ── DATA MIGRATION TAB ── */
+.mig-tbl-row{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--border);cursor:pointer;transition:background var(--ease);}
+.mig-tbl-row:last-child{border-bottom:none;}
+.mig-tbl-row:hover{background:var(--surface2);}
+.mig-tbl-row.selected{background:#e8f0fb;}
+.mig-tbl-row .chk{flex-shrink:0;}
+.mig-tbl-info{flex:1;min-width:0;}
+.mig-tbl-name{font-size:12px;font-weight:600;color:var(--t1);}
+.mig-tbl-meta{font-size:10.5px;color:var(--t3);}
+.mig-prog-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border);font-size:12px;}
+.mig-prog-row:last-child{border-bottom:none;}
+.mig-prog-name{width:130px;font-weight:600;color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;}
+.mig-prog-bar-wrap{flex:1;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;}
+.mig-prog-bar{height:100%;border-radius:3px;transition:width .4s ease;}
+.mig-prog-bar.running{background:var(--accent);}
+.mig-prog-bar.done{background:#00853d;}
+.mig-prog-bar.failed{background:var(--red);}
+.mig-prog-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;flex-shrink:0;}
+.mig-log-entry{font-size:11px;color:var(--t2);font-family:var(--font-mono);padding:2px 0;border-bottom:1px solid #f0f1f2;white-space:pre-wrap;word-break:break-all;}
+.mig-log-entry:last-child{border-bottom:none;}
+.mig-log-entry.ok{color:#005724;}
+.mig-log-entry.err{color:#8b0000;}
+#migLog::-webkit-scrollbar{width:7px;}
+#migLog::-webkit-scrollbar-track{background:#f1f5f9;border-radius:4px;}
+#migLog::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px;}
+#migLog::-webkit-scrollbar-thumb:hover{background:#94a3b8;}
+.mig-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;}
+.mig-stat{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 8px;text-align:center;}
+.mig-stat .n{font-size:20px;font-weight:700;line-height:1;}
+.mig-stat .l{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin-top:3px;}
+.wkr-slider{width:100%;accent-color:var(--db-red);cursor:pointer;}
+/* ── NOTES ── */
+.note-grp{font-size:11.5px;font-weight:600;color:var(--t1);padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);margin-bottom:4px;display:flex;align-items:center;gap:7px}
+.note-item{display:flex;gap:7px;padding:4px 10px 4px 16px;font-size:11.5px;color:var(--t2);border-left:2px solid var(--border2);margin-bottom:2px;border-radius:0 4px 4px 0;transition:var(--ease)}
+.note-item:hover{border-left-color:var(--accent);background:var(--accent-light);color:var(--t1)}
+.note-item::before{content:'›';color:var(--accent);font-weight:700;flex-shrink:0}
+</style>
+</head>
+<body>
+<div id="app">
+<nav id="sidebar">
+  <div class="sb-logo">
+    <div class="brand">
+      <div class="brand-ico">
+        <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+      </div>
+      <div>
+        <div class="brand-name">Migration Studio</div>
+        <div class="brand-sub">SQL → Databricks</div>
+      </div>
+    </div>
+  </div>
+  <div class="sb-stats">
+    <div class="stat-pill"><div class="n" id="statSP" style="color:var(--sp-c)">—</div><div class="l">SP</div></div>
+    <div class="stat-pill"><div class="n" id="statVW" style="color:var(--vw-c)">—</div><div class="l">Views</div></div>
+    <div class="stat-pill"><div class="n" id="statUDF" style="color:var(--udf-c)">—</div><div class="l">UDFs</div></div>
+  </div>
+  <div class="sb-nav">
+    <div class="sb-sec">Workflow</div>
+    <button class="nav-btn active" id="nav-convert" onclick="switchTab('convert',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg></span>
+      Convert to PySpark<span class="nav-badge">01</span>
+    </button>
+    <button class="nav-btn" id="nav-connect" onclick="switchTab('connect',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg></span>
+      Databricks Connect<span class="nav-badge">02</span>
+    </button>
+    <button class="nav-btn" id="nav-deploy" onclick="switchTab('deploy',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg></span>
+      Deploy Notebooks<span class="nav-badge">03</span>
+    </button>
+    <button class="nav-btn" id="nav-uc" onclick="switchTab('uc',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></span>
+      Unity Catalog<span class="nav-badge">04</span>
+    </button>
+    <button class="nav-btn" id="nav-migrate" onclick="switchTab('migrate',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><polyline points="5 9 2 12 5 15"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/></svg></span>
+      Data Migration<span class="nav-badge" style="background:rgba(255,54,33,.15);color:#ff6b5b;border-color:rgba(255,54,33,.3);">05</span>
+    </button>
+  </div>
+  <div class="sb-footer">
+    <div class="wf-bar">
+      <div class="wf-step active" id="wf1"></div>
+      <div class="wf-step" id="wf2"></div>
+      <div class="wf-step" id="wf3"></div>
+      <div class="wf-step" id="wf4"></div>
+      <div class="wf-step" id="wf5"></div>
+    </div>
+    <div class="wf-lbl" id="wfLbl">Step 1 of 4 — Convert SQL Objects</div>
+  </div>
+</nav>
+
+<div id="main">
+  <div id="topbar">
+    <div class="top-icon-wrap">
+      <svg id="topIco" viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
+    </div>
+    <div>
+      <div class="top-title" id="topTitle">Convert SQL Objects to PySpark</div>
+      <div class="top-sub" id="topSub">Select objects — one .py per SP/View + UDFs in HelperFunction.py</div>
+    </div>
+    <div class="top-right">
+      <div class="status-chip"><div class="dot-pulse"></div><span>Server Online</span></div>
+    </div>
+  </div>
+
+  <div id="content">
+
+    <!-- CONVERT -->
+    <div id="pane-convert" class="tab-pane active">
+      <div class="l-col">
+
+        <!-- SOURCE CONNECTION CARD -->
+        <div class="src-conn-card">
+          <div class="src-conn-hd" onclick="toggleSrcConn()">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+            <span class="card-title">Source Connection</span>
+            <div class="src-conn-dot" id="srcConnDot"></div>
+            <span class="src-conn-chv open" id="srcConnChv">▾</span>
+          </div>
+          <div class="src-conn-body" id="srcConnBody">
+            <div class="form-grp">
+              <label class="form-lbl">Source Type</label>
+              <input type="hidden" id="srcType" value="sqlserver">
+              <div class="idd" id="srcTypeDD">
+                <div class="idd-trigger" id="srcTypeTrigger" onclick="toggleIDD()">
+                  <div class="idd-badge" style="background:#e8f0fb;color:#1b6ac9;">
+                    <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                  </div>
+                  <span class="idd-label" id="srcTypeLabel">SQL Server</span>
+                  <span class="idd-chevron">&#9660;</span>
+                </div>
+                <div class="idd-list" id="srcTypeList">
+                  <div class="idd-opt active" data-value="sqlserver" onclick="pickSrcType(this)">
+                    <div class="idd-badge" style="background:#e8f0fb;color:#1b6ac9;">
+                      <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                    </div>
+                    <div class="idd-opt-text">
+                      <div class="idd-opt-name">SQL Server</div>
+                      <div class="idd-opt-desc">On-premises &amp; self-hosted SQL Server</div>
+                    </div>
+                  </div>
+                  <div class="idd-opt" data-value="azuresql" onclick="pickSrcType(this)">
+                    <div class="idd-badge" style="background:#e0f0fa;color:#0070b8;">
+                      <svg viewBox="0 0 24 24"><path d="M18 10h-1.26A8 8 0 103 16.3"/><polyline points="16 10 18 10 18 8"/><ellipse cx="12" cy="19" rx="5" ry="2"/><path d="M17 17.3c0 .9-2.2 1.7-5 1.7s-5-.8-5-1.7"/></svg>
+                    </div>
+                    <div class="idd-opt-text">
+                      <div class="idd-opt-name">Azure SQL</div>
+                      <div class="idd-opt-desc">Azure SQL Database (PaaS)</div>
+                    </div>
+                  </div>
+                  <div class="idd-opt" data-value="synapse" onclick="pickSrcType(this)">
+                    <div class="idd-badge" style="background:#f2eafe;color:#6222b8;">
+                      <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                    </div>
+                    <div class="idd-opt-text">
+                      <div class="idd-opt-name">Synapse SQL</div>
+                      <div class="idd-opt-desc">Azure Synapse Analytics pool</div>
+                    </div>
+                  </div>
+                  <div class="idd-opt" data-value="sqlmi" onclick="pickSrcType(this)">
+                    <div class="idd-badge" style="background:#e8f5ee;color:#00853d;">
+                      <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    </div>
+                    <div class="idd-opt-text">
+                      <div class="idd-opt-name">SQL Managed Instance</div>
+                      <div class="idd-opt-desc">Azure SQL MI — near-100% compat</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-row-2">
+              <div class="form-grp"><label class="form-lbl">Server / Host</label><input id="srcServer" class="form-inp" placeholder="server.database.windows.net"></div>
+              <div class="form-grp"><label class="form-lbl">Database</label><input id="srcDb" class="form-inp" placeholder="my_database"></div>
+            </div>
+            <div class="form-row-2">
+              <div class="form-grp"><label class="form-lbl">Username</label><input id="srcUser" class="form-inp" placeholder="sa"></div>
+              <div class="form-grp"><label class="form-lbl">Password</label><input id="srcPass" class="form-inp" type="password" placeholder="••••••••"></div>
+            </div>
+            <div style="display:flex;gap:7px;">
+              <button class="btn btn-ghost btn-sm" style="flex:1" id="btnTestSrc" onclick="testSourceConn()">
+                <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+                Test
+              </button>
+              <button class="btn btn-primary btn-sm" style="flex:2" id="btnLoadSrc" onclick="loadFromSource()" disabled>
+                <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+                Load SQL Objects
+              </button>
+            </div>
+            <div class="src-msg" id="srcConnMsg"></div>
+          </div>
+        </div>
+
+        <div class="card" style="flex:1;display:flex;flex-direction:column;min-height:0;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></div>
+            <div class="card-title">SQL Objects</div>
+            <span class="sel-count" id="selCnt">0 / —</span>
+          </div>
+          <div class="sel-toolbar">
+            <button id="fbAll"  class="btn btn-ghost btn-xs" onclick="selectAll()">All</button>
+            <button id="fbNone" class="btn btn-ghost btn-xs" onclick="deselectAll()">None</button>
+            <button id="fbSP"  onclick="selType('SP')"   style="background:var(--sp-bg);color:var(--sp-c);border:1px solid var(--sp-b);font-weight:700;border-radius:4px;padding:3px 9px;cursor:pointer;font-size:10.5px;font-family:var(--font)">SP</button>
+            <button id="fbVW"  onclick="selType('VIEW')" style="background:var(--vw-bg);color:var(--vw-c);border:1px solid var(--vw-b);font-weight:700;border-radius:4px;padding:3px 9px;cursor:pointer;font-size:10.5px;font-family:var(--font)">Views</button>
+            <button id="fbUDF" onclick="selType('UDF')"  style="background:var(--udf-bg);color:var(--udf-c);border:1px solid var(--udf-b);font-weight:700;border-radius:4px;padding:3px 9px;cursor:pointer;font-size:10.5px;font-family:var(--font)">UDFs</button>
+          </div>
+          <div class="obj-scroll" id="objList">
+            <div class="loading-state"><div class="spin spin-lg"></div><span>Loading objects…</span></div>
+          </div>
+          <div style="margin-top:12px;display:flex;flex-direction:column;gap:7px;">
+            <button class="btn btn-primary btn-full" id="btnConvert" onclick="convertSelected()" disabled>
+              <svg id="bci" viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
+              <span id="bct">Convert → Separate Files</span>
+              <div class="btn-prog" id="bprog" style="width:0%"></div>
+            </button>
+            <button class="btn btn-ghost btn-sm btn-full" onclick="previewSource()">
+              <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              View Source SQL
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="r-col">
+        <div id="srcPanel" class="src-panel" style="display:none;">
+          <div class="src-hd">
+            <span class="src-hd-lbl">Source SQL</span>
+            <span id="srcName" style="font-size:11px;color:var(--t3);margin-left:6px;font-family:var(--font-mono)"></span>
+            <button class="btn btn-ghost btn-xs" style="margin-left:auto;" onclick="closeSrc()">✕</button>
+          </div>
+          <div class="src-body" id="srcBody"></div>
+        </div>
+        <div class="code-box">
+          <div class="code-toolbar">
+            <div class="win-btns"><div class="win-btn r"></div><div class="win-btn a"></div><div class="win-btn g"></div></div>
+            <div class="code-fname"><span id="codeTitle">Select objects → Convert</span><span class="py-badge" id="pyBadge" style="display:none">PY</span></div>
+            <button class="btn btn-ghost btn-xs" onclick="copyCode()" id="btnCopy" disabled>📋 Copy</button>
+            <button class="btn btn-ghost btn-xs" onclick="dlCode()" id="btnDL" disabled>↓ Save</button>
+            <button class="btn btn-ghost btn-xs" onclick="dlAllFiles()" id="btnDLAll" disabled>↓ All Files</button>
+          </div>
+          <div class="nb-bar" id="nbBar" style="display:none;"><div id="nbTabs" style="display:flex;gap:4px;flex-wrap:wrap;width:100%;"></div></div>
+          <div class="editor" id="codeOut"><div class="empty" style="color:#4b5563;"><div class="empty-ico">📓</div><div class="empty-t" style="color:#4b5563;">No Output Yet</div><div class="empty-s" style="color:#374151;">Select SQL objects, then click<br><strong style="color:#58a6ff;">Convert → Separate Files</strong></div></div></div>
+        </div>
+        <div class="card" id="notesCard" style="display:none;flex-shrink:0;max-height:200px;overflow-y:auto;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg></div>
+            <div class="card-title">Migration Notes</div>
+          </div>
+          <div id="notesList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONNECT -->
+    <div id="pane-connect" class="tab-pane">
+      <div class="l-col">
+        <div class="card">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div>
+            <div class="card-title">Credentials</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <div class="form-grp"><label class="form-lbl">Workspace Host</label><input id="dbHost" class="form-inp" type="text" placeholder="https://adb-xxxx.azuredatabricks.net"></div>
+            <div class="form-grp"><label class="form-lbl">Personal Access Token</label><input id="dbToken" class="form-inp" type="password" placeholder="dapi…"></div>
+            <button class="btn btn-primary btn-full" onclick="testConn()">
+              <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+              Test Connection
+            </button>
+          </div>
+        </div>
+        <div id="connStatus"></div>
+      </div>
+      <div class="r-col">
+        <div class="card" style="flex:1;overflow-y:auto;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+            <div class="card-title">Workspace &amp; Clusters</div>
+          </div>
+          <div id="connInfo"><div class="empty"><div class="empty-ico">🔌</div><div class="empty-t">Not Connected</div><div class="empty-s">Enter credentials and click Test Connection.</div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DEPLOY -->
+    <div id="pane-deploy" class="tab-pane">
+      <div class="l-col" style="overflow-y:hidden;">
+
+        <!-- Deploy Settings -->
+        <div class="card" style="flex-shrink:0;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M16.24 7.76a6 6 0 010 8.49M4.93 4.93a10 10 0 000 14.14M7.76 7.76a6 6 0 000 8.49"/></svg></div>
+            <div class="card-title">Deploy Settings</div>
+            <button class="btn btn-ghost btn-xs" onclick="syncDepCreds()" title="Copy credentials from Connect tab" style="margin-left:auto;">
+              <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+              Sync
+            </button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:11px;">
+            <div class="form-grp"><label class="form-lbl">Workspace Host</label><input id="depHost" class="form-inp" type="text" placeholder="https://adb-xxxx.azuredatabricks.net"></div>
+            <div class="form-grp"><label class="form-lbl">Access Token</label><input id="depToken" class="form-inp" type="password" placeholder="dapi…"></div>
+            <div class="form-grp"><label class="form-lbl">Workspace Path</label><input id="depPath" class="form-inp" value="/Shared/Migrations"></div>
+            <button class="btn btn-success btn-full" id="btnDeployAll" onclick="deployAll()">
+              <svg viewBox="0 0 24 24"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>
+              <span id="depBtnTxt">Deploy All to Databricks</span>
+              <div class="btn-prog" id="depProg" style="width:0%"></div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Ready to Deploy — scrollable list -->
+        <div class="card" style="flex:1;display:flex;flex-direction:column;min-height:0;">
+          <div class="card-hd" style="flex-shrink:0;">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg></div>
+            <div class="card-title">Ready to Deploy</div>
+            <span class="sel-count" id="depCnt" style="margin-left:auto;">0 files</span>
+          </div>
+          <div id="deployList" style="flex:1;overflow-y:auto;padding-right:2px;"><div class="empty" style="padding:12px;"><div class="empty-ico">📓</div><div class="empty-s">Convert objects in Step 1 first.</div></div></div>
+        </div>
+
+      </div>
+      <div class="r-col">
+        <div class="card" style="flex:1;overflow-y:auto;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/></svg></div>
+            <div class="card-title">Upload Log</div>
+          </div>
+          <div id="deployLog"><div class="empty"><div class="empty-ico">📤</div><div class="empty-t">No Deployments Yet</div><div class="empty-s">Results appear here after deploy.</div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- UNITY CATALOG -->
+    <div id="pane-uc" class="tab-pane">
+      <div class="l-col">
+        <div class="card">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+            <div class="card-title">Unity Catalog Settings</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:11px;">
+            <div class="form-grp"><label class="form-lbl">Workspace Host</label><input id="ucHost" class="form-inp" type="text" placeholder="https://adb-xxxx.azuredatabricks.net"></div>
+            <div class="form-grp"><label class="form-lbl">Access Token</label><input id="ucToken" class="form-inp" type="password" placeholder="dapi…"></div>
+            <div class="g2">
+              <div class="form-grp"><label class="form-lbl">Catalog</label><input id="ucCatalog" class="form-inp" value="main"></div>
+              <div class="form-grp"><label class="form-lbl">Schema</label><input id="ucSchema" class="form-inp" value="default"></div>
+            </div>
+            <button class="btn btn-primary btn-full" onclick="loadUCTables()">
+              <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+              Load Tables
+            </button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
+            <div class="card-title">SQL Warehouse</div>
+          </div>
+          <select id="ucWarehouse" class="form-inp"><option value="">— load tables first —</option></select>
+        </div>
+        <div class="card" style="flex:1;min-height:0;display:flex;flex-direction:column;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg></div>
+            <div class="card-title">Tables</div>
+          </div>
+          <div class="tbl-list" id="ucTableList"><div class="empty" style="padding:12px;"><div class="empty-s">Load tables first.</div></div></div>
+          <div style="display:flex;gap:7px;margin-top:10px;">
+            <button class="btn btn-outline btn-sm" style="flex:1;" onclick="previewTable()">
+              <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              Preview
+            </button>
+            <button class="btn btn-success btn-sm" style="flex:1;" onclick="executeTable()">
+              <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Execute
+            </button>
+          </div>
+          <input type="hidden" id="ucTable" value="">
+        </div>
+      </div>
+      <div class="r-col">
+        <div class="card" style="flex-shrink:0;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+            <div class="card-title">Custom SQL</div>
+          </div>
+          <textarea id="ucSQL" class="form-inp" rows="4" placeholder="SELECT * FROM main.default.my_table LIMIT 100;"></textarea>
+          <button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="runCustomSQL()">
+            <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Run SQL
+          </button>
+        </div>
+        <div class="card" style="flex:1;overflow-y:auto;min-height:0;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+            <div class="card-title">Results</div>
+          </div>
+          <div id="ucResults"><div class="empty"><div class="empty-ico">🔍</div><div class="empty-t">No Results Yet</div><div class="empty-s">Preview a table or run a query.</div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DATA MIGRATION -->
+    <div id="pane-migrate" class="tab-pane">
+      <div class="l-col">
+
+        <!-- Source -->
+        <div class="card" style="flex-shrink:0;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+            <div class="card-title">Source Database</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:9px;">
+            <div class="form-grp">
+              <label class="form-lbl">Source Type</label>
+              <select id="migSrcType" class="form-inp">
+                <option value="sqlserver">🗄️ SQL Server</option>
+                <option value="azuresql">☁️ Azure SQL</option>
+                <option value="synapse">⚡ Synapse SQL</option>
+                <option value="sqlmi">🔒 SQL Managed Instance</option>
+              </select>
+            </div>
+            <div class="g2">
+              <div class="form-grp"><label class="form-lbl">Server</label><input id="migServer" class="form-inp" placeholder="server.database.windows.net"></div>
+              <div class="form-grp"><label class="form-lbl">Database</label><input id="migDb" class="form-inp" placeholder="my_database"></div>
+            </div>
+            <div class="g2">
+              <div class="form-grp"><label class="form-lbl">Username</label><input id="migUser" class="form-inp" placeholder="sa"></div>
+              <div class="form-grp"><label class="form-lbl">Password</label><input id="migPass" class="form-inp" type="password" placeholder="········"></div>
+            </div>
+            <button class="btn btn-primary btn-full" onclick="loadMigTables()" id="btnLoadMigTbls">
+              <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+              Discover Tables
+            </button>
+            <div id="migSrcMsg" style="display:none;"></div>
+          </div>
+        </div>
+
+        <!-- Tables -->
+        <div class="card" style="flex:1;min-height:0;display:flex;flex-direction:column;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg></div>
+            <div class="card-title">Tables</div>
+            <span id="migTblSelCnt" class="sel-count" style="display:none;">0 selected</span>
+          </div>
+          <div style="display:flex;gap:5px;margin-bottom:8px;">
+            <input id="migSearch" class="form-inp" placeholder="Filter tables…" style="flex:1;padding:5px 8px;font-size:11.5px;" oninput="filterMigTables(this.value)">
+            <button class="btn btn-ghost btn-xs" onclick="selAllMig()">All</button>
+            <button class="btn btn-ghost btn-xs" onclick="deselAllMig()">None</button>
+          </div>
+          <div id="migTblList" style="flex:1;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r-sm);">
+            <div class="empty" style="padding:24px;"><div class="empty-ico">🗄️</div><div class="empty-t">No Tables Loaded</div><div class="empty-s">Click Discover Tables to load source tables.</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="r-col">
+
+        <!-- Target -->
+        <div class="card" style="flex-shrink:0;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+            <div class="card-title">Databricks Target</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:9px;">
+            <div class="form-grp"><label class="form-lbl">Workspace Host</label><input id="migHost" class="form-inp" placeholder="https://adb-xxxx.azuredatabricks.net"></div>
+            <div class="form-grp"><label class="form-lbl">Access Token</label><input id="migToken" class="form-inp" type="password" placeholder="dapi…"></div>
+            <div class="g2">
+              <div class="form-grp"><label class="form-lbl">Catalog</label><input id="migCatalog" class="form-inp" value="main"></div>
+              <div class="form-grp"><label class="form-lbl">Schema</label><input id="migSchema" class="form-inp" value="default"></div>
+            </div>
+            <div class="form-grp">
+              <label class="form-lbl">SQL Warehouse</label>
+              <div style="display:flex;gap:6px;">
+                <select id="migWarehouse" class="form-inp" style="flex:1;"><option value="">— load warehouses —</option></select>
+                <button class="btn btn-ghost btn-xs" onclick="loadMigWarehouses()" title="Refresh warehouses">
+                  <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="form-grp">
+              <label class="form-lbl">Parallel Workers: <strong id="migWkrLbl">3</strong></label>
+              <input type="range" id="migWorkers" class="wkr-slider" min="1" max="8" value="3" oninput="G('migWkrLbl').textContent=this.value">
+            </div>
+          </div>
+        </div>
+
+        <!-- Start button + summary -->
+        <div class="card" style="flex-shrink:0;">
+          <div id="migSummary" class="mig-summary" style="display:none;">
+            <div class="mig-stat"><div class="n" id="migStTotal" style="color:var(--accent);">0</div><div class="l">Total</div></div>
+            <div class="mig-stat"><div class="n" id="migStDone" style="color:#00853d;">0</div><div class="l">Done</div></div>
+            <div class="mig-stat"><div class="n" id="migStFail" style="color:var(--red);">0</div><div class="l">Failed</div></div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-primary" style="flex:1;justify-content:center;" id="btnStartMig" onclick="startMigration()">
+              <svg viewBox="0 0 24 24"><polyline points="5 9 2 12 5 15"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+              <span id="migBtnTxt">Start Migration</span>
+              <div class="btn-prog" id="migBtnProg" style="width:0%"></div>
+            </button>
+            <button class="btn btn-ghost btn-xs" id="btnStopMig" onclick="stopMigPoll()" style="display:none;" title="Stop polling">
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+            </button>
+          </div>
+          <div id="migStatusBadge" style="margin-top:8px;"></div>
+        </div>
+
+        <!-- Per-table progress -->
+        <div class="card" style="flex-shrink:0;display:none;" id="migProgCard">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+            <div class="card-title">Table Progress</div>
+          </div>
+          <div id="migProgList" style="display:flex;flex-direction:column;"></div>
+        </div>
+
+        <!-- Live log -->
+        <div class="card" id="migLogCard">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+            <div class="card-title">Migration Log</div>
+            <div style="margin-left:auto;display:flex;gap:4px;">
+              <button class="btn btn-ghost btn-xs" onclick="copyMigLog()" title="Copy log to clipboard"><svg viewBox="0 0 24 24" style="width:11px;height:11px;"><rect x="9" y="9" width="13" height="13" rx="1"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Copy</button>
+              <button class="btn btn-ghost btn-xs" onclick="G('migLog').innerHTML='';_migLogCount=0;">Clear</button>
+            </div>
+          </div>
+          <div id="migLog" style="height:320px;overflow-y:scroll;font-family:var(--font-mono);font-size:11px;line-height:1.7;border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 8px;background:#fafbfc;scrollbar-width:thin;scrollbar-color:#cbd5e1 #f1f5f9;">
+            <div class="empty" style="padding:20px;"><div class="empty-s">Migration log will appear here.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+<div id="toasts"></div>
+<script>
+const G = id => document.getElementById(id);
+let ALL_OBJECTS=[], HELPER_RESULT=null, ACTIVE_FILE=null, UC_TABLE=null;
+
+function toast(msg,type='tinfo',dur=3200){
+  const icons={tok:'✓',terr:'✕',tinfo:'i'};
+  const el=document.createElement('div');
+  el.className='toast '+type;
+  el.innerHTML='<span style="font-weight:700;font-size:12px;flex-shrink:0;">'+(icons[type]||'i')+'</span><span>'+msg+'</span>';
+  G('toasts').prepend(el);
+  setTimeout(()=>{el.classList.add('hiding');setTimeout(()=>el.remove(),220);},dur);
+}
+
+const TAB_META={
+  convert:{title:'Convert SQL Objects to PySpark',sub:'One .py per SP/View · All UDFs bundled into HelperFunction.py',step:1},
+  connect:{title:'Databricks Connection',sub:'Test and verify your Databricks workspace connection',step:2},
+  deploy:{title:'Deploy Notebooks',sub:'Upload individual notebooks to your Databricks workspace',step:3},
+  uc:{title:'Unity Catalog Execute',sub:'Execute pipelines and query tables in Unity Catalog',step:4},
+  migrate:{title:'Data Migration',sub:'Bulk-migrate source tables → Databricks Unity Catalog Delta tables',step:5},
+};
+const WF_LBL=['Convert SQL Objects','Test Connection','Deploy Notebooks','Unity Catalog','Data Migration'];
+const TAB_ICONS={
+  convert:'<polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/>',
+  connect:'<path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>',
+  deploy:'<polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/>',
+  uc:'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
+  migrate:'<polyline points="5 9 2 12 5 15"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/>',
+};
+
+function switchTab(id,btn){
+  document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  G('pane-'+id).classList.add('active');
+  G('nav-'+id).classList.add('active');
+  // Auto-copy Databricks credentials into Deploy tab when navigating to it
+  if(id==='deploy'){
+    const h=G('dbHost'),t=G('dbToken'),dh=G('depHost'),dt=G('depToken');
+    if(dh&&h&&h.value&&!dh.value)dh.value=h.value;
+    if(dt&&t&&t.value&&!dt.value)dt.value=t.value;
+  }
+  // Auto-copy Databricks credentials into Migration tab
+  if(id==='migrate'){
+    const h=G('dbHost'),t=G('dbToken'),mh=G('migHost'),mt=G('migToken');
+    if(mh&&h&&h.value&&!mh.value)mh.value=h.value;
+    if(mt&&t&&t.value&&!mt.value)mt.value=t.value;
+  }
+  const m=TAB_META[id];
+  if(m){
+    G('topIco').innerHTML=TAB_ICONS[id]||TAB_ICONS.convert;
+    G('topTitle').textContent=m.title;
+    G('topSub').textContent=m.sub;
+    for(let i=1;i<=5;i++){const s=G('wf'+i);s.className='wf-step'+(i<m.step?' done':i===m.step?' active':'');}
+    G('wfLbl').textContent='Step '+m.step+' of 5 — '+WF_LBL[m.step-1];
+  }
+}
+
+async function loadObjects(){
+  try{
+    const r=await fetch('/api/all-objects');
+    const d=await r.json();
+    if(!d.success)throw new Error(d.error||'Load failed');
+    const MAP={stored_procedure:'SP',view:'VIEW',udf:'UDF'};
+    ALL_OBJECTS=[];
+    const C={SP:0,VIEW:0,UDF:0};
+    for(const[ot,items]of Object.entries(d.grouped||{})){
+      items.forEach(o=>{
+        const t=MAP[ot]||ot.toUpperCase();
+        ALL_OBJECTS.push({key:o.key,name:o.name,description:o.description,object_type:ot,type:t});
+        if(C[t]!==undefined)C[t]++;
+      });
+    }
+    G('statSP').textContent=C.SP;G('statVW').textContent=C.VIEW;G('statUDF').textContent=C.UDF;
+    renderObjects();
+  }catch(e){G('objList').innerHTML='<div class="alert a-err"><span class="a-ico">✕</span>Failed: '+e.message+'</div>';}
+}
+
+function renderObjects(){
+  const GRPS={SP:[],VIEW:[],UDF:[]};
+  ALL_OBJECTS.forEach(o=>{if(GRPS[o.type])GRPS[o.type].push(o);});
+  const M={
+    SP:{label:'Stored Procedures',dot:'var(--sp-c)',lc:'var(--sp-c)',tc:'sp'},
+    VIEW:{label:'SQL Views',dot:'var(--vw-c)',lc:'var(--vw-c)',tc:'vw'},
+    UDF:{label:'User-Defined Functions',dot:'var(--udf-c)',lc:'var(--udf-c)',tc:'udf'},
+  };
+  let html='';
+  for(const[t,items]of Object.entries(GRPS)){
+    if(!items.length)continue;
+    const m=M[t];
+    html+=`<div class="grp-hd" onclick="toggleGrp('${t}')">
+      <span class="grp-dot" style="background:${m.dot}"></span>
+      <span class="grp-lbl" style="color:${m.lc}">${m.label}</span>
+      <span class="grp-badge">${items.length}</span>
+      <span class="grp-chv" id="gc${t}">▾</span>
+    </div><div id="gi${t}">`;
+    items.forEach(o=>{
+      html+=`<div class="obj-item" id="oi${o.key}" onclick="togItem('${o.key}',event)">
+        <input type="checkbox" id="ck${o.key}">
+        <span class="chk" id="cb${o.key}">✓</span>
+        <span class="badge b${m.tc}">${t}</span>
+        <div class="obj-info"><div class="obj-name">${o.key}</div><div class="obj-desc">${o.description||''}</div></div>
+        <button class="sql-btn" onclick="event.stopPropagation();loadSrc('${o.key}')">SQL</button>
+      </div>`;
+    });
+    html+='</div>';
+  }
+  G('objList').innerHTML=html||'<div class="empty"><div class="empty-s">No objects loaded.</div></div>';
+  updSelCnt();
+}
+
+function toggleGrp(t){const el=G('gi'+t),chv=G('gc'+t);if(!el)return;const hide=el.style.display!=='none';el.style.display=hide?'none':'';if(chv)chv.textContent=hide?'▸':'▾';}
+function togItem(key,e){if(e.target.classList.contains('sql-btn'))return;const c=G('ck'+key);if(c){c.checked=!c.checked;updSel();}}
+function updSel(){ALL_OBJECTS.forEach(o=>{const c=G('ck'+o.key),item=G('oi'+o.key),cb=G('cb'+o.key);const s=c&&c.checked;if(item)item.classList.toggle('selected',s);if(cb)cb.style.color=s?'#fff':'transparent';});updSelCnt();}
+function updSelCnt(){const n=getSel().length;G('selCnt').textContent=n+' / '+ALL_OBJECTS.length;const b=G('btnConvert');if(b)b.disabled=(n===0);}
+function getSel(){return ALL_OBJECTS.filter(o=>{const c=G('ck'+o.key);return c&&c.checked;});}
+/* ── Source Connection ── */
+// ── Source-type icon dropdown ──
+const IDD_OPTS = {
+  sqlserver: {label:'SQL Server',      bg:'#e8f0fb', color:'#1b6ac9', svg:'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>'},
+  azuresql: {label:'Azure SQL',         bg:'#e0f0fa', color:'#0070b8', svg:'<path d="M18 10h-1.26A8 8 0 103 16.3"/><polyline points="16 10 18 10 18 8"/><ellipse cx="12" cy="19" rx="5" ry="2"/>'},
+  synapse:  {label:'Synapse SQL',       bg:'#f2eafe', color:'#6222b8', svg:'<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'},
+  sqlmi:    {label:'SQL Managed Instance', bg:'#e8f5ee', color:'#00853d', svg:'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>'}
+};
+function toggleIDD(){
+  const trigger=G('srcTypeTrigger'), list=G('srcTypeList');
+  const isOpen=list.classList.contains('open');
+  if(isOpen){
+    trigger.classList.remove('open');
+    list.classList.remove('open');
+    return;
+  }
+  // Position the fixed dropdown below the trigger
+  const rect=trigger.getBoundingClientRect();
+  list.style.top=(rect.bottom+4)+'px';
+  list.style.left=rect.left+'px';
+  list.style.width=rect.width+'px';
+  trigger.classList.add('open');
+  list.classList.add('open');
+}
+function pickSrcType(el){
+  const val=el.dataset.value, o=IDD_OPTS[val];
+  G('srcType').value=val;
+  document.querySelectorAll('#srcTypeList .idd-opt').forEach(e=>e.classList.remove('active'));
+  el.classList.add('active');
+  G('srcTypeLabel').textContent=o.label;
+  const b=G('srcTypeTrigger').querySelector('.idd-badge');
+  b.style.background=o.bg; b.style.color=o.color;
+  b.innerHTML=`<svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round">${o.svg}</svg>`;
+  G('srcTypeTrigger').classList.remove('open');
+  G('srcTypeList').classList.remove('open');
+}
+document.addEventListener('click',e=>{
+  const dd=G('srcTypeDD');
+  if(dd&&!dd.contains(e.target)){
+    G('srcTypeTrigger').classList.remove('open');
+    G('srcTypeList').classList.remove('open');
+  }
+});
+
+function toggleSrcConn(){
+  const body=G('srcConnBody'),chv=G('srcConnChv');
+  body.classList.toggle('collapsed');
+  chv.classList.toggle('open');
+}
+
+async function testSourceConn(){
+  const btn=G('btnTestSrc');
+  const server=G('srcServer').value.trim(),db=G('srcDb').value.trim(),user=G('srcUser').value.trim();
+  if(!server||!db||!user){toast('Server, database and username are required.','terr');return;}
+  const origHTML=btn.innerHTML;
+  btn.disabled=true;btn.innerHTML='<div class="spin"></div>';
+  const msg=G('srcConnMsg');
+  msg.style.display='none';
+  try{
+    const r=await fetch('/api/source/test-connection',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source_type:G('srcType').value,server,database:db,username:user,password:G('srcPass').value})});
+    const d=await r.json();
+    msg.style.display='';
+    if(d.success){
+      msg.style.cssText='display:;background:var(--green-bg);color:var(--green);border:1px solid var(--green-border);font-size:11px;padding:6px 9px;border-radius:var(--r-sm);';
+      msg.textContent='✓ '+d.server_version;
+      G('srcConnDot').className='src-conn-dot ok';
+      G('btnLoadSrc').disabled=false;
+      toast('Source connected successfully!','tok');
+    }else{
+      msg.style.cssText='display:;background:var(--red-bg);color:var(--red);border:1px solid var(--red-border);font-size:11px;padding:6px 9px;border-radius:var(--r-sm);';
+      msg.textContent='✕ '+d.error;
+      G('srcConnDot').className='src-conn-dot err';
+      G('btnLoadSrc').disabled=true;
+      toast(d.error,'terr',5000);
+    }
+  }catch(e){
+    msg.style.cssText='display:;background:var(--red-bg);color:var(--red);border:1px solid var(--red-border);font-size:11px;padding:6px 9px;border-radius:var(--r-sm);';
+    msg.textContent='✕ '+e.message;
+    G('srcConnDot').className='src-conn-dot err';
+    toast(e.message,'terr');
+  }finally{btn.disabled=false;btn.innerHTML=origHTML;}
+}
+
+async function loadFromSource(){
+  const btn=G('btnLoadSrc');
+  const server=G('srcServer').value.trim(),db=G('srcDb').value.trim(),user=G('srcUser').value.trim();
+  const origHTML=btn.innerHTML;
+  btn.disabled=true;btn.innerHTML='<div class="spin"></div> Loading…';
+  G('objList').innerHTML='<div class="loading-state"><div class="spin spin-lg"></div><span>Fetching objects from source…</span></div>';
+  try{
+    const r=await fetch('/api/source/load-objects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source_type:G('srcType').value,server,database:db,username:user,password:G('srcPass').value})});
+    const d=await r.json();
+    if(!d.success)throw new Error(d.error||'Load failed');
+    const MAP={stored_procedure:'SP',view:'VIEW',udf:'UDF'};
+    ALL_OBJECTS=[];
+    const C={SP:0,VIEW:0,UDF:0};
+    for(const[ot,items]of Object.entries(d.grouped||{})){
+      items.forEach(o=>{
+        const t=MAP[ot]||ot.toUpperCase();
+        ALL_OBJECTS.push({key:o.key,name:o.name,description:o.description||'',object_type:ot,type:t,code:o.code||''});
+        if(C[t]!==undefined)C[t]++;
+      });
+    }
+    G('statSP').textContent=C.SP;
+    G('statVW').textContent=C.VIEW;
+    G('statUDF').textContent=C.UDF;
+    renderObjects();
+    toast('Loaded '+ALL_OBJECTS.length+' objects from '+db+'.','tok',4000);
+    // collapse card
+    const body=G('srcConnBody'),chv=G('srcConnChv');
+    if(!body.classList.contains('collapsed')){body.classList.add('collapsed');chv.classList.remove('open');}
+  }catch(e){
+    G('objList').innerHTML='<div class="alert a-err"><span class="a-ico">✕</span>'+e.message+'</div>';
+    toast(e.message,'terr');
+  }finally{btn.disabled=false;btn.innerHTML=origHTML;}
+}
+
+function setFilterActive(id){['fbAll','fbNone','fbSP','fbVW','fbUDF'].forEach(i=>{const b=G(i);if(b)b.classList.remove('active');});if(id){const b=G(id);if(b)b.classList.add('active');}}
+function selectAll(){
+  const allChecked=ALL_OBJECTS.length>0&&ALL_OBJECTS.every(o=>{const c=G('ck'+o.key);return c&&c.checked;});
+  ALL_OBJECTS.forEach(o=>{const c=G('ck'+o.key);if(c)c.checked=!allChecked;});
+  updSel();
+  setFilterActive(allChecked?'fbNone':'fbAll');
+}
+function deselectAll(){ALL_OBJECTS.forEach(o=>{const c=G('ck'+o.key);if(c)c.checked=false;});updSel();setFilterActive('fbNone');}
+function selType(t){
+  const MAP={SP:'fbSP',VIEW:'fbVW',UDF:'fbUDF'};
+  const allOfType=ALL_OBJECTS.filter(o=>o.type===t);
+  const alreadyActive=allOfType.length>0&&allOfType.every(o=>{const c=G('ck'+o.key);return c&&c.checked;})&&ALL_OBJECTS.filter(o=>o.type!==t).every(o=>{const c=G('ck'+o.key);return c&&!c.checked;});
+  if(alreadyActive){
+    ALL_OBJECTS.forEach(o=>{const c=G('ck'+o.key);if(c)c.checked=false;});
+    updSel();setFilterActive('fbNone');
+  }else{
+    ALL_OBJECTS.forEach(o=>{const c=G('ck'+o.key);if(c)c.checked=(o.type===t);});
+    updSel();setFilterActive(MAP[t]||null);
+  }
+}
+
+async function loadSrc(key){
+  // 1. Check live-loaded objects in the frontend array first
+  const local=ALL_OBJECTS.find(o=>o.key===key);
+  if(local&&local.code&&local.code.trim()){
+    G('srcName').textContent=key+'  ['+(local.object_type||local.type||'').toUpperCase()+']';
+    G('srcBody').textContent=local.code.trim();
+    G('srcPanel').style.display='';
+    return;
+  }
+  // 2. Fall back to backend template store
+  try{
+    const r=await fetch('/api/object-code/'+encodeURIComponent(key));
+    const d=await r.json();
+    if(d.success){G('srcName').textContent=key+'  ['+(d.object_type||'').toUpperCase()+']';G('srcBody').textContent=d.code;G('srcPanel').style.display='';}
+    else toast('Source not found: '+(d.error||'?'),'terr');
+  }catch(e){toast(e.message,'terr');}
+}
+async function previewSource(){const sel=getSel();if(!sel.length){toast('Select at least one object first.','tinfo');return;}loadSrc(sel[0].key);}
+function closeSrc(){G('srcPanel').style.display='none';}
+
+async function convertSelected(){
+  const sel=getSel();
+  if(!sel.length){toast('Select at least one object.','tinfo');return;}
+  const btn=G('btnConvert');btn.disabled=true;
+  G('bci').style.display='none';
+  const spinEl=document.createElement('span');spinEl.className='spin';spinEl.style.cssText='border-top-color:#fff;margin-right:0';
+  btn.insertBefore(spinEl,btn.querySelector('#bct'));
+  G('bct').textContent='Converting…';
+  let pct=0;const prog=G('bprog');
+  const iv=setInterval(()=>{pct=Math.min(pct+6,82);prog.style.width=pct+'%';},120);
+  const cnt=sel.length;
+  G('codeOut').innerHTML='<div class="loading-state"><div class="spin spin-lg"></div><span>Building notebooks for '+cnt+' object'+(cnt>1?'s':'')+'…</span></div>';
+  G('nbTabs').innerHTML='';G('nbBar').style.display='none';
+  G('notesCard').style.display='none';G('pyBadge').style.display='none';
+  HELPER_RESULT=null;
+  try{
+    const r=await fetch('/api/convert-separate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      object_names: sel.map(o=>o.key),
+      objects_with_code: Object.fromEntries(sel.filter(o=>o.code).map(o=>[o.key,{type:o.object_type||o.type,code:o.code}]))
+    })});
+    const d=await r.json();
+    clearInterval(iv);prog.style.width='100%';
+    setTimeout(()=>prog.style.width='0%',450);
+    if(!d.success){G('codeOut').innerHTML='<div class="alert a-err" style="margin:14px;"><span class="a-ico">✕</span>'+(d.error||'Conversion failed')+'</div>';toast(d.error||'Conversion failed','terr');return;}
+    HELPER_RESULT=d;renderSeparateFiles(d);updDeployList();
+    const msg=(d.sp_view_count||0)+' file'+((d.sp_view_count||0)!==1?'s':'')+(d.udf_count?' + HelperFunction.py ('+d.udf_count+' UDF'+(d.udf_count!==1?'s':'')+')'  :'')+' — '+d.object_count+' objects converted';
+    toast(msg,'tok',4500);G('wf1').className='wf-step done';
+  }catch(e){
+    clearInterval(iv);prog.style.width='0%';
+    G('codeOut').innerHTML='<div class="alert a-err" style="margin:14px;"><span class="a-ico">✕</span>'+e.message+'</div>';
+    toast('Error: '+e.message,'terr');
+  }finally{
+    btn.disabled=false;
+    if(spinEl.parentNode)spinEl.remove();
+    G('bci').style.display='';
+    G('bct').textContent='Convert → Separate Files';
+    updSelCnt();
+  }
+}
+
+function renderSeparateFiles(d){
+  const udfLbl=d.udf_count?d.udf_count+' UDF'+(d.udf_count!==1?'s':''):'Shared';
+  let th=`<button class="nb-tab helper active" id="nbt___helper" onclick="showFile('__helper__')">⚙ HelperFunction.py <span style="opacity:.5;font-size:9px">${udfLbl}</span></button>`;
+  (d.files||[]).forEach(f=>{
+    const cls=f.object_type==='stored_procedure'?'sp':f.object_type==='view'?'vw':'ud';
+    const ico=f.object_type==='stored_procedure'?'▸':f.object_type==='view'?'◉':'ƒ';
+    th+=`<button class="nb-tab ${cls}" id="nbt_${f.name}" onclick="showFile('${f.name}')">${ico} ${f.name}.py</button>`;
+  });
+  G('nbTabs').innerHTML=th;G('nbBar').style.display='';
+  ACTIVE_FILE='__helper__';G('codeTitle').textContent='HelperFunction.py';G('pyBadge').style.display='';
+  G('codeOut').textContent=d.helper_code;
+  const btnDL=G('btnDL'),btnALL=G('btnDLAll');
+  if(btnDL)btnDL.disabled=false;if(btnALL)btnALL.disabled=false;G('btnCopy').disabled=false;
+  const notes=d.conversion_notes||{};let nh='';
+  Object.entries(notes).forEach(([name,ns])=>{
+    const o=ALL_OBJECTS.find(x=>x.key===name)||{type:'SP'};const tc=o.type.toLowerCase();
+    nh+=`<div class="note-grp"><span class="badge b${tc}">${o.type}</span> ${name}</div><div>`;
+    (ns||[]).forEach(n=>{nh+=`<div class="note-item">${n}</div>`;});nh+='</div>';
+  });
+  if(nh){G('notesList').innerHTML=nh;G('notesCard').style.display='';}
+}
+
+function showFile(name){
+  if(!HELPER_RESULT)return;
+  document.querySelectorAll('.nb-tab').forEach(t=>t.classList.remove('active'));
+  ACTIVE_FILE=name;
+  if(name==='__helper__'){const t=G('nbt___helper');if(t)t.classList.add('active');G('codeTitle').textContent='HelperFunction.py';G('codeOut').textContent=HELPER_RESULT.helper_code;}
+  else{const t=G('nbt_'+name);if(t)t.classList.add('active');const f=(HELPER_RESULT.files||[]).find(x=>x.name===name);G('codeTitle').textContent=name+'.py';G('codeOut').textContent=f?f.code:'# File "'+name+'" not found.';}
+  G('btnCopy').disabled=false;const btnDL=G('btnDL');if(btnDL)btnDL.disabled=false;
+}
+
+function copyCode(){const c=G('codeOut').textContent;if(!c||c.trim().length<5){toast('Nothing to copy.','tinfo');return;}navigator.clipboard.writeText(c).then(()=>{toast('Copied to clipboard!','tok',2000);const b=G('btnCopy'),orig=b.innerHTML;b.textContent='✓ Copied!';setTimeout(()=>b.innerHTML=orig,1800);});}
+function dlCode(){const c=G('codeOut').textContent;if(!c||c.trim().length<5){toast('Nothing to download.','tinfo');return;}const fn=(!ACTIVE_FILE||ACTIVE_FILE==='__helper__')?'HelperFunction.py':(ACTIVE_FILE+'.py');Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([c],{type:'text/plain'})),download:fn}).click();toast('Downloaded '+fn,'tok',2000);}
+function dlAllFiles(){
+  if(!HELPER_RESULT){toast('Convert first.','tinfo');return;}
+  const allFiles=[{filename:'HelperFunction.py',code:HELPER_RESULT.helper_code},...(HELPER_RESULT.files||[]).map(f=>({filename:f.filename,code:f.code}))];
+  allFiles.forEach((f,i)=>{setTimeout(()=>{Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([f.code],{type:'text/plain'})),download:f.filename}).click();},i*350);});
+  toast('Downloading '+allFiles.length+' files…','tok',2500);
+}
+
+function updDeployList(){
+  if(!HELPER_RESULT){G('deployList').innerHTML='<div class="empty" style="padding:12px;"><div class="empty-ico">📓</div><div class="empty-s">Convert objects in Step 1 first.</div></div>';if(G('depCnt'))G('depCnt').textContent='0 files';return;}
+  const files=HELPER_RESULT.files||[];
+  const total=files.length+(HELPER_RESULT.udf_count>0?1:0);
+  if(G('depCnt'))G('depCnt').textContent=total+' file'+(total!==1?'s':'');
+  let h='<div style="display:flex;flex-direction:column;gap:6px;">';
+  if(HELPER_RESULT.udf_count>0){
+    h+=`<div style="display:flex;align-items:center;gap:9px;padding:7px 4px;border-bottom:1px solid var(--border);margin-bottom:2px;">
+    <div style="flex:1;"><div style="font-size:12px;font-weight:700;color:var(--accent-fg);">⚙ HelperFunction.py</div><div style="font-size:10.5px;color:var(--t3);">${HELPER_RESULT.udf_count||0} UDFs · ${HELPER_RESULT.helper_lines||0} lines</div></div>
+  </div>`;
+  }
+  files.forEach(f=>{const cls=f.object_type==='stored_procedure'?'bsp':f.object_type==='view'?'bvw':'budf';const lbl=f.object_type==='stored_procedure'?'SP':f.object_type==='view'?'VIEW':'UDF';h+=`<div style="display:flex;align-items:center;gap:8px;padding:5px 2px;"><span class="badge ${cls}">${lbl}</span><span style="font-size:12px;color:var(--t2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${f.filename}</span><span style="font-size:10.5px;color:var(--t3);flex-shrink:0;">${f.lines} lines</span></div>`;});
+  G('deployList').innerHTML=h+'</div>';
+}
+
+async function deployAll(){
+  const host=G('depHost').value.trim(),token=G('depToken').value.trim(),path=G('depPath').value.trim()||'/Shared/Migrations';
+  if(!host||!token){toast('Enter Workspace Host and Access Token.','terr');syncDepCreds();return;}
+  if(!HELPER_RESULT){toast('Convert objects in Step 1 first.','tinfo');return;}
+  const btn=G('btnDeployAll'),lbl=G('depBtnTxt'),prog=G('depProg');
+  btn.disabled=true;lbl.textContent='Deploying…';
+  let pct=0;const iv=setInterval(()=>{pct=Math.min(pct+4,88);prog.style.width=pct+'%';},200);
+  G('deployLog').innerHTML='<div class="loading-state"><div class="spin spin-lg"></div><span>Uploading notebooks to Databricks…</span></div>';
+  const notebooks=[{name:'HelperFunction',code:HELPER_RESULT.helper_code},...(HELPER_RESULT.files||[]).map(f=>({name:f.name,code:f.code}))];
+  try{
+    const r=await fetch('/api/databricks/upload-multiple',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({host,token,workspace_path:path,notebooks})});
+    const d=await r.json();
+    clearInterval(iv);prog.style.width='100%';setTimeout(()=>prog.style.width='0%',500);
+    if(d.results&&d.results.length){
+      let logHtml='';
+      d.results.forEach(res=>{const ok=res.success;logHtml+=`<div class="dep-row ${ok?'ok':'err'}"><div class="blt ${ok?'blt-ok':'blt-err'}"></div><span class="dep-name">${res.name}.py</span><span class="dep-path">${res.path||res.error||''}</span></div>`;});
+      if(d.uploaded===notebooks.length){logHtml+=`<div class="alert a-ok" style="margin-top:10px;"><span class="a-ico">✓</span> All ${d.uploaded} notebooks deployed to <strong>${path}</strong></div>`;G('wf3').className='wf-step done';lbl.textContent='✓ Deployed!';toast('All '+d.uploaded+' notebooks deployed!','tok');}
+      else{logHtml+=`<div class="alert a-warn" style="margin-top:10px;"><span class="a-ico">⚠</span> ${d.uploaded} of ${d.total} notebooks uploaded.</div>`;lbl.textContent='Deploy All to Databricks';toast(d.uploaded+'/'+d.total+' deployed.','tinfo');}
+      G('deployLog').innerHTML=logHtml;
+    }else{G('deployLog').innerHTML=`<div class="alert a-err"><span class="a-ico">✕</span>${d.error||'Upload failed'}</div>`;lbl.textContent='Deploy All to Databricks';toast('Deploy failed.','terr');}
+  }catch(e){
+    clearInterval(iv);prog.style.width='0%';
+    G('deployLog').innerHTML=`<div class="alert a-err"><span class="a-ico">✕</span>${e.message}</div>`;lbl.textContent='Deploy All to Databricks';toast('Deploy error: '+e.message,'terr');
+  }finally{btn.disabled=false;}
+}
+
+function syncDepCreds(){
+  const h=G('dbHost'),t=G('dbToken');
+  if(h&&h.value){G('depHost').value=h.value;}
+  if(t&&t.value){G('depToken').value=t.value;}
+  if((h&&h.value)||(t&&t.value))toast('Credentials synced from Connect tab.','tok',2000);
+  else toast('No credentials saved yet — fill in the Connect tab first.','tinfo');
+}
+
+async function testConn(){
+  const host=G('dbHost').value.trim(),token=G('dbToken').value.trim();
+  if(!host||!token){toast('Host and token required.','terr');return;}
+  G('connStatus').innerHTML='<div class="alert a-info"><span class="spin" style="border-top-color:var(--accent-fg)"></span> Connecting…</div>';
+  G('connInfo').innerHTML='<div class="loading-state"><div class="spin spin-lg"></div><span>Fetching workspace info…</span></div>';
+  try{
+    const r=await fetch('/api/databricks/test-connection',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({host,token})});
+    const d=await r.json();
+    if(d.success){
+      G('connStatus').innerHTML='<div class="alert a-ok"><span class="a-ico">✓</span> Connected to Databricks</div>';
+      let h=`<div class="alert a-info" style="margin-bottom:12px;"><span class="a-ico">🌐</span><span><strong>Host:</strong> ${host}</span></div>`;
+      (d.clusters||[]).forEach(c=>{const sc=c.state==='RUNNING'?'tag-run':c.state==='TERMINATED'?'tag-stop':'tag-pend';h+=`<div class="cl-card"><div class="cl-name">${c.cluster_name} <span class="tag ${sc}">${c.state}</span></div><div class="cl-meta"><span>ID: ${c.cluster_id}</span><span>DBR ${c.spark_version||'N/A'}</span></div></div>`;});
+      if(!(d.clusters||[]).length)h+='<div class="alert a-warn"><span class="a-ico">⚠</span> No clusters found.</div>';
+      G('connInfo').innerHTML=h;toast('Connected to Databricks!','tok');G('wf2').className='wf-step done';
+    }else{G('connStatus').innerHTML=`<div class="alert a-err"><span class="a-ico">✕</span>${d.error}</div>`;G('connInfo').innerHTML=`<pre style="font-size:11px;color:var(--t3);padding:10px;">${JSON.stringify(d,null,2)}</pre>`;toast('Connection failed: '+d.error,'terr');}
+  }catch(e){G('connStatus').innerHTML=`<div class="alert a-err"><span class="a-ico">✕</span>${e.message}</div>`;toast('Error: '+e.message,'terr');}
+}
+
+async function loadUCTables(){
+  const host=G('ucHost').value.trim(),token=G('ucToken').value.trim(),cat=G('ucCatalog').value.trim(),sch=G('ucSchema').value.trim();
+  if(!host||!token){toast('Host and token required.','terr');return;}
+  G('ucResults').innerHTML='<div class="loading-state"><div class="spin spin-lg"></div><span>Loading…</span></div>';
+  try{
+    const r=await fetch('/api/unity-catalog/tables',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({host,token,catalog:cat,schema:sch})});
+    const d=await r.json();
+    if(d.success){
+      const tbls=d.tables||[];
+      G('ucTableList').innerHTML=tbls.length?tbls.map(t=>`<div class="tbl-item" id="utbl${t.table_name}" onclick="selUCTbl('${t.table_name}')"><span style="color:var(--t4);font-size:11px;">⊞</span> ${cat}.${sch}.<strong>${t.table_name}</strong>${t.table_type&&t.table_type!=='N/A'?`<span style="margin-left:auto;font-size:10px;color:var(--t3);">${t.table_type}</span>`:''}</div>`).join(''):'<div class="empty" style="padding:10px;"><div class="empty-s">No tables found.</div></div>';
+      G('ucWarehouse').innerHTML=(d.warehouses||[]).map(w=>`<option value="${w.id}">${w.name} (${w.state})</option>`).join('')||'<option value="">No warehouses</option>';
+      G('ucResults').innerHTML=`<div class="alert a-ok"><span class="a-ico">✓</span> Loaded ${tbls.length} tables, ${(d.warehouses||[]).length} warehouses.</div>`;
+      toast('Loaded '+tbls.length+' tables!','tok');
+    }else{G('ucResults').innerHTML=`<div class="alert a-err"><span class="a-ico">✕</span>${d.error}</div>`;}
+  }catch(e){G('ucResults').innerHTML=`<div class="alert a-err"><span class="a-ico">✕</span>${e.message}</div>`;}
+}
+
+function selUCTbl(t){UC_TABLE=t;G('ucTable').value=t;document.querySelectorAll('.tbl-item').forEach(el=>el.classList.remove('selected'));const el=G('utbl'+t);if(el)el.classList.add('selected');}
+
+function _renderUCResult(d){
+  if(!d.success) return `<div class="alert a-err"><span class="a-ico">✕</span>${d.error||d.message||'Unknown error'}</div>`;
+  // Custom SQL with tabular result
+  if(d.sql_type==='query'){
+    if(!d.columns||d.columns.length===0) return '<div class="alert a-ok"><span class="a-ico">✓</span> Statement executed successfully (no rows returned).</div>';
+    const colDefs=d.columns.map(c=>`<th>${c}</th>`).join('');
+    const rowDefs=(d.rows||[]).map(r=>`<tr>${r.map(v=>`<td title="${String(v??'').replace(/"/g,'&quot;')}">${v??'<em style="color:var(--t3)">null</em>'}</td>`).join('')}</tr>`).join('');
+    const info=`<div style="font-size:11px;color:var(--t3);margin-top:6px;padding:0 2px;">${d.row_count} row${d.row_count!==1?'s':''} · ${d.columns.length} column${d.columns.length!==1?'s':''}</div>`;
+    return `<div style="overflow-x:auto;"><table class="uc-tbl"><thead><tr>${colDefs}</tr></thead><tbody>${rowDefs}</tbody></table></div>${info}`;
+  }
+  // Custom SQL statement (DML/DDL)
+  if(d.sql_type==='statement') return '<div class="alert a-ok"><span class="a-ico">✓</span> Statement executed successfully.</div>';
+  // Pipeline steps result
+  if(d.steps){
+    const cfg={PASS:{ico:'✓',col:'var(--green)',bg:'#dcfce7'},FAIL:{ico:'✕',col:'var(--red)',bg:'#fee2e2'},WARN:{ico:'⚠',col:'#d97706',bg:'#fef3c7'},INFO:{ico:'ℹ',col:'var(--accent)',bg:'var(--accent-light)'}};
+    const stepsHtml=d.steps.map(s=>{
+      const c=cfg[s.status]||{ico:'·',col:'var(--t2)',bg:'var(--surface2)'};
+      let extra='';
+      if(s.columns&&s.sample_rows&&s.sample_rows.length>0){
+        const h=s.columns.map(c=>`<th>${c}</th>`).join('');
+        const b=s.sample_rows.map(r=>`<tr>${r.map(v=>`<td>${v??''}</td>`).join('')}</tr>`).join('');
+        extra=`<div style="overflow-x:auto;margin-top:6px;"><table class="uc-tbl"><thead><tr>${h}</tr></thead><tbody>${b}</tbody></table></div>`;
+      }
+      return `<div class="uc-step"><span class="uc-step-icon" style="color:${c.col};">${c.ico}</span><div style="flex:1;"><div class="uc-step-title">${s.step}</div><div class="uc-step-detail">${s.detail}</div>${extra}</div><span class="uc-step-badge" style="color:${c.col};background:${c.bg};">${s.status}</span></div>`;
+    }).join('');
+    const meta=`<div style="font-size:10.5px;color:var(--t3);margin-top:8px;padding:0 2px;">Table: <code>${d.table}</code> · ${d.executed_at||''}</div>`;
+    return `<div>${stepsHtml}</div>${meta}`;
+  }
+  // Preview result (columns + rows directly)
+  if(d.columns&&d.rows){
+    const h=d.columns.map(c=>`<th>${c}</th>`).join('');
+    const b=(d.rows||[]).map(r=>`<tr>${r.map(v=>`<td>${v??''}</td>`).join('')}</tr>`).join('');
+    return `<div style="overflow-x:auto;"><table class="uc-tbl"><thead><tr>${h}</tr></thead><tbody>${b}</tbody></table></div><div style="font-size:11px;color:var(--t3);margin-top:6px;">${d.preview_rows} preview rows · ${d.total_rows} total</div>`;
+  }
+  return `<pre style="font-size:11px;color:var(--t2);white-space:pre-wrap;">${JSON.stringify(d,null,2)}</pre>`;
+}
+
+async function _ucPost(endpoint,extra={}){
+  const host=G('ucHost').value.trim(),token=G('ucToken').value.trim(),cat=G('ucCatalog').value.trim(),sch=G('ucSchema').value.trim(),wh=G('ucWarehouse').value;
+  G('ucResults').innerHTML='<div class="loading-state"><div class="spin spin-lg"></div><span>Running…</span></div>';
+  try{
+    const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({host,token,catalog:cat,schema:sch,warehouse_id:wh,...extra})});
+    const d=await r.json();
+    G('ucResults').innerHTML=_renderUCResult(d);
+    if(d.success!==false)toast('Done!','tok');
+  }catch(e){G('ucResults').innerHTML=`<div class="alert a-err"><span class="a-ico">✕</span>${e.message}</div>`;}
+}
+
+function previewTable(){const t=UC_TABLE||G('ucTable').value,wh=G('ucWarehouse').value;if(!t||!wh){toast('Select a table and warehouse.','tinfo');return;}_ucPost('/api/unity-catalog/preview',{table_name:t});}
+function executeTable(){const t=UC_TABLE||G('ucTable').value,wh=G('ucWarehouse').value;if(!t||!wh){toast('Select a table and warehouse.','tinfo');return;}_ucPost('/api/unity-catalog/execute',{table_name:t});}
+function runCustomSQL(){const sql=G('ucSQL').value.trim(),wh=G('ucWarehouse').value;if(!sql||!wh){toast('Enter SQL and select a warehouse.','tinfo');return;}_ucPost('/api/unity-catalog/execute',{table_name:'__custom__',execute_sql:sql});}
+
+loadObjects();
+
+// ═══════════════════════════════════════════════════════
+// DATA MIGRATION — state, helpers, functions
+// ═══════════════════════════════════════════════════════
+let MIG_TABLES=[], MIG_JOB_ID=null, MIG_POLL_IV=null;
+
+function _migCreds(){
+  return {
+    source_type: G('migSrcType').value,
+    server:      G('migServer').value.trim(),
+    database:    G('migDb').value.trim(),
+    username:    G('migUser').value.trim(),
+    password:    G('migPass').value,
+    host:        G('migHost').value.trim(),
+    token:       G('migToken').value.trim(),
+    catalog:     G('migCatalog').value.trim()||'main',
+    schema:      G('migSchema').value.trim()||'default',
+  };
+}
+
+function _migMsg(el,msg,type='info'){
+  const c={info:'a-info',ok:'a-ok',err:'a-err'};
+  G(el).style.display='';
+  G(el).innerHTML=`<div class="alert ${c[type]||'a-info'}"><span class="a-ico">${type==='ok'?'✓':type==='err'?'✕':'i'}</span>${msg}</div>`;
+}
+
+let _migLogCount=0;
+function _appendMigLog(msg, type=''){
+  const box=G('migLog');
+  if(box.querySelector('.empty'))box.innerHTML='';
+  const d=document.createElement('div');
+  d.className='mig-log-entry'+(type?' '+type:'');
+  const ts=new Date().toLocaleTimeString();
+  // Multi-line messages (tracebacks) get indented
+  const lines=String(msg).split('\n');
+  d.innerHTML=`<span style="color:var(--t3);user-select:none;">[${ts}]</span> ${lines.map((l,i)=>i===0?escHtml(l):'<span style="padding-left:60px;display:block;color:#6b7280;">'+escHtml(l)+'</span>').join('')}`;
+  box.appendChild(d);
+  _migLogCount++;
+  box.scrollTop=box.scrollHeight;
+}
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function copyMigLog(){
+  const lines=[...G('migLog').querySelectorAll('.mig-log-entry')].map(e=>e.textContent).join('\n');
+  navigator.clipboard.writeText(lines).then(()=>toast('Log copied to clipboard','tok')).catch(()=>toast('Copy failed','twarn'));
+}
+
+async function loadMigTables(){
+  const c=_migCreds();
+  if(!c.server||!c.database){toast('Enter server and database first.','tinfo');return;}
+  const btn=G('btnLoadMigTbls');
+  btn.disabled=true; btn.textContent='Loading…';
+  G('migSrcMsg').style.display='none';
+  try{
+    const r=await fetch('/api/migrate/list-tables',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(c)});
+    const d=await r.json();
+    if(!r.ok||d.error){_migMsg('migSrcMsg',d.error||'Failed to list tables','err');return;}
+    MIG_TABLES=d.tables||[];
+    renderMigTableList(MIG_TABLES);
+    _migMsg('migSrcMsg',`Loaded ${MIG_TABLES.length} tables.`,'ok');
+    _appendMigLog(`Discovered ${MIG_TABLES.length} tables in ${c.database}.`,'ok');
+  }catch(e){_migMsg('migSrcMsg',e.message,'err');}
+  finally{btn.disabled=false; btn.innerHTML='<svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> Discover Tables';}
+}
+
+function renderMigTableList(tables){
+  const box=G('migTblList');
+  if(!tables.length){box.innerHTML='<div class="empty" style="padding:20px;"><div class="empty-t">No tables found.</div></div>';return;}
+  box.innerHTML=tables.map(t=>`
+  <div class="mig-tbl-row" onclick="toggleMigRow(this)">
+    <input type="checkbox" class="chk" onchange="updMigSelCnt()" onclick="event.stopPropagation()">
+    <div class="mig-tbl-info">
+      <div class="mig-tbl-name">${t.full_name}</div>
+      <div class="mig-tbl-meta">~${Number(t.row_estimate||0).toLocaleString()} rows &middot; ${t.col_count||'?'} cols</div>
+    </div>
+  </div>`).join('');
+  updMigSelCnt();
+}
+
+function toggleMigRow(row){
+  const cb=row.querySelector('input[type=checkbox]');
+  cb.checked=!cb.checked;
+  row.classList.toggle('selected',cb.checked);
+  updMigSelCnt();
+}
+
+function updMigSelCnt(){
+  const sel=document.querySelectorAll('#migTblList input[type=checkbox]:checked').length;
+  const el=G('migTblSelCnt');
+  el.style.display=sel?'':'none';
+  el.textContent=`${sel} selected`;
+}
+
+function filterMigTables(q){
+  q=q.toLowerCase();
+  renderMigTableList(q?MIG_TABLES.filter(t=>t.full_name.toLowerCase().includes(q)):MIG_TABLES);
+}
+
+function selAllMig(){
+  document.querySelectorAll('#migTblList .mig-tbl-row').forEach(r=>{
+    r.querySelector('input').checked=true; r.classList.add('selected');
+  });updMigSelCnt();
+}
+function deselAllMig(){
+  document.querySelectorAll('#migTblList .mig-tbl-row').forEach(r=>{
+    r.querySelector('input').checked=false; r.classList.remove('selected');
+  });updMigSelCnt();
+}
+
+function getMigSel(){
+  const sel=[];
+  document.querySelectorAll('#migTblList .mig-tbl-row').forEach((r,i)=>{
+    if(r.querySelector('input').checked){
+      const t=MIG_TABLES.find(x=>`${x.schema}.${x.table}`===r.querySelector('.mig-tbl-name').textContent.trim())||MIG_TABLES[i];
+      if(t)sel.push({schema:t.schema,table:t.table});
+    }
+  });
+  return sel;
+}
+
+async function loadMigWarehouses(){
+  const c=_migCreds();
+  if(!c.host||!c.token){toast('Enter Databricks host and token first.','tinfo');return;}
+  try{
+    const r=await fetch('/api/migrate/warehouses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(c)});
+    const d=await r.json();
+    if(!d.warehouses){toast('Failed to load warehouses','twarn');return;}
+    const sel=G('migWarehouse');
+    sel.innerHTML=d.warehouses.map(w=>`<option value="${w.id}">${w.name} (${w.state||'?'})</option>`).join('');
+    toast(`Loaded ${d.warehouses.length} warehouses`,'tok');
+  }catch(e){toast(e.message,'terr');}
+}
+
+async function startMigration(){
+  const sel=getMigSel();
+  if(!sel.length){toast('Select at least one table.','tinfo');return;}
+  const c=_migCreds();
+  const wh=G('migWarehouse').value;
+  if(!c.host||!c.token){toast('Enter Databricks host and token.','tinfo');return;}
+  if(!wh){toast('Select a SQL Warehouse.','tinfo');return;}
+  if(!c.server||!c.database){toast('Configure source database.','tinfo');return;}
+  const workers=parseInt(G('migWorkers').value)||3;
+
+  stopMigPoll();
+  G('migProgList').innerHTML='';
+  G('migLog').innerHTML=''; _migLogCount=0;
+  G('migProgCard').style.display='';
+  G('migSummary').style.display='';
+  G('migBtnTxt').textContent='Running…';
+  G('btnStartMig').disabled=true;
+  G('btnStopMig').style.display='';
+
+  const payload={...c, warehouse_id:wh, tables:sel, max_workers:workers};
+  _appendMigLog(`Starting migration of ${sel.length} table(s) with ${workers} workers…`);
+
+  try{
+    const r=await fetch('/api/migrate/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const d=await r.json();
+    if(!d.success){toast(d.error||'Failed to start','terr');resetMigBtn();return;}
+    MIG_JOB_ID=d.job_id;
+    _appendMigLog(`Job started: ${MIG_JOB_ID}`,'ok');
+    pollMigJob(MIG_JOB_ID);
+  }catch(e){toast(e.message,'terr');resetMigBtn();}
+}
+
+function resetMigBtn(){
+  G('migBtnTxt').textContent='Start Migration';
+  G('btnStartMig').disabled=false;
+  G('btnStopMig').style.display='none';
+}
+
+function stopMigPoll(){
+  if(MIG_POLL_IV){clearInterval(MIG_POLL_IV);MIG_POLL_IV=null;}
+  G('btnStopMig').style.display='none';
+}
+
+function pollMigJob(jobId){
+  MIG_POLL_IV=setInterval(async()=>{
+    try{
+      const r=await fetch(`/api/migrate/status/${jobId}`);
+      if(!r.ok)return;
+      const d=await r.json();
+      renderMigProgress(d);
+      if(d.status==='done'||d.status==='error'){
+        stopMigPoll();
+        resetMigBtn();
+        const ok=d.done||0,fail=d.failed||0;
+        _appendMigLog(`Migration complete. ✓ ${ok} succeeded, ✗ ${fail} failed.`, fail?'err':'ok');
+        toast(fail?`Done — ${fail} table(s) failed`:'Migration complete!',fail?'twarn':'tok');
+      }
+    }catch(e){_appendMigLog(e.message,'err');}
+  },2000);
+}
+
+function renderMigProgress(job){
+  // summary stats
+  G('migStTotal').textContent=job.total||0;
+  G('migStDone').textContent=job.done||0;
+  G('migStFail').textContent=job.failed||0;
+
+  const results=job.results||{};
+  const rows=Object.entries(results).map(([tbl,info])=>{
+    const pct=info.pct!=null?info.pct:(info.status==='done'?100:info.status==='failed'?100:info.status==='running'?8:0);
+    const cls=info.status==='done'?'done':info.status==='failed'?'failed':'running';
+    const badge=info.status==='done'?'#005724':info.status==='failed'?'var(--red)':info.status==='running'?'var(--accent)':'var(--t3)';
+    const badgeBg=info.status==='done'?'#e6f4ea':info.status==='failed'?'#fce8e6':info.status==='running'?'#e8f0fb':'var(--surface2)';
+    const cnt=(info.rows_copied&&info.rows_copied>0)?info.rows_copied:(info.rows&&info.rows>0)?info.rows:0;
+    const rows_txt=cnt>0?` · ${Number(cnt).toLocaleString()} rows`:'';
+    const errTip=info.status==='failed'&&info.error?` title="${(info.error||'').replace(/"/g,"'")}"`:' ';
+    const icon=info.status==='done'?'✓':info.status==='failed'?'✕':info.status==='running'?'▶':'…';
+    const label=`${icon} ${info.status||'queued'}${rows_txt}`;
+    return `<div class="mig-prog-row">
+      <div class="mig-prog-name" title="${tbl}">${tbl.split('.').pop()}</div>
+      <div class="mig-prog-bar-wrap"><div class="mig-prog-bar ${cls}" style="width:${pct}%"></div></div>
+      <span class="mig-prog-badge" style="background:${badgeBg};color:${badge};cursor:${info.error?'help':'default'}"${errTip}>${label}</span>
+    </div>`;
+  }).join('');
+  G('migProgList').innerHTML=rows||'<div style="padding:12px;font-size:12px;color:var(--t3);">Waiting for results…</div>';
+
+  // append only NEW log lines (avoid duplicates)
+  const logs=job.logs||[];
+  const existingCount=_migLogCount;
+  const newLogs=logs.slice(existingCount);
+  newLogs.forEach(l=>{
+    const isErr=l.includes('ERROR')||l.includes('FAIL')||l.includes('failed')||l.includes('Traceback')||l.includes('Exception');
+    const isOk=l.includes('Done —')||l.includes('COPY INTO: ')||l.includes('rows loaded')||l.includes('rows via batch');
+    _appendMigLog(l,isErr?'err':isOk?'ok':'');
+  });
+}
+</script>
+</body>
+</html>

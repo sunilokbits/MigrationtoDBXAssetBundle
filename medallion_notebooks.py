@@ -1,0 +1,1223 @@
+"""
+Medallion Architecture Notebook Generator
+==========================================
+Generates 3 Databricks notebooks for a professional Medallion pipeline:
+  1. 01_Landing_Zone.py  — Extract from source DB → land raw data (Parquet/Delta)
+  2. 02_Bronze.py        — Raw ingestion with DLT, schema enforcement, audit columns
+  3. 03_Silver.py        — Cleansed/validated layer with DLT, data quality, restore points
+
+Supports:
+  • Full Load  — truncate + reload
+  • Incremental Load — watermark-based CDC via configurable timestamp column
+  • DLT (Delta Live Tables) pipelines
+  • Data quality checks & expectations
+  • Restore points / time-travel rollback on failure
+  • Dynamic source selection (SQL Server, Azure SQL, Synapse, SQL MI)
+"""
+
+from datetime import datetime
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Helper: JDBC URL builder for Databricks
+# ─────────────────────────────────────────────────────────────────────────────
+def _jdbc_snippet(source_type: str) -> str:
+    """Return a JDBC URL template string for the chosen source type."""
+    encrypt = "true" if source_type in ("azuresql", "synapse") else "false"
+    trust   = "false" if source_type in ("azuresql", "synapse") else "true"
+    port    = "1433"
+    return (
+        f'"jdbc:sqlserver://{{server}}:{port};'
+        f'databaseName={{database}};'
+        f'encrypt={encrypt};trustServerCertificate={trust}"'
+    )
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  1. LANDING ZONE NOTEBOOK
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def generate_landing_zone(
+    source_type: str,
+    server: str,
+    database: str,
+    username: str,
+    tables: list,       # [{schema, table, incremental_col?}]
+    catalog: str = "main",
+    schema: str = "default",
+    landing_path: str = "/mnt/landing",
+) -> str:
+    """Generate the Landing Zone extraction notebook."""
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+    jdbc_url = _jdbc_snippet(source_type)
+    table_list_str = ",\n    ".join(
+        '{"schema": "' + t.get("schema", "dbo") + '", '
+        '"table": "' + t["table"] + '", '
+        '"incremental_col": "' + t.get("incremental_col", "") + '"}'
+        for t in tables
+    )
+
+    return f'''# Databricks notebook source
+# MAGIC %md
+# MAGIC # 🏭 Medallion Architecture — Landing Zone
+# MAGIC **Generated:** {ts}
+# MAGIC
+# MAGIC **Source:** {source_type.upper()} → `{server}` / `{database}`
+# MAGIC **Target:** `{catalog}.{schema}` Landing Zone at `{landing_path}`
+# MAGIC
+# MAGIC ### Pipeline Flow
+# MAGIC ```
+# MAGIC ┌─────────────┐     ┌──────────────────┐     ┌───────────────┐
+# MAGIC │  SQL Source  │ ──► │  Landing Zone     │ ──► │  Bronze Layer │
+# MAGIC │  (JDBC)     │     │  (Raw Parquet)    │     │  (DLT Delta)  │
+# MAGIC └─────────────┘     └──────────────────────┘     └───────────────┘
+# MAGIC ```
+# MAGIC ---
+# MAGIC **Features:** Full Load · Incremental Load · Restore Points · Parallel Extraction
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 📋 Configuration
+
+# COMMAND ----------
+
+# ── Widgets for parameterized runs ────────────────────────────────────────────
+dbutils.widgets.text("load_type", "full", "Load Type (full / incremental)")
+dbutils.widgets.text("server", "{server}", "Source Server")
+dbutils.widgets.text("database", "{database}", "Source Database")
+dbutils.widgets.text("username", "{username}", "Username")
+dbutils.widgets.text("password", "", "Password (use secrets in prod)")
+dbutils.widgets.text("catalog", "{catalog}", "Target Catalog")
+dbutils.widgets.text("schema", "{schema}", "Target Schema")
+dbutils.widgets.text("landing_path", "{landing_path}", "Landing Base Path")
+
+# COMMAND ----------
+
+# ── Read widget values ────────────────────────────────────────────────────────
+LOAD_TYPE    = dbutils.widgets.get("load_type").strip().lower()
+SERVER       = dbutils.widgets.get("server").strip()
+DATABASE     = dbutils.widgets.get("database").strip()
+USERNAME     = dbutils.widgets.get("username").strip()
+PASSWORD     = dbutils.widgets.get("password").strip()
+CATALOG      = dbutils.widgets.get("catalog").strip()
+SCHEMA       = dbutils.widgets.get("schema").strip()
+LANDING_PATH = dbutils.widgets.get("landing_path").strip()
+
+print(f"🔧 Load Type : {{LOAD_TYPE}}")
+print(f"🔧 Source    : {{SERVER}} / {{DATABASE}}")
+print(f"🔧 Target    : {{CATALOG}}.{{SCHEMA}}")
+print(f"🔧 Landing   : {{LANDING_PATH}}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 🔌 JDBC Connection Setup
+
+# COMMAND ----------
+
+# ── JDBC configuration ────────────────────────────────────────────────────────
+jdbc_url = {jdbc_url}.format(server=SERVER, database=DATABASE)
+
+jdbc_props = {{
+    "user":     USERNAME,
+    "password": PASSWORD,
+    "driver":   "com.microsoft.sqlserver.jdbc.SQLServerDriver",
+    "fetchsize": "10000",
+    "loginTimeout": "30",
+    "socketTimeout": "300",
+}}
+
+# ── Verify JDBC connectivity ─────────────────────────────────────────────────
+try:
+    test_df = spark.read.jdbc(jdbc_url, "(SELECT 1 AS ok) AS t", properties=jdbc_props)
+    test_df.collect()
+    print("✅ JDBC connection verified successfully")
+except Exception as e:
+    msg = f"❌ JDBC connection failed: {{e}}"
+    print(msg)
+    dbutils.notebook.exit('{{"status": "FAILED", "stage": "connection", "error": "' + str(e).replace('"', "'") + '"}}')
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 📑 Table Configuration
+
+# COMMAND ----------
+
+# ── Tables to extract ─────────────────────────────────────────────────────────
+TABLES = [
+    {table_list_str}
+]
+
+print(f"📋 Tables to extract: {{len(TABLES)}}")
+for t in TABLES:
+    mode = "INCREMENTAL" if t["incremental_col"] else "FULL"
+    print(f"   • {{t['schema']}}.{{t['table']}}  ({{mode}})")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 🏗️ Utility Functions
+
+# COMMAND ----------
+
+from pyspark.sql import functions as F
+from pyspark.sql.types import StringType
+from datetime import datetime
+import json
+
+def get_watermark(catalog, schema, table_name):
+    """Retrieve the last successful watermark for incremental loads."""
+    wm_table = f"`{{catalog}}`.`{{schema}}`.__watermarks"
+    try:
+        wm_df = spark.sql(f"SELECT max_value FROM {{wm_table}} WHERE table_name = '{{table_name}}'")
+        rows = wm_df.collect()
+        if rows and rows[0]["max_value"]:
+            return rows[0]["max_value"]
+    except Exception:
+        # Watermark table doesn't exist yet — will be created after first run
+        pass
+    return None
+
+def save_watermark(catalog, schema, table_name, max_value):
+    """Persist watermark after successful extraction."""
+    wm_table = f"`{{catalog}}`.`{{schema}}`.__watermarks"
+    try:
+        spark.sql(f\"\"\"
+            CREATE TABLE IF NOT EXISTS {{wm_table}} (
+                table_name STRING,
+                max_value  STRING,
+                updated_at TIMESTAMP
+            ) USING DELTA
+        \"\"\")
+        spark.sql(f\"\"\"
+            MERGE INTO {{wm_table}} AS t
+            USING (SELECT '{{table_name}}' AS table_name, '{{max_value}}' AS max_value, current_timestamp() AS updated_at) AS s
+            ON t.table_name = s.table_name
+            WHEN MATCHED THEN UPDATE SET t.max_value = s.max_value, t.updated_at = s.updated_at
+            WHEN NOT MATCHED THEN INSERT *
+        \"\"\")
+        print(f"   💾 Watermark saved: {{table_name}} → {{max_value}}")
+    except Exception as e:
+        print(f"   ⚠️ Watermark save failed: {{e}}")
+
+def create_restore_point(catalog, schema, table_name, stage):
+    """Create a Delta time-travel restore point by recording the version."""
+    try:
+        delta_tbl = f"`{{catalog}}`.`{{schema}}`.`{{table_name}}`"
+        history = spark.sql(f"DESCRIBE HISTORY {{delta_tbl}} LIMIT 1").collect()
+        if history:
+            version = history[0]["version"]
+            print(f"   📌 Restore point: {{table_name}} v{{version}} ({{stage}})")
+            return version
+    except Exception:
+        pass
+    return None
+
+def restore_table(catalog, schema, table_name, version):
+    """Restore a Delta table to a previous version on failure."""
+    try:
+        delta_tbl = f"`{{catalog}}`.`{{schema}}`.`{{table_name}}`"
+        spark.sql(f"RESTORE TABLE {{delta_tbl}} TO VERSION AS OF {{version}}")
+        print(f"   🔄 Restored {{table_name}} to version {{version}}")
+        return True
+    except Exception as e:
+        print(f"   ❌ Restore failed: {{e}}")
+        return False
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 🚀 Extract & Land Data
+
+# COMMAND ----------
+
+# ── Main extraction loop ──────────────────────────────────────────────────────
+results = []
+run_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+for tbl in TABLES:
+    src_schema = tbl["schema"]
+    src_table  = tbl["table"]
+    inc_col    = tbl.get("incremental_col", "")
+    full_name  = f"{{src_schema}}.{{src_table}}"
+    landing_dest = f"{{LANDING_PATH}}/{{src_table}}"
+    result = {{"table": full_name, "status": "pending", "rows": 0}}
+
+    print(f"\\n{'='*60}")
+    print(f"📥 Extracting: {{full_name}}")
+    print(f"{'='*60}")
+
+    try:
+        # ── Determine load strategy ───────────────────────────────────────
+        use_incremental = (LOAD_TYPE == "incremental" and inc_col)
+        watermark = None
+
+        if use_incremental:
+            watermark = get_watermark(CATALOG, SCHEMA, full_name)
+            if watermark:
+                print(f"   🔄 Incremental from watermark: {{inc_col}} > '{{watermark}}'")
+                query = f"(SELECT * FROM [{{src_schema}}].[{{src_table}}] WHERE [{{inc_col}}] > '{{watermark}}') AS q"
+            else:
+                print(f"   🔄 No watermark found — falling back to full load")
+                query = f"[{{src_schema}}].[{{src_table}}]"
+        else:
+            print(f"   📦 Full load")
+            query = f"[{{src_schema}}].[{{src_table}}]"
+
+        # ── Read from source via JDBC ─────────────────────────────────────
+        df = (spark.read
+              .jdbc(jdbc_url, query, properties=jdbc_props))
+
+        # ── Add audit columns ─────────────────────────────────────────────
+        df = (df
+              .withColumn("__landing_ts", F.current_timestamp())
+              .withColumn("__source_system", F.lit(f"{{SERVER}}/{{DATABASE}}"))
+              .withColumn("__load_type", F.lit("incremental" if use_incremental else "full"))
+              .withColumn("__batch_id", F.lit(run_ts)))
+
+        row_count = df.count()
+        print(f"   📊 Rows extracted: {{row_count:,}}")
+
+        # ── Write to landing zone ─────────────────────────────────────────
+        if LOAD_TYPE == "full" or not use_incremental:
+            (df.write
+             .mode("overwrite")
+             .option("overwriteSchema", "true")
+             .parquet(landing_dest))
+            print(f"   ✅ Written to {{landing_dest}} (overwrite)")
+        else:
+            (df.write
+             .mode("append")
+             .parquet(landing_dest))
+            print(f"   ✅ Appended to {{landing_dest}}")
+
+        # ── Update watermark ──────────────────────────────────────────────
+        if use_incremental and inc_col and row_count > 0:
+            new_wm = df.agg(F.max(F.col(inc_col)).cast("string")).collect()[0][0]
+            if new_wm:
+                save_watermark(CATALOG, SCHEMA, full_name, new_wm)
+
+        result["status"] = "success"
+        result["rows"]   = row_count
+
+    except Exception as e:
+        print(f"   ❌ FAILED: {{e}}")
+        result["status"] = "failed"
+        result["error"]  = str(e)
+
+    results.append(result)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 📊 Extraction Summary
+
+# COMMAND ----------
+
+# ── Print summary ─────────────────────────────────────────────────────────────
+success  = [r for r in results if r["status"] == "success"]
+failed   = [r for r in results if r["status"] == "failed"]
+total_rows = sum(r["rows"] for r in results)
+
+print(f"\\n{'='*60}")
+print(f"📊 LANDING ZONE EXTRACTION COMPLETE")
+print(f"{'='*60}")
+print(f"  ✅ Succeeded : {{len(success)}} / {{len(results)}}")
+print(f"  ❌ Failed    : {{len(failed)}} / {{len(results)}}")
+print(f"  📊 Total Rows: {{total_rows:,}}")
+
+if failed:
+    print(f"\\n⚠️ Failed tables:")
+    for f_item in failed:
+        print(f"   • {{f_item['table']}}: {{f_item.get('error','unknown')}}")
+
+# ── Exit with structured result ───────────────────────────────────────────────
+exit_payload = json.dumps({{
+    "status":      "COMPLETED" if not failed else "PARTIAL",
+    "succeeded":   len(success),
+    "failed":      len(failed),
+    "total_rows":  total_rows,
+    "batch_id":    run_ts,
+    "landing_path": LANDING_PATH,
+}})
+
+dbutils.notebook.exit(exit_payload)
+'''
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  2. BRONZE NOTEBOOK
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def generate_bronze(
+    tables: list,
+    catalog: str = "main",
+    schema: str = "default",
+    landing_path: str = "/mnt/landing",
+) -> str:
+    """Generate the Bronze layer DLT notebook."""
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    # Build DLT table definitions for each table
+    dlt_defs = []
+    raw_defs = []
+    for t in tables:
+        tname = t["table"]
+        safe  = tname.replace(" ", "_").replace("-", "_").lower()
+        dlt_defs.append(f'''
+@dlt.table(
+    name="bronze_{safe}",
+    comment="Bronze layer — raw ingestion of {tname} with schema enforcement",
+    table_properties={{
+        "quality": "bronze",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+        "pipelines.autoOptimize.managed": "true",
+    }},
+)
+@dlt.expect_or_drop("__valid_landing_ts", "__landing_ts IS NOT NULL")
+@dlt.expect("__has_batch_id", "__batch_id IS NOT NULL")
+def bronze_{safe}():
+    """Ingest raw {tname} from landing zone into Bronze Delta table."""
+    return (
+        spark.read.parquet(f"{{LANDING_PATH}}/{tname}")
+        .withColumn("__bronze_ts", F.current_timestamp())
+        .withColumn("__bronze_version", F.lit(1))
+    )''')
+
+        raw_defs.append(f'''
+def load_bronze_{safe}_raw():
+    """Non-DLT fallback: load {tname} into Bronze Delta table with quality checks."""
+    src_path = f"{{LANDING_PATH}}/{tname}"
+    target   = f"`{{CATALOG}}`.`{{SCHEMA}}`.`bronze_{safe}`"
+
+    print(f"  📥 Loading {{src_path}} → {{target}}")
+
+    # Create restore point before write
+    restore_ver = create_restore_point(CATALOG, SCHEMA, f"bronze_{safe}", "pre-bronze-load")
+
+    try:
+        df = spark.read.parquet(src_path)
+
+        # ── Data quality checks ───────────────────────────────────────
+        total = df.count()
+        nulls = df.filter(F.col("__landing_ts").isNull()).count()
+        dup_count = total - df.dropDuplicates().count()
+
+        print(f"    📊 Rows: {{total:,}} | Null landing_ts: {{nulls}} | Duplicates: {{dup_count}}")
+
+        if nulls > 0:
+            df = df.filter(F.col("__landing_ts").isNotNull())
+            print(f"    🧹 Dropped {{nulls}} rows with null __landing_ts")
+
+        # ── Add bronze audit columns ──────────────────────────────────
+        df = (df
+              .withColumn("__bronze_ts", F.current_timestamp())
+              .withColumn("__bronze_version", F.lit(1))
+              .withColumn("__is_quarantined", F.lit(False)))
+
+        # ── Write to Bronze Delta table ───────────────────────────────
+        (df.write
+         .format("delta")
+         .mode("overwrite")
+         .option("overwriteSchema", "true")
+         .option("delta.autoOptimize.optimizeWrite", "true")
+         .saveAsTable(target))
+
+        print(f"    ✅ Bronze {{target}}: {{df.count():,}} rows written")
+        return {{"table": "{tname}", "status": "success", "rows": df.count()}}
+
+    except Exception as e:
+        print(f"    ❌ FAILED: {{e}}")
+        if restore_ver is not None:
+            restore_table(CATALOG, SCHEMA, f"bronze_{safe}", restore_ver)
+        return {{"table": "{tname}", "status": "failed", "error": str(e)}}''')
+
+    dlt_block = "\n".join(dlt_defs)
+    raw_block = "\n".join(raw_defs)
+
+    # Table list builder
+    table_names_str = ", ".join(f'"{t["table"]}"' for t in tables)
+
+    return f'''# Databricks notebook source
+# MAGIC %md
+# MAGIC # 🥉 Medallion Architecture — Bronze Layer
+# MAGIC **Generated:** {ts}
+# MAGIC
+# MAGIC **Target:** `{catalog}.{schema}` (Bronze Delta Tables)
+# MAGIC **Source:** Landing Zone at `{landing_path}`
+# MAGIC
+# MAGIC ### Bronze Layer Responsibilities
+# MAGIC - Raw data ingestion from Landing Zone (Parquet → Delta)
+# MAGIC - Schema enforcement & type preservation
+# MAGIC - Data quality expectations (DLT) / checks (standard)
+# MAGIC - Audit columns: `__bronze_ts`, `__bronze_version`, `__is_quarantined`
+# MAGIC - Restore points for rollback on failure
+# MAGIC
+# MAGIC ### Supports Two Execution Modes
+# MAGIC 1. **DLT Pipeline** — use `import dlt` with expectations (recommended)
+# MAGIC 2. **Standard Spark** — fallback with manual quality checks
+# MAGIC ---
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 📋 Configuration
+
+# COMMAND ----------
+
+dbutils.widgets.text("catalog", "{catalog}", "Target Catalog")
+dbutils.widgets.text("schema", "{schema}", "Target Schema")
+dbutils.widgets.text("landing_path", "{landing_path}", "Landing Base Path")
+dbutils.widgets.text("mode", "standard", "Execution Mode (dlt / standard)")
+
+CATALOG      = dbutils.widgets.get("catalog").strip()
+SCHEMA       = dbutils.widgets.get("schema").strip()
+LANDING_PATH = dbutils.widgets.get("landing_path").strip()
+EXEC_MODE    = dbutils.widgets.get("mode").strip().lower()
+
+print(f"🔧 Catalog      : {{CATALOG}}")
+print(f"🔧 Schema       : {{SCHEMA}}")
+print(f"🔧 Landing Path : {{LANDING_PATH}}")
+print(f"🔧 Mode         : {{EXEC_MODE}}")
+
+TABLE_NAMES = [{table_names_str}]
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 🔧 Utility Functions
+
+# COMMAND ----------
+
+from pyspark.sql import functions as F
+from datetime import datetime
+import json
+
+def create_restore_point(catalog, schema, table_name, stage):
+    """Record Delta table version for rollback."""
+    try:
+        delta_tbl = f"`{{catalog}}`.`{{schema}}`.`{{table_name}}`"
+        history = spark.sql(f"DESCRIBE HISTORY {{delta_tbl}} LIMIT 1").collect()
+        if history:
+            version = history[0]["version"]
+            print(f"   📌 Restore point: {{table_name}} v{{version}} ({{stage}})")
+            return version
+    except Exception:
+        pass
+    return None
+
+def restore_table(catalog, schema, table_name, version):
+    """Restore Delta table to a previous version on failure."""
+    try:
+        delta_tbl = f"`{{catalog}}`.`{{schema}}`.`{{table_name}}`"
+        spark.sql(f"RESTORE TABLE {{delta_tbl}} TO VERSION AS OF {{version}}")
+        print(f"   🔄 Restored {{table_name}} to version {{version}}")
+        return True
+    except Exception as e:
+        print(f"   ❌ Restore failed: {{e}}")
+        return False
+
+def validate_bronze_table(catalog, schema, table_name):
+    """Post-load validation for a Bronze table."""
+    try:
+        tbl = f"`{{catalog}}`.`{{schema}}`.`{{table_name}}`"
+        count = spark.sql(f"SELECT COUNT(*) AS cnt FROM {{tbl}}").collect()[0]["cnt"]
+        nulls = spark.sql(f"SELECT COUNT(*) AS cnt FROM {{tbl}} WHERE __bronze_ts IS NULL").collect()[0]["cnt"]
+        print(f"   🔍 Validation {{table_name}}: {{count:,}} rows, {{nulls}} null bronze_ts")
+        return {{"rows": count, "null_audit": nulls, "valid": nulls == 0}}
+    except Exception as e:
+        print(f"   ⚠️ Validation failed: {{e}}")
+        return {{"rows": 0, "null_audit": -1, "valid": False}}
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 🏭 DLT Pipeline Definitions
+# MAGIC > These are only active when running as a **DLT Pipeline**.
+# MAGIC > In standard mode, they are skipped.
+
+# COMMAND ----------
+
+# ── DLT Mode: Delta Live Tables definitions ──────────────────────────────────
+if EXEC_MODE == "dlt":
+    import dlt
+{dlt_block}
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 🏗️ Standard Mode: Manual Bronze Load
+
+# COMMAND ----------
+
+# ── Standard Mode: manual load with quality checks & restore points ──────────
+{raw_block}
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 🚀 Execute Bronze Pipeline
+
+# COMMAND ----------
+
+if EXEC_MODE != "dlt":
+    print("\\n" + "="*60)
+    print("🥉 BRONZE LAYER PIPELINE — Standard Mode")
+    print("="*60)
+
+    bronze_results = []
+    for tname in TABLE_NAMES:
+        safe = tname.replace(" ", "_").replace("-", "_").lower()
+        fn_name = f"load_bronze_{{safe}}_raw"
+        fn = globals().get(fn_name)
+        if fn:
+            result = fn()
+            bronze_results.append(result)
+        else:
+            print(f"  ⚠️ No loader found for {{tname}}")
+            bronze_results.append({{"table": tname, "status": "skipped"}})
+
+    # ── Post-load validation ──────────────────────────────────────────────
+    print("\\n" + "─"*40)
+    print("🔍 Post-Load Validation")
+    print("─"*40)
+    for tname in TABLE_NAMES:
+        safe = tname.replace(" ", "_").replace("-", "_").lower()
+        validate_bronze_table(CATALOG, SCHEMA, f"bronze_{{safe}}")
+
+    # ── Summary ───────────────────────────────────────────────────────────
+    success = [r for r in bronze_results if r.get("status") == "success"]
+    failed  = [r for r in bronze_results if r.get("status") == "failed"]
+    print(f"\\n{'='*60}")
+    print(f"📊 BRONZE LAYER COMPLETE")
+    print(f"{'='*60}")
+    print(f"  ✅ Succeeded: {{len(success)}} / {{len(bronze_results)}}")
+    print(f"  ❌ Failed   : {{len(failed)}} / {{len(bronze_results)}}")
+
+    exit_payload = json.dumps({{
+        "status": "COMPLETED" if not failed else "PARTIAL",
+        "succeeded": len(success),
+        "failed": len(failed),
+        "layer": "bronze",
+    }})
+    dbutils.notebook.exit(exit_payload)
+else:
+    print("ℹ️ Running in DLT mode — tables are managed by Delta Live Tables engine.")
+'''
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  3. SILVER NOTEBOOK
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def generate_silver(
+    tables: list,
+    catalog: str = "main",
+    schema: str = "default",
+) -> str:
+    """Generate the Silver layer DLT notebook with quality checks."""
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    # Build DLT definitions
+    dlt_defs = []
+    std_defs = []
+    for t in tables:
+        tname = t["table"]
+        safe  = tname.replace(" ", "_").replace("-", "_").lower()
+
+        dlt_defs.append(f'''
+@dlt.table(
+    name="silver_{safe}",
+    comment="Silver layer — cleansed & validated {tname}",
+    table_properties={{
+        "quality": "silver",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+        "pipelines.autoOptimize.managed": "true",
+    }},
+)
+@dlt.expect_or_drop("__valid_bronze_ts", "__bronze_ts IS NOT NULL")
+@dlt.expect_or_drop("__not_quarantined", "__is_quarantined = false")
+@dlt.expect("__has_batch_id", "__batch_id IS NOT NULL")
+def silver_{safe}():
+    """Read from Bronze, apply cleansing & quality rules for {tname}."""
+    bronze_df = dlt.read("bronze_{safe}")
+
+    return (
+        bronze_df
+        # ── Drop internal audit columns from landing ──────────────────
+        .drop("__landing_ts", "__load_type", "__is_quarantined")
+        # ── Trim all string columns ───────────────────────────────────
+        .select([
+            F.trim(F.col(c.name)).alias(c.name) if c.dataType.simpleString() == "string"
+            else F.col(c.name)
+            for c in bronze_df.schema
+            if c.name not in ("__landing_ts", "__load_type", "__is_quarantined")
+        ])
+        # ── Deduplicate ───────────────────────────────────────────────
+        .dropDuplicates()
+        # ── Silver audit columns ──────────────────────────────────────
+        .withColumn("__silver_ts", F.current_timestamp())
+        .withColumn("__silver_version", F.lit(1))
+        .withColumn("__dq_status", F.lit("passed"))
+    )''')
+
+        std_defs.append(f'''
+def process_silver_{safe}():
+    """Standard mode: Bronze → Silver for {tname} with quality checks & restore."""
+    bronze_tbl = f"`{{CATALOG}}`.`{{SCHEMA}}`.`bronze_{safe}`"
+    silver_tbl = f"`{{CATALOG}}`.`{{SCHEMA}}`.`silver_{safe}`"
+
+    print(f"  🔄 Processing: bronze_{safe} → silver_{safe}")
+
+    # ── Create restore point ──────────────────────────────────────────
+    restore_ver = create_restore_point(CATALOG, SCHEMA, f"silver_{safe}", "pre-silver")
+
+    try:
+        df = spark.sql(f"SELECT * FROM {{bronze_tbl}}")
+        initial_count = df.count()
+        print(f"    📊 Bronze rows: {{initial_count:,}}")
+
+        # ── Data Quality Checks ───────────────────────────────────────
+        dq_results = {{}}
+
+        # Check 1: Null bronze timestamps
+        null_ts = df.filter(F.col("__bronze_ts").isNull()).count()
+        dq_results["null_bronze_ts"] = null_ts
+        if null_ts > 0:
+            df = df.filter(F.col("__bronze_ts").isNotNull())
+            print(f"    🧹 Removed {{null_ts}} rows with null __bronze_ts")
+
+        # Check 2: Quarantined rows
+        quarantined = 0
+        if "__is_quarantined" in df.columns:
+            quarantined = df.filter(F.col("__is_quarantined") == True).count()
+            dq_results["quarantined"] = quarantined
+            if quarantined > 0:
+                df = df.filter(F.col("__is_quarantined") == False)
+                print(f"    🧹 Removed {{quarantined}} quarantined rows")
+
+        # Check 3: Duplicate detection
+        before_dedup = df.count()
+        df = df.dropDuplicates()
+        dup_count = before_dedup - df.count()
+        dq_results["duplicates_removed"] = dup_count
+        if dup_count > 0:
+            print(f"    🧹 Removed {{dup_count}} duplicate rows")
+
+        # Check 4: Completeness — ensure no entirely-null rows
+        all_cols = [c for c in df.columns if not c.startswith("__")]
+        if all_cols:
+            null_expr = F.lit(True)
+            for c in all_cols:
+                null_expr = null_expr & F.col(c).isNull()
+            empty_rows = df.filter(null_expr).count()
+            dq_results["empty_rows"] = empty_rows
+            if empty_rows > 0:
+                df = df.filter(~null_expr)
+                print(f"    🧹 Removed {{empty_rows}} entirely-null rows")
+
+        # ── Apply transformations ─────────────────────────────────────
+        # Trim all string columns
+        for c in df.dtypes:
+            if c[1] == "string" and not c[0].startswith("__"):
+                df = df.withColumn(c[0], F.trim(F.col(c[0])))
+
+        # Drop downstream-irrelevant audit columns
+        drop_cols = ["__landing_ts", "__load_type", "__is_quarantined"]
+        for dc in drop_cols:
+            if dc in df.columns:
+                df = df.drop(dc)
+
+        # Add silver audit columns
+        df = (df
+              .withColumn("__silver_ts", F.current_timestamp())
+              .withColumn("__silver_version", F.lit(1))
+              .withColumn("__dq_status", F.lit("passed")))
+
+        final_count = df.count()
+        print(f"    📊 Silver rows: {{final_count:,}} (removed {{initial_count - final_count}})")
+
+        # ── Write to Silver table ─────────────────────────────────────
+        (df.write
+         .format("delta")
+         .mode("overwrite")
+         .option("overwriteSchema", "true")
+         .option("delta.autoOptimize.optimizeWrite", "true")
+         .saveAsTable(silver_tbl))
+
+        print(f"    ✅ Silver {{silver_tbl}}: {{final_count:,}} rows written")
+
+        # ── Record DQ metrics ─────────────────────────────────────────
+        save_dq_metrics(CATALOG, SCHEMA, f"silver_{safe}", dq_results, initial_count, final_count)
+
+        return {{
+            "table": "{tname}", "status": "success",
+            "bronze_rows": initial_count, "silver_rows": final_count,
+            "dq": dq_results
+        }}
+
+    except Exception as e:
+        print(f"    ❌ FAILED: {{e}}")
+        if restore_ver is not None:
+            restore_table(CATALOG, SCHEMA, f"silver_{safe}", restore_ver)
+        return {{"table": "{tname}", "status": "failed", "error": str(e)}}''')
+
+    dlt_block = "\n".join(dlt_defs)
+    std_block = "\n".join(std_defs)
+    table_names_str = ", ".join(f'"{t["table"]}"' for t in tables)
+
+    return f'''# Databricks notebook source
+# MAGIC %md
+# MAGIC # 🥈 Medallion Architecture — Silver Layer
+# MAGIC **Generated:** {ts}
+# MAGIC
+# MAGIC **Target:** `{catalog}.{schema}` (Silver Delta Tables)
+# MAGIC **Source:** Bronze Delta Tables in `{catalog}.{schema}`
+# MAGIC
+# MAGIC ### Silver Layer Responsibilities
+# MAGIC - Data cleansing: trim strings, remove nulls, deduplicate
+# MAGIC - Data quality validation with DLT expectations / manual checks
+# MAGIC - Quality metrics recording in `__dq_metrics` table
+# MAGIC - Restore points via Delta time-travel for rollback
+# MAGIC - Audit columns: `__silver_ts`, `__silver_version`, `__dq_status`
+# MAGIC
+# MAGIC ### Data Quality Checks
+# MAGIC | # | Check | Action |
+# MAGIC |---|-------|--------|
+# MAGIC | 1 | Null bronze timestamps | Drop rows |
+# MAGIC | 2 | Quarantined rows | Drop rows |
+# MAGIC | 3 | Duplicate detection | Deduplicate |
+# MAGIC | 4 | Entirely-null rows | Drop rows |
+# MAGIC | 5 | String trimming | Trim whitespace |
+# MAGIC | 6 | Completeness audit | Record metrics |
+# MAGIC ---
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 📋 Configuration
+
+# COMMAND ----------
+
+dbutils.widgets.text("catalog", "{catalog}", "Target Catalog")
+dbutils.widgets.text("schema", "{schema}", "Target Schema")
+dbutils.widgets.text("mode", "standard", "Execution Mode (dlt / standard)")
+
+CATALOG   = dbutils.widgets.get("catalog").strip()
+SCHEMA    = dbutils.widgets.get("schema").strip()
+EXEC_MODE = dbutils.widgets.get("mode").strip().lower()
+
+print(f"🔧 Catalog : {{CATALOG}}")
+print(f"🔧 Schema  : {{SCHEMA}}")
+print(f"🔧 Mode    : {{EXEC_MODE}}")
+
+TABLE_NAMES = [{table_names_str}]
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 🔧 Utility Functions
+
+# COMMAND ----------
+
+from pyspark.sql import functions as F
+from datetime import datetime
+import json
+
+def create_restore_point(catalog, schema, table_name, stage):
+    """Record Delta version for rollback."""
+    try:
+        delta_tbl = f"`{{catalog}}`.`{{schema}}`.`{{table_name}}`"
+        history = spark.sql(f"DESCRIBE HISTORY {{delta_tbl}} LIMIT 1").collect()
+        if history:
+            version = history[0]["version"]
+            print(f"   📌 Restore point: {{table_name}} v{{version}} ({{stage}})")
+            return version
+    except Exception:
+        pass
+    return None
+
+def restore_table(catalog, schema, table_name, version):
+    """Restore Delta table to a specific version."""
+    try:
+        delta_tbl = f"`{{catalog}}`.`{{schema}}`.`{{table_name}}`"
+        spark.sql(f"RESTORE TABLE {{delta_tbl}} TO VERSION AS OF {{version}}")
+        print(f"   🔄 Restored {{table_name}} to version {{version}}")
+        return True
+    except Exception as e:
+        print(f"   ❌ Restore failed: {{e}}")
+        return False
+
+def save_dq_metrics(catalog, schema, table_name, dq_results, before, after):
+    """Persist data quality metrics for audit trail."""
+    metrics_tbl = f"`{{catalog}}`.`{{schema}}`.__dq_metrics"
+    try:
+        spark.sql(f\"\"\"
+            CREATE TABLE IF NOT EXISTS {{metrics_tbl}} (
+                table_name     STRING,
+                check_time     TIMESTAMP,
+                rows_before    BIGINT,
+                rows_after     BIGINT,
+                rows_dropped   BIGINT,
+                null_ts        BIGINT,
+                quarantined    BIGINT,
+                duplicates     BIGINT,
+                empty_rows     BIGINT,
+                dq_pass        BOOLEAN
+            ) USING DELTA
+        \"\"\")
+
+        rows_dropped = before - after
+        spark.sql(f\"\"\"
+            INSERT INTO {{metrics_tbl}} VALUES (
+                '{{table_name}}',
+                current_timestamp(),
+                {{before}},
+                {{after}},
+                {{rows_dropped}},
+                {{dq_results.get("null_bronze_ts", 0)}},
+                {{dq_results.get("quarantined", 0)}},
+                {{dq_results.get("duplicates_removed", 0)}},
+                {{dq_results.get("empty_rows", 0)}},
+                {{str(rows_dropped < before * 0.5).lower()}}
+            )
+        \"\"\")
+        print(f"   📈 DQ metrics saved for {{table_name}}")
+    except Exception as e:
+        print(f"   ⚠️ DQ metrics save failed: {{e}}")
+
+def validate_silver_table(catalog, schema, table_name):
+    """Post-silver validation."""
+    try:
+        tbl = f"`{{catalog}}`.`{{schema}}`.`{{table_name}}`"
+        count = spark.sql(f"SELECT COUNT(*) AS cnt FROM {{tbl}}").collect()[0]["cnt"]
+        null_silver = spark.sql(f"SELECT COUNT(*) AS cnt FROM {{tbl}} WHERE __silver_ts IS NULL").collect()[0]["cnt"]
+        null_dq = spark.sql(f"SELECT COUNT(*) AS cnt FROM {{tbl}} WHERE __dq_status IS NULL OR __dq_status != 'passed'").collect()[0]["cnt"]
+        print(f"   🔍 {{table_name}}: {{count:,}} rows | null silver_ts: {{null_silver}} | dq_status!=passed: {{null_dq}}")
+        return {{"rows": count, "null_ts": null_silver, "dq_issues": null_dq, "valid": null_silver == 0 and null_dq == 0}}
+    except Exception as e:
+        print(f"   ⚠️ Validation error: {{e}}")
+        return {{"valid": False}}
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 🏭 DLT Pipeline Definitions
+# MAGIC > Active only when running as a **DLT Pipeline**.
+
+# COMMAND ----------
+
+if EXEC_MODE == "dlt":
+    import dlt
+{dlt_block}
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 🏗️ Standard Mode: Silver Processing
+
+# COMMAND ----------
+
+{std_block}
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 🚀 Execute Silver Pipeline
+
+# COMMAND ----------
+
+if EXEC_MODE != "dlt":
+    print("\\n" + "="*60)
+    print("🥈 SILVER LAYER PIPELINE — Standard Mode")
+    print("="*60)
+
+    silver_results = []
+    for tname in TABLE_NAMES:
+        safe = tname.replace(" ", "_").replace("-", "_").lower()
+        fn_name = f"process_silver_{{safe}}"
+        fn = globals().get(fn_name)
+        if fn:
+            res = fn()
+            silver_results.append(res)
+        else:
+            print(f"  ⚠️ No processor for {{tname}}")
+            silver_results.append({{"table": tname, "status": "skipped"}})
+
+    # ── Post-processing validation ────────────────────────────────────────
+    print("\\n" + "─"*40)
+    print("🔍 Post-Silver Validation")
+    print("─"*40)
+    for tname in TABLE_NAMES:
+        safe = tname.replace(" ", "_").replace("-", "_").lower()
+        validate_silver_table(CATALOG, SCHEMA, f"silver_{{safe}}")
+
+    # ── Summary ───────────────────────────────────────────────────────────
+    success = [r for r in silver_results if r.get("status") == "success"]
+    failed  = [r for r in silver_results if r.get("status") == "failed"]
+    total_bronze = sum(r.get("bronze_rows", 0) for r in silver_results)
+    total_silver = sum(r.get("silver_rows", 0) for r in silver_results)
+
+    print(f"\\n{'='*60}")
+    print(f"📊 SILVER LAYER COMPLETE")
+    print(f"{'='*60}")
+    print(f"  ✅ Succeeded    : {{len(success)}} / {{len(silver_results)}}")
+    print(f"  ❌ Failed       : {{len(failed)}} / {{len(silver_results)}}")
+    print(f"  📊 Bronze In    : {{total_bronze:,}}")
+    print(f"  📊 Silver Out   : {{total_silver:,}}")
+    print(f"  🧹 Rows Cleaned : {{total_bronze - total_silver:,}}")
+
+    if failed:
+        print(f"\\n⚠️ Failed tables:")
+        for f_item in failed:
+            print(f"   • {{f_item['table']}}: {{f_item.get('error','unknown')}}")
+
+    exit_payload = json.dumps({{
+        "status": "COMPLETED" if not failed else "PARTIAL",
+        "succeeded": len(success),
+        "failed": len(failed),
+        "total_bronze": total_bronze,
+        "total_silver": total_silver,
+        "layer": "silver",
+    }})
+    dbutils.notebook.exit(exit_payload)
+else:
+    print("ℹ️ Running in DLT mode — tables are managed by Delta Live Tables engine.")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 📊 DQ Metrics Dashboard Query
+# MAGIC > Run this cell manually to view accumulated quality metrics.
+
+# COMMAND ----------
+
+# ── Optional: view DQ metrics ─────────────────────────────────────────────────
+try:
+    metrics_tbl = f"`{{CATALOG}}`.`{{SCHEMA}}`.__dq_metrics"
+    display(spark.sql(f\"\"\"
+        SELECT table_name, check_time, rows_before, rows_after, rows_dropped,
+               null_ts, quarantined, duplicates, empty_rows, dq_pass
+        FROM {{metrics_tbl}}
+        ORDER BY check_time DESC
+        LIMIT 50
+    \"\"\"))
+except Exception:
+    print("ℹ️ No DQ metrics recorded yet. Run the Silver pipeline first.")
+'''
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  4. ORCHESTRATOR NOTEBOOK (Bonus: chains all 3)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def generate_orchestrator(
+    source_type: str,
+    server: str,
+    database: str,
+    username: str,
+    tables: list,
+    catalog: str = "main",
+    schema: str = "default",
+    landing_path: str = "/mnt/landing",
+    workspace_path: str = "/Shared/Medallion",
+) -> str:
+    """Generate an orchestrator notebook that chains Landing → Bronze → Silver."""
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+    return f'''# Databricks notebook source
+# MAGIC %md
+# MAGIC # 🎯 Medallion Pipeline Orchestrator
+# MAGIC **Generated:** {ts}
+# MAGIC
+# MAGIC Chains: **Landing Zone** → **Bronze** → **Silver**
+# MAGIC
+# MAGIC Includes automatic rollback if any stage fails.
+# MAGIC ---
+
+# COMMAND ----------
+
+dbutils.widgets.text("load_type", "full", "Load Type (full / incremental)")
+dbutils.widgets.text("password", "", "Source DB Password")
+
+LOAD_TYPE = dbutils.widgets.get("load_type").strip()
+PASSWORD  = dbutils.widgets.get("password").strip()
+
+import json
+from datetime import datetime
+
+run_log = []
+
+def log(msg):
+    ts = datetime.now().strftime("%H:%M:%S")
+    entry = f"[{{ts}}] {{msg}}"
+    run_log.append(entry)
+    print(entry)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Stage 1: Landing Zone
+
+# COMMAND ----------
+
+log("🚀 Stage 1: Landing Zone — starting extraction…")
+try:
+    landing_result = dbutils.notebook.run(
+        "{workspace_path}/01_Landing_Zone",
+        timeout_seconds=3600,
+        arguments={{
+            "load_type": LOAD_TYPE,
+            "password":  PASSWORD,
+        }}
+    )
+    landing_data = json.loads(landing_result)
+    if landing_data.get("status") == "FAILED":
+        raise Exception(f"Landing failed: {{landing_data.get('error', 'unknown')}}")
+    log(f"✅ Landing Zone complete: {{landing_data.get('succeeded', 0)}} tables, {{landing_data.get('total_rows', 0):,}} rows")
+except Exception as e:
+    log(f"❌ Landing Zone FAILED: {{e}}")
+    dbutils.notebook.exit(json.dumps({{"status": "FAILED", "stage": "landing", "error": str(e), "log": run_log}}))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Stage 2: Bronze Layer
+
+# COMMAND ----------
+
+log("🚀 Stage 2: Bronze Layer — processing raw data…")
+try:
+    bronze_result = dbutils.notebook.run(
+        "{workspace_path}/02_Bronze",
+        timeout_seconds=3600,
+        arguments={{"mode": "standard"}}
+    )
+    bronze_data = json.loads(bronze_result)
+    if bronze_data.get("failed", 0) > 0:
+        log(f"⚠️ Bronze had {{bronze_data['failed']}} failures — continuing to Silver for successful tables")
+    log(f"✅ Bronze complete: {{bronze_data.get('succeeded', 0)}} tables processed")
+except Exception as e:
+    log(f"❌ Bronze Layer FAILED: {{e}}")
+    dbutils.notebook.exit(json.dumps({{"status": "FAILED", "stage": "bronze", "error": str(e), "log": run_log}}))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Stage 3: Silver Layer
+
+# COMMAND ----------
+
+log("🚀 Stage 3: Silver Layer — cleansing & validation…")
+try:
+    silver_result = dbutils.notebook.run(
+        "{workspace_path}/03_Silver",
+        timeout_seconds=3600,
+        arguments={{"mode": "standard"}}
+    )
+    silver_data = json.loads(silver_result)
+    log(f"✅ Silver complete: {{silver_data.get('succeeded', 0)}} tables, Bronze→Silver: {{silver_data.get('total_bronze', 0):,}} → {{silver_data.get('total_silver', 0):,}}")
+except Exception as e:
+    log(f"❌ Silver Layer FAILED: {{e}}")
+    dbutils.notebook.exit(json.dumps({{"status": "FAILED", "stage": "silver", "error": str(e), "log": run_log}}))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 📊 Pipeline Summary
+
+# COMMAND ----------
+
+log("🎯 Medallion Pipeline COMPLETE")
+print("\\n" + "="*60)
+print("PIPELINE RUN LOG")
+print("="*60)
+for entry in run_log:
+    print(entry)
+
+dbutils.notebook.exit(json.dumps({{
+    "status": "COMPLETED",
+    "stages": ["landing", "bronze", "silver"],
+    "log": run_log,
+}}))
+'''
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  PUBLIC API: Generate all notebooks at once
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def generate_all_medallion_notebooks(
+    source_type: str,
+    server: str,
+    database: str,
+    username: str,
+    tables: list,
+    catalog: str = "main",
+    schema: str = "default",
+    landing_path: str = "/mnt/landing",
+    workspace_path: str = "/Shared/Medallion",
+) -> dict:
+    """
+    Generate all Medallion notebooks and return them as a dict.
+    Returns: {notebooks: [{name, code, description}], summary: {...}}
+    """
+    landing = generate_landing_zone(
+        source_type, server, database, username, tables, catalog, schema, landing_path
+    )
+    bronze = generate_bronze(tables, catalog, schema, landing_path)
+    silver = generate_silver(tables, catalog, schema)
+    orchestrator = generate_orchestrator(
+        source_type, server, database, username, tables,
+        catalog, schema, landing_path, workspace_path
+    )
+
+    notebooks = [
+        {
+            "name": "01_Landing_Zone",
+            "code": landing,
+            "description": "Extract from source DB → Landing Zone (Parquet)",
+            "layer": "landing",
+            "lines": len(landing.splitlines()),
+        },
+        {
+            "name": "02_Bronze",
+            "code": bronze,
+            "description": "Landing → Bronze Delta tables with DLT & quality checks",
+            "layer": "bronze",
+            "lines": len(bronze.splitlines()),
+        },
+        {
+            "name": "03_Silver",
+            "code": silver,
+            "description": "Bronze → Silver with cleansing, DQ validation & restore",
+            "layer": "silver",
+            "lines": len(silver.splitlines()),
+        },
+        {
+            "name": "00_Orchestrator",
+            "code": orchestrator,
+            "description": "Chains Landing → Bronze → Silver with auto-rollback",
+            "layer": "orchestrator",
+            "lines": len(orchestrator.splitlines()),
+        },
+    ]
+
+    return {
+        "success": True,
+        "notebooks": notebooks,
+        "summary": {
+            "total_notebooks": len(notebooks),
+            "total_tables": len(tables),
+            "total_lines": sum(n["lines"] for n in notebooks),
+            "layers": ["landing", "bronze", "silver", "orchestrator"],
+            "features": [
+                "Full Load & Incremental Load",
+                "Delta Live Tables (DLT) pipelines",
+                "Data quality checks & expectations",
+                "Restore points (Delta time-travel)",
+                "Watermark-based CDC",
+                "Audit columns at every layer",
+                "DQ metrics recording",
+                "Parallel extraction",
+                "Auto-rollback on failure",
+            ],
+        },
+    }

@@ -1,0 +1,3282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQL → Databricks Migration Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --font: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
+  /* ── Enterprise dark sidebar ── */
+  --sb-bg: linear-gradient(175deg, #080b14 0%, #0d1120 30%, #111829 60%, #141e32 100%);
+  --sb-surface: rgba(255,255,255,.04);
+  --sb-border: rgba(255,255,255,.07);
+  --sb-text: rgba(255,255,255,.44);
+  --sb-text-hover: rgba(255,255,255,.82);
+  --sb-text-active: #ffffff;
+  /* ── Accent — Databricks signature red-orange ── */
+  --accent-primary: #FF3621;
+  --accent-primary-hover: #E82D18;
+  --accent-glow: rgba(255,54,33,.15);
+  --accent-glow-strong: rgba(255,54,33,.28);
+  --accent-gradient: linear-gradient(135deg, #FF3621 0%, #FF5E3A 45%, #FF7A56 100%);
+  /* ── Blues ── */
+  --blue: #2563EB;
+  --blue-light: #EFF6FF;
+  --blue-border: #93C5FD;
+  --blue-fg: #1D4ED8;
+  /* ── Greens ── */
+  --green: #059669;
+  --green-light: #ECFDF5;
+  --green-border: #6EE7B7;
+  --green-fg: #047857;
+  /* ── Reds ── */
+  --red: #DC2626;
+  --red-light: #FEF2F2;
+  --red-border: #FCA5A5;
+  --red-fg: #B91C1C;
+  /* ── Amber ── */
+  --amber: #D97706;
+  --amber-light: #FFFBEB;
+  --amber-border: #FCD34D;
+  --amber-fg: #92400E;
+  /* ── Type badges ── */
+  --sp-c: #C2410C; --sp-bg: #FFF7ED; --sp-b: #FDBA74;
+  --vw-c: #0369A1; --vw-bg: #F0F9FF; --vw-b: #7DD3FC;
+  --udf-c: #6D28D9; --udf-bg: #F5F3FF; --udf-b: #C4B5FD;
+  /* ── Content area ── */
+  --bg: #EDF1F8;
+  --surface: #FFFFFF;
+  --surface-2: #F4F7FC;
+  --surface-3: #E4ECF5;
+  --border: #DDE4EF;
+  --border-2: #C6D2E5;
+  /* ── Text ── */
+  --t1: #0D1526;
+  --t2: #253148;
+  --t3: #5A6B82;
+  --t4: #8FA0B5;
+  /* ── Radii ── */
+  --r-xs: 4px; --r-sm: 6px; --r: 10px; --r-lg: 14px; --r-xl: 20px;
+  /* ── Enterprise elevation system ── */
+  --shadow-xs: 0 1px 2px rgba(13,21,38,.06);
+  --shadow-sm: 0 1px 4px rgba(13,21,38,.08), 0 1px 2px rgba(13,21,38,.04);
+  --shadow: 0 4px 8px -1px rgba(13,21,38,.1), 0 2px 4px -2px rgba(13,21,38,.06);
+  --shadow-md: 0 12px 24px -4px rgba(13,21,38,.12), 0 4px 10px -4px rgba(13,21,38,.08);
+  --shadow-lg: 0 24px 48px -8px rgba(13,21,38,.15), 0 8px 16px -6px rgba(13,21,38,.08);
+  --shadow-card: 0 0 0 1px rgba(13,21,38,.05), 0 2px 10px rgba(13,21,38,.07);
+  --shadow-card-hover: 0 0 0 1.5px rgba(37,99,235,.2), 0 8px 28px rgba(13,21,38,.12), 0 0 24px rgba(37,99,235,.05);
+  /* ── Animation ── */
+  --ease: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-smooth: 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+  /* ── Layout ── */
+  --sw: 256px;
+  --hh: 64px;
+}
+
+/* ── RESET ── */
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html, body { height:100%; overflow:hidden; }
+body {
+  background:var(--bg); color:var(--t1); font-family:var(--font);
+  font-size:13.5px; line-height:1.55;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+}
+
+/* ── SCROLLBAR (enterprise thin) ── */
+::-webkit-scrollbar { width:5px; height:5px; }
+::-webkit-scrollbar-track { background:rgba(0,0,0,.04); }
+::-webkit-scrollbar-thumb { background:var(--border-2); border-radius:99px; }
+::-webkit-scrollbar-thumb:hover { background:var(--t4); }
+
+/* ── FOCUS RING ── */
+*:focus-visible { outline:2px solid rgba(37,99,235,.5); outline-offset:2px; border-radius:4px; }
+
+/* ── APP LAYOUT ── */
+#app { display:flex; height:100vh; }
+
+/* ════════════════════════════════════════════════════════
+   ANIMATED MESH-GRADIENT BACKGROUND (Databricks-inspired)
+   ════════════════════════════════════════════════════════ */
+#content::before {
+  content:''; position:absolute; inset:0; z-index:0; pointer-events:none;
+  background:
+    radial-gradient(ellipse 60% 50% at 10% 15%, rgba(255,54,33,.05) 0%, transparent 70%),
+    radial-gradient(ellipse 45% 55% at 90% 80%, rgba(37,99,235,.05) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 40% at 50% 50%, rgba(99,102,241,.03) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 35% at 80% 10%, rgba(5,150,105,.03) 0%, transparent 70%);
+  animation:meshDrift 20s ease-in-out infinite alternate;
+}
+@keyframes meshDrift {
+  0%   { opacity:.7; filter:hue-rotate(0deg); }
+  50%  { opacity:1;  filter:hue-rotate(8deg); }
+  100% { opacity:.7; filter:hue-rotate(-4deg); }
+}
+
+/* Subtle floating geometric pattern overlay */
+#content::after {
+  content:''; position:absolute; inset:0; z-index:0; pointer-events:none; opacity:.018;
+  background-image:
+    linear-gradient(30deg, var(--accent-primary) 12%, transparent 12.5%, transparent 87%, var(--accent-primary) 87.5%, var(--accent-primary)),
+    linear-gradient(150deg, var(--accent-primary) 12%, transparent 12.5%, transparent 87%, var(--accent-primary) 87.5%, var(--accent-primary)),
+    linear-gradient(30deg, var(--accent-primary) 12%, transparent 12.5%, transparent 87%, var(--accent-primary) 87.5%, var(--accent-primary)),
+    linear-gradient(150deg, var(--accent-primary) 12%, transparent 12.5%, transparent 87%, var(--accent-primary) 87.5%, var(--accent-primary)),
+    linear-gradient(60deg, rgba(59,130,246,.6) 25%, transparent 25.5%, transparent 75%, rgba(59,130,246,.6) 75%, rgba(59,130,246,.6)),
+    linear-gradient(60deg, rgba(59,130,246,.6) 25%, transparent 25.5%, transparent 75%, rgba(59,130,246,.6) 75%, rgba(59,130,246,.6));
+  background-size:80px 140px;
+  background-position:0 0, 0 0, 40px 70px, 40px 70px, 0 0, 40px 70px;
+  animation:patternShift 30s linear infinite;
+}
+@keyframes patternShift {
+  0%   { transform:translateX(0) translateY(0); }
+  100% { transform:translateX(40px) translateY(70px); }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   SIDEBAR — Premium glassmorphism dark panel
+   ════════════════════════════════════════════════════════════════════════════ */
+#sidebar {
+  width:var(--sw); flex-shrink:0; background:var(--sb-bg);
+  display:flex; flex-direction:column; overflow:hidden;
+  border-right:1px solid rgba(255,255,255,.06);
+  position:relative; z-index:10;
+  box-shadow:4px 0 24px rgba(0,0,0,.2);
+}
+/* Ambient glow on sidebar */
+#sidebar::before {
+  content:''; position:absolute; top:-40%; left:-30%; width:160%; height:80%;
+  background:radial-gradient(ellipse, rgba(255,54,33,.08) 0%, transparent 70%);
+  pointer-events:none; z-index:0;
+  animation:sidebarGlow 12s ease-in-out infinite alternate;
+}
+@keyframes sidebarGlow {
+  0%   { opacity:.5; transform:translateY(0); }
+  100% { opacity:1;  transform:translateY(20%); }
+}
+#sidebar::after {
+  content:''; position:absolute; top:0; right:0; bottom:0; width:1px;
+  background:linear-gradient(180deg, rgba(255,255,255,.1) 0%, rgba(255,54,33,.1) 50%, rgba(255,255,255,.03) 100%);
+  z-index:1;
+}
+
+/* Logo area */
+.sb-logo {
+  padding:0 18px; height:72px;
+  display:flex; align-items:center; flex-shrink:0;
+  border-bottom:1px solid var(--sb-border);
+  position:relative; z-index:1;
+  background:rgba(0,0,0,.12);
+}
+.brand { display:flex; align-items:center; gap:12px; }
+.brand-ico {
+  width:36px; height:36px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+  position:relative; border-radius:10px;
+  background:var(--accent-gradient);
+  box-shadow:0 4px 16px rgba(255,54,33,.4), 0 0 0 1px rgba(255,255,255,.15) inset;
+  transition:all .3s ease;
+}
+.brand-ico:hover { transform:scale(1.08) rotate(-2deg); box-shadow:0 6px 24px rgba(255,54,33,.5); }
+.brand-ico svg { width:17px; height:17px; fill:none; stroke:#fff; stroke-width:2.5; stroke-linecap:round; stroke-linejoin:round; position:relative; z-index:1; }
+.brand-name { font-size:14.5px; font-weight:800; color:#fff; letter-spacing:-.03em; line-height:1.2; }
+.brand-sub { font-size:9.5px; color:rgba(255,255,255,.3); margin-top:3px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; }
+/* Stats bar */
+.sb-stats {
+  display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;
+  padding:14px 16px; border-bottom:1px solid var(--sb-border); flex-shrink:0;
+  position:relative; z-index:1;
+}
+.stat-pill {
+  background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07); border-radius:10px;
+  padding:11px 6px; text-align:center; transition:all .25s ease;
+  position:relative; overflow:hidden; cursor:default;
+}
+.stat-pill::before {
+  content:''; position:absolute; inset:0; opacity:0;
+  background:linear-gradient(135deg, rgba(255,255,255,.07) 0%, transparent 100%);
+  transition:opacity .25s;
+}
+.stat-pill::after {
+  content:''; position:absolute; bottom:0; left:20%; right:20%; height:1px;
+  background:linear-gradient(90deg, transparent, rgba(255,255,255,.12), transparent);
+}
+.stat-pill:hover::before { opacity:1; }
+.stat-pill:hover { border-color:rgba(255,255,255,.14); transform:translateY(-2px); box-shadow:0 4px 16px rgba(0,0,0,.2); }
+.stat-pill .n { font-size:22px; font-weight:800; line-height:1; position:relative; }
+.stat-pill .l { font-size:8px; color:rgba(255,255,255,.26); text-transform:uppercase; letter-spacing:.12em; margin-top:5px; font-weight:700; position:relative; }
+
+/* ── Source Analysis Card ── */
+.an-distbar { height:8px; background:rgba(0,0,0,.06); border-radius:4px; overflow:hidden; margin:0 16px 14px; }
+.an-distbar-inner { height:100%; display:flex; border-radius:4px; overflow:hidden; }
+.an-bar-seg { height:100%; transition:width .5s ease; }
+.an-types { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin:0 16px 14px; }
+.an-type-block { border:1px solid; border-radius:8px; padding:10px 6px; text-align:center; }
+.an-type-n { display:block; font-size:20px; font-weight:800; line-height:1; }
+.an-type-l { display:block; font-size:9px; color:var(--t3); text-transform:uppercase; letter-spacing:.08em; margin-top:3px; font-weight:600; }
+.an-tabs { display:flex; border-bottom:1px solid var(--border); margin:0 16px 0; }
+.an-tab { flex:1; background:none; border:none; border-bottom:2px solid transparent; padding:7px 4px; font-size:10.5px; font-weight:700; color:var(--t3); cursor:pointer; font-family:var(--font); letter-spacing:.06em; text-transform:uppercase; transition:all .15s; margin-bottom:-1px; }
+.an-tab.active { color:var(--accent-primary); border-bottom-color:var(--accent-primary); }
+.an-tab:hover:not(.active) { color:var(--t2); background:var(--hover); }
+.an-list { max-height:170px; overflow-y:auto; padding:6px 0 6px; }
+.an-item { display:flex; align-items:center; gap:8px; padding:6px 16px; cursor:pointer; transition:background .12s; }
+.an-item:hover { background:var(--hover); }
+.an-item-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+.an-item-name { flex:1; font-size:11.5px; color:var(--t1); font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.an-cx { font-size:9px; font-weight:800; padding:2px 6px; border-radius:4px; letter-spacing:.05em; flex-shrink:0; text-transform:uppercase; }
+.an-empty { padding:16px; font-size:12px; color:var(--t3); text-align:center; }
+.an-sel-row { display:flex; align-items:center; justify-content:space-between; padding:8px 16px 10px; border-top:1px solid var(--border); margin-top:4px; }
+.an-sel-label { font-size:10.5px; color:var(--t3); font-weight:600; }
+.an-sel-badges { display:flex; gap:5px; }
+.an-sel-badge { font-size:9px; font-weight:800; padding:2px 7px; border-radius:99px; min-width:18px; text-align:center; transition:opacity .2s; }
+
+/* Navigation */
+.sb-nav { flex:1; padding:14px 10px; display:flex; flex-direction:column; gap:3px; overflow-y:auto; position:relative; z-index:1; }
+.sb-sec {
+  font-size:9px; font-weight:800; color:rgba(255,255,255,.18);
+  text-transform:uppercase; letter-spacing:.16em; padding:14px 12px 6px; user-select:none;
+}
+.nav-btn {
+  display:flex; align-items:center; gap:10px; padding:10px 14px; width:100%;
+  border:none; background:transparent; color:var(--sb-text); border-radius:var(--r);
+  cursor:pointer; font-size:12.5px; font-weight:500; text-align:left;
+  font-family:var(--font); transition:all .18s ease; position:relative;
+  letter-spacing:-.01em;
+}
+.nav-btn:hover {
+  background:rgba(255,255,255,.06); color:var(--sb-text-hover);
+  transform:translateX(3px);
+}
+.nav-btn.active {
+  background:linear-gradient(135deg, rgba(255,54,33,.14) 0%, rgba(255,255,255,.05) 100%);
+  color:#fff; font-weight:600;
+  box-shadow:0 0 0 1px rgba(255,54,33,.18) inset, 0 2px 12px rgba(255,54,33,.1);
+}
+.nav-btn.active::before {
+  content:''; position:absolute; left:0; top:5px; bottom:5px; width:3px;
+  background:var(--accent-gradient); border-radius:0 4px 4px 0;
+  box-shadow:0 0 14px rgba(255,54,33,.6), 0 0 5px rgba(255,54,33,.4);
+}
+.nav-ico { width:20px; height:20px; display:flex; align-items:center; justify-content:center; flex-shrink:0; opacity:.4; transition:all var(--ease); }
+.nav-btn.active .nav-ico { opacity:1; filter:drop-shadow(0 0 4px rgba(255,54,33,.3)); }
+.nav-btn:hover .nav-ico { opacity:.65; }
+.nav-ico svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.nav-badge {
+  margin-left:auto; font-size:10px; font-weight:700; font-family:var(--font-mono);
+  background:rgba(255,255,255,.05); color:rgba(255,255,255,.22);
+  padding:3px 9px; border-radius:20px; border:1px solid rgba(255,255,255,.06);
+  transition:all var(--ease);
+}
+.nav-btn.active .nav-badge {
+  background:rgba(255,54,33,.15); color:rgba(255,107,91,.95);
+  border-color:rgba(255,54,33,.25);
+  box-shadow:0 0 8px rgba(255,54,33,.1);
+}
+
+/* Footer / progress bar */
+.sb-footer { padding:14px 16px 16px; border-top:1px solid var(--sb-border); flex-shrink:0; position:relative; z-index:1; background:rgba(0,0,0,.12); }
+.sb-footer-meta {
+  display:flex; align-items:center; justify-content:space-between; margin-top:10px;
+}
+.sb-ver { font-size:9px; color:rgba(255,255,255,.2); font-weight:600; letter-spacing:.06em; font-family:var(--font-mono); }
+.sb-build { font-size:8.5px; color:rgba(255,255,255,.15); font-family:var(--font-mono); }
+.wf-bar { display:flex; gap:5px; margin-bottom:8px; }
+.wf-step {
+  flex:1; height:3.5px; border-radius:99px; background:rgba(255,255,255,.06);
+  transition:all .6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.wf-step.done { background:linear-gradient(90deg, #10B981, #34D399); box-shadow:0 0 8px rgba(16,185,129,.35); }
+.wf-step.active { background:var(--accent-gradient); box-shadow:0 0 8px rgba(255,54,33,.35); }
+.wf-lbl { font-size:10px; color:rgba(255,255,255,.22); font-weight:500; letter-spacing:.01em; }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   MAIN AREA
+   ════════════════════════════════════════════════════════════════════════════ */
+#main { flex:1; display:flex; flex-direction:column; min-width:0; overflow:hidden; }
+
+/* ══ Enterprise Top Bar ══ */
+#topbar {
+  height:var(--hh); background:rgba(255,255,255,.94);
+  backdrop-filter:blur(20px) saturate(1.8);
+  -webkit-backdrop-filter:blur(20px) saturate(1.8);
+  border-bottom:1px solid rgba(200,215,235,.7);
+  display:flex; align-items:center; padding:0 24px 0 28px; gap:14px; flex-shrink:0;
+  box-shadow:0 1px 0 rgba(200,215,235,.8), 0 4px 16px rgba(13,21,38,.05);
+  position:relative; z-index:5;
+}
+#topbar::after {
+  content:''; position:absolute; bottom:0; left:0; right:0; height:2px;
+  background:linear-gradient(90deg, var(--accent-primary) 0%, #FF7A56 40%, rgba(37,99,235,.5) 80%, transparent 100%);
+  opacity:.35;
+}
+.top-icon-wrap {
+  width:40px; height:40px; border-radius:12px;
+  background:linear-gradient(135deg, rgba(255,54,33,.14) 0%, rgba(255,54,33,.06) 100%);
+  border:1px solid rgba(255,54,33,.15);
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  transition:all .3s ease; box-shadow:0 2px 8px rgba(255,54,33,.1);
+}
+.top-icon-wrap:hover { transform:scale(1.06) rotate(-3deg); box-shadow:0 4px 16px rgba(255,54,33,.2); }
+.top-icon-wrap svg { width:17px; height:17px; fill:none; stroke:var(--accent-primary); stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }
+.top-breadcrumb {
+  display:flex; align-items:center; gap:6px; font-size:11px; color:var(--t4);
+  font-weight:500; flex-shrink:0;
+}
+.top-breadcrumb span { color:var(--t3); }
+.top-breadcrumb .bc-sep { opacity:.4; }
+.top-breadcrumb .bc-cur { color:var(--t1); font-weight:700; }
+.top-divider { width:1px; height:28px; background:var(--border); flex-shrink:0; }
+.top-title { font-size:15px; font-weight:700; color:var(--t1); letter-spacing:-.025em; }
+.top-sub { font-size:11px; color:var(--t3); margin-top:1px; font-weight:400; }
+.top-right { margin-left:auto; display:flex; align-items:center; gap:8px; }
+.env-badge {
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:9.5px; font-weight:800; letter-spacing:.1em; text-transform:uppercase;
+  padding:5px 12px; border-radius:99px;
+  background:linear-gradient(135deg, rgba(37,99,235,.1), rgba(99,102,241,.08));
+  border:1px solid rgba(37,99,235,.2); color:#1D4ED8;
+}
+.env-badge::before { content:'●'; font-size:7px; color:#2563EB; }
+.ver-tag {
+  font-size:10px; font-weight:700; color:var(--t4); font-family:var(--font-mono);
+  background:var(--surface-2); border:1px solid var(--border);
+  padding:4px 10px; border-radius:var(--r-sm);
+}
+.user-chip {
+  display:flex; align-items:center; gap:8px; padding:5px 12px 5px 6px;
+  background:var(--surface-2); border:1px solid var(--border);
+  border-radius:99px; cursor:pointer; transition:all .2s ease;
+}
+.user-chip:hover { background:var(--surface-3); border-color:var(--border-2); }
+.user-avatar {
+  width:26px; height:26px; border-radius:50%; flex-shrink:0;
+  background:linear-gradient(135deg, #6366F1, #8B5CF6);
+  display:flex; align-items:center; justify-content:center;
+  font-size:10px; font-weight:800; color:#fff; letter-spacing:-.5px;
+}
+.user-name { font-size:11.5px; font-weight:600; color:var(--t2); }
+.status-chip {
+  display:flex; align-items:center; gap:7px; padding:5px 14px;
+  background:linear-gradient(135deg, rgba(236,253,245,.95) 0%, rgba(209,250,229,.8) 100%);
+  border:1px solid rgba(110,231,183,.6);
+  border-radius:99px; font-size:11px; color:var(--green-fg); font-weight:700;
+  box-shadow:0 1px 6px rgba(16,185,129,.1);
+  letter-spacing:.01em;
+}
+.dot-pulse {
+  width:7px; height:7px; border-radius:50%;
+  background:var(--green);
+  box-shadow:0 0 0 0 rgba(5,150,105,.5);
+  animation:pulse-ring 2s ease-out infinite;
+}
+@keyframes pulse-ring {
+  0%   { box-shadow:0 0 0 0 rgba(5,150,105,.45); }
+  70%  { box-shadow:0 0 0 8px rgba(5,150,105,0); }
+  100% { box-shadow:0 0 0 0 rgba(5,150,105,0); }
+}
+
+/* ── Content ── */
+#content { flex:1; overflow-y:auto; position:relative; background:var(--bg); }
+.tab-pane { display:none; height:auto; min-height:100%; padding:24px 28px 48px; gap:20px; overflow:visible; position:relative; z-index:1; }
+.tab-pane.active { display:flex; animation:fadeUp .25s ease; }
+@keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+.l-col { width:310px; min-width:270px; display:flex; flex-direction:column; gap:14px; overflow-y:visible; flex-shrink:0; }
+.r-col { flex:1; display:flex; flex-direction:column; gap:14px; min-width:0; overflow-y:visible; flex-shrink:0; }
+.tab-pane .card { flex-shrink:0; }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   CARDS — Glassmorphism with subtle glow
+   ════════════════════════════════════════════════════════════════════════════ */
+.card {
+  background:#fff; border:1px solid var(--border); border-radius:var(--r-lg);
+  padding:18px; position:relative; overflow:hidden;
+  box-shadow:var(--shadow-card); transition:all .28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:2px;
+  background:linear-gradient(90deg, var(--blue) 0%, rgba(99,102,241,.5) 50%, transparent 100%);
+  opacity:0; transition:opacity .3s;
+}
+.card:hover { box-shadow:var(--shadow-card-hover); transform:translateY(-2px); border-color:rgba(186,198,218,.8); }
+.card:hover::before { opacity:.7; }
+.card-hd {
+  display:flex; align-items:center; gap:10px; margin-bottom:14px;
+  padding-bottom:12px; border-bottom:1px solid var(--border);
+}
+.card-ico {
+  width:34px; height:34px; border-radius:var(--r);
+  background:linear-gradient(135deg, var(--surface-2) 0%, #fff 100%);
+  border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  transition:all .28s ease; box-shadow:var(--shadow-xs);
+}
+.card:hover .card-ico {
+  background:linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%);
+  border-color:rgba(147,197,253,.7);
+  box-shadow:0 0 14px rgba(37,99,235,.12);
+  transform:scale(1.07) rotate(-2deg);
+}
+.card-ico svg { width:15px; height:15px; fill:none; stroke:var(--t3); stroke-width:2; stroke-linecap:round; stroke-linejoin:round; transition:all .28s ease; }
+.card:hover .card-ico svg { stroke:var(--blue); }
+.card-title { font-size:13.5px; font-weight:700; color:var(--t1); letter-spacing:-.02em; flex:1; }
+
+/* ── OBJECT LIST ── */
+.sel-toolbar {
+  display:flex; align-items:center; gap:5px; padding:7px 12px;
+  background:linear-gradient(135deg, var(--surface-2) 0%, rgba(241,245,249,.6) 100%);
+  border:1px solid var(--border); border-radius:var(--r);
+  margin-bottom:10px;
+}
+.sel-count {
+  margin-left:auto; font-size:10px; font-weight:800; color:var(--blue-fg);
+  background:linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%);
+  border:1px solid rgba(147,197,253,.6);
+  padding:3px 11px; border-radius:99px;
+  box-shadow:0 1px 4px rgba(37,99,235,.1); letter-spacing:.01em;
+}
+
+/* ── SOURCE CONNECTION CARD ── */
+.src-conn-card {
+  background:rgba(255,255,255,.94); border:1px solid rgba(226,232,240,.7);
+  border-radius:var(--r-lg); box-shadow:var(--shadow-card); flex-shrink:0;
+  transition:all .3s ease; overflow:visible;
+}
+.src-conn-card:hover { box-shadow:var(--shadow-card-hover); }
+.src-conn-hd { display:flex; align-items:center; gap:10px; padding:14px 18px; cursor:pointer; user-select:none; transition:var(--ease); border-radius:var(--r-lg); }
+.src-conn-hd:hover { background:rgba(241,245,249,.6); }
+.src-conn-body { padding:0 18px 18px; display:flex; flex-direction:column; gap:10px; overflow:visible; }
+.src-conn-body.collapsed { display:none; }
+.src-conn-dot { width:9px; height:9px; border-radius:50%; background:var(--border-2); flex-shrink:0; margin-left:auto; transition:all .3s; }
+.src-conn-dot.ok { background:var(--green); box-shadow:0 0 0 4px rgba(16,185,129,.12), 0 0 8px rgba(16,185,129,.2); }
+.src-conn-dot.err { background:var(--red); box-shadow:0 0 0 4px rgba(239,68,68,.12), 0 0 8px rgba(239,68,68,.2); }
+.src-conn-chv { font-size:10px; color:var(--t4); transition:transform .25s cubic-bezier(0.4, 0, 0.2, 1); margin-left:4px; }
+.src-conn-chv.open { transform:rotate(180deg); }
+.form-row-2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+
+/* ── SOURCE TYPE SELECT ── */
+.src-select-wrap { position:relative; width:100%; }
+.src-select-wrap::after { content:'\25BC'; position:absolute; right:14px; top:50%; transform:translateY(-50%); font-size:10px; color:var(--t4); pointer-events:none; }
+.src-select {
+  width:100%; padding:10px 36px 10px 14px; font-size:13px; font-weight:600; font-family:var(--font);
+  color:var(--t1); background:var(--surface); border:1px solid var(--border); border-radius:var(--r);
+  appearance:none; -webkit-appearance:none; cursor:pointer;
+  transition:all .2s ease; outline:none;
+}
+.src-select:hover { border-color:var(--t4); background:var(--surface-2); box-shadow:0 2px 8px rgba(0,0,0,.04); }
+.src-select:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(59,130,246,.12), 0 4px 12px rgba(59,130,246,.08); }
+.src-select option { padding:8px 14px; font-size:13px; }
+.src-msg { font-size:11.5px; padding:8px 10px; border-radius:var(--r); display:none; }
+
+/* ── OBJECT SCROLL ── */
+.obj-scroll { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:2px; padding-right:2px; }
+.grp-hd {
+  display:flex; align-items:center; gap:8px; padding:9px 14px;
+  background:linear-gradient(135deg, var(--surface-2) 0%, rgba(241,245,249,.6) 100%);
+  border:1px solid var(--border); border-radius:var(--r);
+  cursor:pointer; user-select:none; transition:all .2s ease; margin-bottom:3px;
+}
+.grp-hd:hover { border-color:var(--border-2); background:var(--surface-3); transform:translateX(2px); }
+.grp-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; box-shadow:0 0 6px currentColor; }
+.grp-lbl { font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.07em; flex:1; }
+.grp-badge { font-size:10px; font-weight:700; padding:2px 9px; border-radius:99px; background:var(--surface); color:var(--t3); border:1px solid var(--border); }
+.grp-chv { font-size:10px; color:var(--t4); transition:transform .2s; }
+.obj-item {
+  display:flex; align-items:center; gap:9px; padding:9px 12px; border-radius:var(--r);
+  cursor:pointer; border:1px solid transparent; transition:all .18s ease; margin-bottom:1px;
+}
+.obj-item:hover { background:rgba(237,241,248,.8); border-color:var(--border); transform:translateX(2px); }
+.obj-item.selected { background:linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 80%); border-color:rgba(147,197,253,.7); box-shadow:0 0 10px rgba(37,99,235,.07); }
+.obj-item input[type=checkbox] { display:none; }
+.chk {
+  width:17px; height:17px; border:1.5px solid var(--border-2); border-radius:5px;
+  flex-shrink:0; display:flex; align-items:center; justify-content:center;
+  font-size:9.5px; color:transparent; transition:all .2s ease;
+}
+.obj-item.selected .chk {
+  background:linear-gradient(135deg, var(--blue) 0%, #60A5FA 100%);
+  border-color:var(--blue); color:#fff;
+  box-shadow:0 0 0 3px rgba(59,130,246,.12), 0 2px 6px rgba(59,130,246,.2);
+}
+.obj-info { flex:1; min-width:0; }
+.obj-name { font-size:12.5px; font-weight:600; color:var(--t1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.obj-desc { font-size:10.5px; color:var(--t4); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
+.badge {
+  font-size:9px; font-weight:800; letter-spacing:.05em; padding:3px 9px;
+  border-radius:6px; flex-shrink:0; border:1px solid; text-transform:uppercase;
+}
+.bsp  { background:var(--sp-bg);  color:var(--sp-c);  border-color:var(--sp-b); }
+.bvw  { background:var(--vw-bg);  color:var(--vw-c);  border-color:var(--vw-b); }
+.budf { background:var(--udf-bg); color:var(--udf-c); border-color:var(--udf-b); }
+.sql-btn {
+  padding:5px 10px; font-size:10.5px; font-weight:700; border:1px solid var(--border);
+  border-radius:var(--r-sm); background:var(--surface); color:var(--t3); cursor:pointer;
+  white-space:nowrap; font-family:var(--font-mono); transition:all .2s ease; letter-spacing:.02em;
+}
+.sql-btn:hover { border-color:var(--blue); color:var(--blue-fg); background:var(--blue-light); box-shadow:0 2px 8px rgba(59,130,246,.1); transform:translateY(-1px); }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   BUTTONS — Premium gradient with depth and micro-interactions
+   ════════════════════════════════════════════════════════════════════════════ */
+.btn {
+  display:inline-flex; align-items:center; gap:7px; padding:10px 20px;
+  border-radius:var(--r); border:none; cursor:pointer; font-size:13px;
+  font-weight:600; font-family:var(--font); transition:all .22s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space:nowrap; flex-shrink:0; position:relative; overflow:hidden;
+  letter-spacing:-.015em; user-select:none;
+}
+.btn svg { width:15px; height:15px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
+.btn:disabled { opacity:.35; cursor:not-allowed; }
+.btn-primary {
+  background:var(--accent-gradient); color:#fff;
+  box-shadow:0 2px 6px rgba(255,54,33,.25), 0 0 0 1px rgba(255,255,255,.1) inset, 0 4px 16px rgba(255,54,33,.12);
+}
+.btn-primary::before {
+  content:''; position:absolute; inset:0;
+  background:linear-gradient(135deg, rgba(255,255,255,.15) 0%, transparent 60%);
+  transition:opacity .3s; pointer-events:none;
+}
+.btn-primary:not(:disabled):hover {
+  background:linear-gradient(135deg, var(--accent-primary-hover) 0%, #FF4C33 50%, #FF7355 100%);
+  box-shadow:0 6px 20px rgba(255,54,33,.4), 0 0 0 1px rgba(255,255,255,.12) inset;
+  transform:translateY(-2px);
+}
+.btn-primary:active { transform:translateY(0); box-shadow:0 1px 4px rgba(255,54,33,.3); }
+.btn-success {
+  background:linear-gradient(135deg, #10B981 0%, #34D399 50%, #6EE7B7 100%); color:#fff;
+  box-shadow:0 2px 6px rgba(16,185,129,.25), 0 4px 16px rgba(16,185,129,.12);
+}
+.btn-success::before {
+  content:''; position:absolute; inset:0;
+  background:linear-gradient(135deg, rgba(255,255,255,.12) 0%, transparent 60%);
+  pointer-events:none;
+}
+.btn-success:not(:disabled):hover {
+  background:linear-gradient(135deg, #059669 0%, #10B981 50%, #34D399 100%);
+  box-shadow:0 6px 20px rgba(16,185,129,.4);
+  transform:translateY(-2px);
+}
+.btn-ghost {
+  background:#fff; border:1.5px solid var(--border);
+  color:var(--t2); box-shadow:0 1px 4px rgba(13,21,38,.06);
+}
+.btn-ghost:not(:disabled):hover { background:var(--surface-2); border-color:var(--border-2); color:var(--t1); transform:translateY(-1px); box-shadow:var(--shadow-sm); }
+.btn-ghost.active { background:rgba(255,54,33,.08); border-color:rgba(255,54,33,.25); color:var(--accent-primary); font-weight:700; }
+.btn-outline { background:transparent; border:1px solid var(--border-2); color:var(--t2); }
+.btn-outline:not(:disabled):hover { border-color:var(--blue); color:var(--blue-fg); background:var(--blue-light); transform:translateY(-1px); }
+.btn-sm  { padding:8px 14px; font-size:12.5px; }
+.btn-xs  { padding:5px 10px; font-size:12px; }
+.btn-full { width:100%; justify-content:center; }
+.btn-prog { position:absolute; left:0; top:0; bottom:0; background:rgba(255,255,255,.15); border-radius:inherit; transition:width .25s ease; pointer-events:none; }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   CODE BOX — Rich dark editor with premium depth
+   ════════════════════════════════════════════════════════════════════════════ */
+.code-box {
+  background:#0D1117; border:1px solid #1C2333; border-radius:var(--r-lg);
+  display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden;
+  box-shadow:0 8px 32px rgba(0,0,0,.2), 0 2px 8px rgba(0,0,0,.15), inset 0 1px 0 rgba(255,255,255,.04);
+}
+.code-toolbar {
+  display:flex; align-items:center; gap:10px; padding:12px 18px;
+  background:linear-gradient(180deg, #161B26 0%, #131820 100%);
+  border-bottom:1px solid #1C2333; flex-shrink:0;
+}
+.win-btns { display:flex; gap:7px; }
+.win-btn { width:12px; height:12px; border-radius:50%; border:none; cursor:default; transition:all .2s; }
+.win-btn.r { background:#FF5F57; box-shadow:0 0 6px rgba(255,95,87,.3); }
+.win-btn.a { background:#FEBC2E; box-shadow:0 0 6px rgba(254,188,46,.3); }
+.win-btn.g { background:#28C840; box-shadow:0 0 6px rgba(40,200,64,.3); }
+.code-fname { font-size:12.5px; font-weight:600; color:#8B949E; display:flex; align-items:center; gap:8px; flex:1; min-width:0; font-family:var(--font-mono); }
+.py-badge {
+  font-size:9px; font-weight:800; padding:3px 10px;
+  background:linear-gradient(135deg, rgba(88,166,255,.15) 0%, rgba(88,166,255,.08) 100%);
+  color:#58A6FF; border:1px solid rgba(88,166,255,.2); border-radius:6px;
+  flex-shrink:0; font-family:var(--font); letter-spacing:.05em;
+}
+.editor {
+  flex:1; overflow:auto; padding:20px 22px; font-family:var(--font-mono);
+  font-size:12.5px; line-height:1.75; color:#C9D1D9; white-space:pre; tab-size:2;
+  background:linear-gradient(180deg, #0D1117 0%, #0B0F16 100%);
+}
+
+/* ── NOTEBOOK TABS ── */
+.nb-bar {
+  display:flex; gap:4px; flex-wrap:wrap; padding:9px 16px;
+  background:linear-gradient(180deg, #161B26 0%, #131820 100%);
+  border-bottom:1px solid #1C2333; flex-shrink:0;
+}
+.nb-tab {
+  display:flex; align-items:center; gap:5px; padding:6px 13px; font-size:11.5px;
+  font-weight:600; border-radius:7px; border:1px solid #252D3A; background:transparent;
+  color:#4B5563; cursor:pointer; transition:all .2s ease; font-family:var(--font); white-space:nowrap;
+}
+.nb-tab:hover { color:#8B949E; background:rgba(255,255,255,.04); border-color:#384050; }
+.nb-tab.active { background:rgba(255,255,255,.07); color:#F0F6FC; border-color:#58A6FF; box-shadow:0 0 8px rgba(88,166,255,.1); }
+.nb-tab.helper { color:#7C3AED; border-color:rgba(124,58,237,.25); }
+.nb-tab.helper.active { background:rgba(124,58,237,.12); color:#C4B5FD; box-shadow:0 0 8px rgba(124,58,237,.1); }
+.nb-tab.sp { color:var(--sp-c); border-color:rgba(234,88,12,.2); } .nb-tab.sp.active { background:rgba(234,88,12,.1); box-shadow:0 0 8px rgba(234,88,12,.08); }
+.nb-tab.vw { color:var(--vw-c); border-color:rgba(2,132,199,.2); } .nb-tab.vw.active { background:rgba(2,132,199,.1); box-shadow:0 0 8px rgba(2,132,199,.08); }
+.nb-tab.ud { color:var(--udf-c); border-color:rgba(124,58,237,.2); } .nb-tab.ud.active { background:rgba(124,58,237,.1); box-shadow:0 0 8px rgba(124,58,237,.08); }
+
+/* ── SOURCE PANEL ── */
+.src-panel {
+  background:rgba(255,255,255,.92); border:1px solid var(--border); border-radius:var(--r-lg);
+  overflow:hidden; flex-shrink:0; animation:slideDown .25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow:var(--shadow-md); backdrop-filter:blur(8px);
+}
+@keyframes slideDown { from { opacity:0; transform:translateY(-10px) scale(.98); } to { opacity:1; transform:translateY(0) scale(1); } }
+.src-hd { display:flex; align-items:center; gap:8px; padding:11px 18px; background:rgba(241,245,249,.6); border-bottom:1px solid rgba(226,232,240,.5); }
+.src-hd-lbl { font-size:10.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--t3); }
+.src-body { max-height:180px; overflow-y:auto; padding:16px 20px; font-family:var(--font-mono); font-size:11.5px; line-height:1.7; color:#334155; white-space:pre-wrap; word-break:break-word; background:rgba(248,250,252,.7); }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   FORMS — Refined inputs with smooth focus
+   ════════════════════════════════════════════════════════════════════════════ */
+.form-grp { display:flex; flex-direction:column; gap:5px; }
+.form-lbl {
+  font-size:11px; font-weight:700; color:var(--t3);
+  text-transform:uppercase; letter-spacing:.06em;
+}
+.form-inp {
+  background:var(--surface); border:1.5px solid var(--border); border-radius:var(--r);
+  color:var(--t1); padding:9px 13px; font-size:13px; font-family:var(--font);
+  outline:none; width:100%; transition:all .22s ease;
+  box-shadow:inset 0 1px 2px rgba(13,21,38,.04);
+}
+.form-inp:hover { border-color:var(--border-2); }
+.form-inp:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(37,99,235,.1), 0 2px 8px rgba(37,99,235,.06); background:#fff; }
+.form-inp::placeholder { color:var(--t4); font-weight:400; }
+textarea.form-inp { resize:vertical; font-family:var(--font-mono); font-size:12px; min-height:90px; }
+select.form-inp { cursor:pointer; }
+.src-type-sel { background:var(--surface); border:1px solid var(--border-2); border-radius:var(--r); color:var(--t1); padding:9px 13px; font-size:13px; font-family:var(--font); outline:none; width:100%; cursor:pointer; transition:all .25s ease; }
+.src-type-sel:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(59,130,246,.1); }
+.g2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   ALERTS — Glassmorphism with soft glow
+   ════════════════════════════════════════════════════════════════════════════ */
+.alert { display:flex; align-items:flex-start; gap:10px; padding:11px 15px; border-radius:var(--r); font-size:13px; line-height:1.5; animation:fadeIn .25s ease; }
+@keyframes fadeIn { from { opacity:0; transform:scale(.98); } to { opacity:1; transform:scale(1); } }
+.a-ico { font-size:14px; flex-shrink:0; margin-top:1px; }
+.a-ok   { background:linear-gradient(135deg, var(--green-light) 0%, rgba(209,250,229,.6) 100%); border:1px solid var(--green-border); color:var(--green-fg); }
+.a-err  { background:linear-gradient(135deg, var(--red-light) 0%, rgba(254,202,202,.4) 100%);   border:1px solid var(--red-border);   color:var(--red-fg); }
+.a-info { background:linear-gradient(135deg, var(--blue-light) 0%, rgba(191,219,254,.4) 100%);  border:1px solid var(--blue-border);  color:var(--blue-fg); }
+.a-warn { background:linear-gradient(135deg, var(--amber-light) 0%, rgba(253,230,138,.4) 100%); border:1px solid var(--amber-border); color:var(--amber-fg); }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   SPINNER & LOADING
+   ════════════════════════════════════════════════════════════════════════════ */
+.spin {
+  display:inline-block; width:14px; height:14px;
+  border:2px solid rgba(59,130,246,.12); border-top-color:var(--blue);
+  border-radius:50%; animation:rot .6s linear infinite; flex-shrink:0;
+}
+.spin-lg { width:32px; height:32px; border-width:3px; }
+@keyframes rot { to { transform:rotate(360deg); } }
+.loading-state { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:48px; color:var(--t3); font-size:13.5px; text-align:center; }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   DEPLOY LOG
+   ════════════════════════════════════════════════════════════════════════════ */
+.dep-row { display:flex; align-items:center; gap:10px; padding:10px 15px; border-radius:var(--r); font-size:12.5px; margin-bottom:4px; animation:slideIn .25s ease; border:1px solid; }
+@keyframes slideIn { from { opacity:0; transform:translateX(-8px); } to { opacity:1; transform:translateX(0); } }
+.dep-row.ok  { background:linear-gradient(135deg, var(--green-light) 0%, rgba(209,250,229,.5) 100%); border-color:var(--green-border); }
+.dep-row.err { background:linear-gradient(135deg, var(--red-light) 0%, rgba(254,202,202,.4) 100%);   border-color:var(--red-border); }
+.blt { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.blt-ok  { background:var(--green); box-shadow:0 0 6px rgba(16,185,129,.3); }
+.blt-err { background:var(--red); box-shadow:0 0 6px rgba(239,68,68,.3); }
+.dep-name { font-weight:600; flex:1; }
+.dep-path { font-size:11px; color:var(--t3); margin-left:auto; }
+
+/* ── EMPTY STATE ── */
+.empty { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:44px; color:var(--t3); text-align:center; }
+.empty-ico { font-size:36px; opacity:.15; }
+.empty-t { font-size:14px; font-weight:700; color:var(--t3); }
+.empty-s { font-size:12.5px; color:var(--t4); line-height:1.6; }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   TOASTS — Glassmorphism dark with accent glow
+   ════════════════════════════════════════════════════════════════════════════ */
+#toasts { position:fixed; bottom:24px; right:24px; display:flex; flex-direction:column; gap:8px; z-index:9999; pointer-events:none; }
+.toast {
+  display:flex; align-items:center; gap:10px; padding:13px 20px;
+  background:rgba(10,15,30,.92); border:1px solid rgba(255,255,255,.1); border-radius:var(--r-lg);
+  box-shadow:0 16px 48px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.2), 0 0 0 1px rgba(255,255,255,.04) inset;
+  font-size:13px; color:#F0F4FF;
+  animation:tIn .3s var(--ease-spring); max-width:420px; pointer-events:auto;
+  backdrop-filter:blur(20px) saturate(1.5);
+}
+.toast.hiding { animation:tOut .25s ease forwards; }
+@keyframes tIn  { from { opacity:0; transform:translateX(40px) scale(.95); } to { opacity:1; transform:translateX(0) scale(1); } }
+@keyframes tOut { to { opacity:0; transform:translateX(40px) scale(.95); } }
+.toast.tok  { border-left:3px solid var(--green); box-shadow:0 12px 40px rgba(0,0,0,.25), 0 0 16px rgba(16,185,129,.08); }
+.toast.terr { border-left:3px solid var(--red); box-shadow:0 12px 40px rgba(0,0,0,.25), 0 0 16px rgba(239,68,68,.08); }
+.toast.tinfo { border-left:3px solid var(--blue); box-shadow:0 12px 40px rgba(0,0,0,.25), 0 0 16px rgba(59,130,246,.08); }
+
+/* ── CLUSTER CARD ── */
+.cl-card {
+  background:linear-gradient(135deg, var(--surface-2) 0%, rgba(241,245,249,.6) 100%);
+  border:1px solid var(--border); border-radius:var(--r); padding:13px 15px;
+  margin-top:8px; transition:all .25s ease; box-shadow:var(--shadow-xs);
+}
+.cl-card:hover { border-color:var(--border-2); box-shadow:var(--shadow-sm); transform:translateY(-1px); }
+.cl-name { font-size:13.5px; font-weight:700; color:var(--t1); display:flex; align-items:center; gap:8px; }
+.cl-meta { font-size:11.5px; color:var(--t3); margin-top:5px; display:flex; gap:12px; }
+.tag {
+  display:inline-flex; align-items:center; gap:4px; font-size:10px; padding:3px 11px;
+  border-radius:99px; border:1px solid; font-weight:800; letter-spacing:.02em;
+}
+.tag-run  { background:linear-gradient(135deg, var(--green-light), rgba(209,250,229,.6)); color:var(--green-fg); border-color:var(--green-border); }
+.tag-stop { background:linear-gradient(135deg, var(--red-light), rgba(254,202,202,.5));   color:var(--red-fg);   border-color:var(--red-border); }
+.tag-pend { background:linear-gradient(135deg, var(--amber-light), rgba(253,230,138,.5)); color:var(--amber-fg); border-color:var(--amber-border); }
+
+/* ── UC TABLE ── */
+.tbl-list { display:flex; flex-direction:column; gap:0; max-height:160px; overflow-y:auto; border:1px solid var(--border); border-radius:var(--r); overflow:hidden; }
+.tbl-item { display:flex; align-items:center; gap:8px; padding:9px 13px; cursor:pointer; border-bottom:1px solid var(--border); font-size:12.5px; color:var(--t2); transition:all .15s ease; }
+.tbl-item:last-child { border-bottom:none; }
+.tbl-item:hover { background:rgba(241,245,249,.7); color:var(--t1); }
+.tbl-item.selected { background:linear-gradient(135deg, var(--blue-light), rgba(219,234,254,.5)); color:var(--blue-fg); font-weight:600; }
+
+/* ── UC RESULT TABLE ── */
+.uc-tbl { width:100%; border-collapse:collapse; font-size:12.5px; }
+.uc-tbl th { background:linear-gradient(135deg, var(--surface-2), rgba(241,245,249,.7)); padding:8px 14px; text-align:left; font-weight:700; border-bottom:2px solid var(--border); border-right:1px solid var(--border); color:var(--t1); white-space:nowrap; font-size:11.5px; }
+.uc-tbl td { padding:7px 14px; border-bottom:1px solid #F1F5F9; border-right:1px solid #F1F5F9; color:var(--t2); max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.uc-tbl tbody tr:hover td { background:rgba(239,246,255,.6); }
+.uc-step { display:flex; align-items:flex-start; gap:10px; padding:11px 4px; border-bottom:1px solid rgba(226,232,240,.5); }
+.uc-step:last-child { border-bottom:none; }
+.uc-step-icon  { font-size:13px; font-weight:700; flex-shrink:0; margin-top:2px; }
+.uc-step-title  { font-size:12.5px; font-weight:700; color:var(--t1); }
+.uc-step-detail { font-size:11.5px; color:var(--t3); margin-top:2px; }
+.uc-step-badge  { font-size:10px; font-weight:800; flex-shrink:0; padding:3px 9px; border-radius:99px; margin-top:2px; }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   DATA MIGRATION TAB
+   ════════════════════════════════════════════════════════════════════════════ */
+.mig-tbl-row { display:flex; align-items:center; gap:8px; padding:9px 13px; border-bottom:1px solid var(--border); cursor:pointer; transition:all .2s ease; }
+.mig-tbl-row:last-child { border-bottom:none; }
+.mig-tbl-row:hover { background:rgba(241,245,249,.7); transform:translateX(2px); }
+.mig-tbl-row.selected { background:linear-gradient(135deg, var(--blue-light), rgba(219,234,254,.5)); }
+.mig-tbl-row .chk { flex-shrink:0; }
+.mig-tbl-info { flex:1; min-width:0; }
+.mig-tbl-name { font-size:12.5px; font-weight:600; color:var(--t1); }
+.mig-tbl-meta { font-size:10.5px; color:var(--t3); }
+.mig-prog-row { display:flex; align-items:center; gap:10px; padding:9px 13px; border-bottom:1px solid rgba(226,232,240,.5); font-size:12.5px; }
+.mig-prog-row:last-child { border-bottom:none; }
+.mig-prog-name { width:140px; font-weight:700; color:var(--t1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-shrink:0; }
+.mig-prog-bar-wrap { flex:1; height:7px; background:var(--surface-2); border-radius:99px; overflow:hidden; }
+.mig-prog-bar { height:100%; border-radius:99px; transition:width .5s cubic-bezier(0.4, 0, 0.2, 1); }
+.mig-prog-bar.running { background:linear-gradient(90deg, var(--blue) 0%, #60A5FA 50%, #93C5FD 100%); box-shadow:0 0 8px rgba(59,130,246,.2); }
+.mig-prog-bar.done    { background:linear-gradient(90deg, var(--green) 0%, #34D399 50%, #6EE7B7 100%); box-shadow:0 0 8px rgba(16,185,129,.2); }
+.mig-prog-bar.failed  { background:linear-gradient(90deg, var(--red) 0%, #F87171 50%, #FCA5A5 100%); box-shadow:0 0 8px rgba(239,68,68,.2); }
+.mig-prog-badge { font-size:10.5px; font-weight:700; padding:3px 10px; border-radius:99px; flex-shrink:0; }
+.mig-log-entry { font-size:11.5px; color:var(--t2); font-family:var(--font-mono); padding:4px 0; border-bottom:1px solid rgba(241,245,249,.8); white-space:pre-wrap; word-break:break-all; }
+.mig-log-entry:last-child { border-bottom:none; }
+.mig-log-entry.ok  { color:var(--green-fg); }
+.mig-log-entry.err { color:var(--red-fg); }
+#migLog::-webkit-scrollbar { width:7px; }
+#migLog::-webkit-scrollbar-track { background:#F1F5F9; border-radius:4px; }
+#migLog::-webkit-scrollbar-thumb { background:#CBD5E1; border-radius:4px; }
+#migLog::-webkit-scrollbar-thumb:hover { background:#94A3B8; }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   MEDALLION ARCHITECTURE TAB
+   ════════════════════════════════════════════════════════════════════════════ */
+.mdl-flow { display:flex; align-items:center; gap:8px; justify-content:center; padding:12px 0; }
+.mdl-stage {
+  flex:1; background:linear-gradient(135deg, var(--surface-2) 0%, rgba(241,245,249,.7) 100%);
+  border:1px solid var(--border); border-radius:var(--r); padding:14px; text-align:center;
+  transition:all .3s ease; position:relative; overflow:hidden;
+}
+.mdl-stage::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:3px;
+  background:linear-gradient(90deg, var(--blue), #60A5FA); opacity:0; transition:opacity .3s;
+}
+.mdl-stage:hover { transform:translateY(-2px); box-shadow:var(--shadow-md); }
+.mdl-stage:hover::before { opacity:1; }
+.mdl-stage.active { border-color:var(--blue); background:linear-gradient(135deg, var(--blue-light), rgba(219,234,254,.5)); }
+.mdl-stage.active::before { opacity:1; }
+.mdl-stage.done { border-color:var(--green); }
+.mdl-stage.done::before { background:linear-gradient(90deg, var(--green), #34D399); opacity:1; }
+.mdl-stage.failed { border-color:var(--red); }
+.mdl-stage.failed::before { background:linear-gradient(90deg, var(--red), #F87171); opacity:1; }
+.mdl-stage-hdr { display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:6px; }
+.mdl-stage-num {
+  width:24px; height:24px; border-radius:50%; background:linear-gradient(135deg, var(--blue), #3B82F6);
+  color:#fff; font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:center;
+  flex-shrink:0;
+}
+.mdl-stage-name { font-size:13px; font-weight:700; color:var(--t1); }
+.mdl-stage-desc { font-size:10.5px; color:var(--t3); margin-bottom:8px; }
+.mdl-stage-badge { font-size:10px; font-weight:700; padding:3px 12px; border-radius:99px; background:var(--surface-2); color:var(--t3); border:1px solid var(--border); display:inline-block; }
+.mdl-arrow { font-size:20px; color:var(--t4); font-weight:300; flex-shrink:0; }
+
+.mdl-nb-tab {
+  padding:6px 14px; border-radius:var(--r); font-size:11.5px; font-weight:600;
+  border:1px solid var(--border); background:var(--surface-2); color:var(--t2); cursor:pointer;
+  transition:all .2s ease;
+}
+.mdl-nb-tab:hover { background:linear-gradient(135deg, var(--blue-light), rgba(219,234,254,.5)); color:var(--blue-fg); }
+.mdl-nb-tab.active { background:linear-gradient(135deg, var(--blue), #3B82F6); color:#fff; border-color:var(--blue); }
+.mdl-nb-tab .nb-layer { font-size:9px; text-transform:uppercase; letter-spacing:.05em; opacity:.75; margin-left:4px; }
+
+.mdl-feature-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.mdl-feature {
+  font-size:10px; font-weight:600; padding:3px 10px; border-radius:99px;
+  background:linear-gradient(135deg, rgba(219,234,254,.5), rgba(191,219,254,.3));
+  color:var(--blue-fg); border:1px solid rgba(59,130,246,.15);
+}
+.mig-summary { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:14px; }
+.mig-stat {
+  background:linear-gradient(135deg, var(--surface-2) 0%, rgba(241,245,249,.6) 100%);
+  border:1px solid var(--border); border-radius:var(--r); padding:14px 12px; text-align:center;
+  transition:all .25s ease;
+}
+.mig-stat:hover { transform:translateY(-1px); box-shadow:var(--shadow-sm); }
+.mig-stat .n { font-size:24px; font-weight:800; line-height:1; }
+.mig-stat .l { font-size:9.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--t3); margin-top:5px; font-weight:700; }
+.wkr-slider { width:100%; accent-color:var(--accent-primary); cursor:pointer; height:4px; }
+
+/* ── NOTES ── */
+.note-grp {
+  font-size:12px; font-weight:700; color:var(--t1); padding:9px 13px;
+  background:linear-gradient(135deg, var(--surface-2) 0%, rgba(241,245,249,.6) 100%);
+  border:1px solid var(--border); border-radius:var(--r); margin-bottom:5px;
+  display:flex; align-items:center; gap:8px;
+}
+.note-item {
+  display:flex; gap:8px; padding:6px 13px 6px 18px; font-size:12px; color:var(--t2);
+  border-left:2px solid var(--border-2); margin-bottom:2px; border-radius:0 6px 6px 0;
+  transition:all .2s ease;
+}
+.note-item:hover { border-left-color:var(--blue); background:linear-gradient(135deg, var(--blue-light), rgba(219,234,254,.4)); color:var(--t1); transform:translateX(3px); }
+.note-item::before { content:'›'; color:var(--blue); font-weight:700; flex-shrink:0; }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   SELF-HEALING BOT TAB
+   ════════════════════════════════════════════════════════════════════════════ */
+#pane-healer {
+  flex-wrap:nowrap;
+}
+.heal-pulse {
+  width:10px; height:10px; border-radius:50%; margin-left:auto; flex-shrink:0;
+  background:var(--t4); animation:healPulse 2s ease-in-out infinite;
+}
+.heal-pulse.healthy  { background:var(--green); box-shadow:0 0 8px rgba(16,185,129,.4); }
+.heal-pulse.degraded { background:var(--amber); box-shadow:0 0 8px rgba(245,158,11,.4); animation:healPulseWarn 1.5s ease-in-out infinite; }
+.heal-pulse.unhealthy{ background:var(--red);   box-shadow:0 0 8px rgba(239,68,68,.4);  animation:healPulseCrit 1s ease-in-out infinite; }
+@keyframes healPulse     { 0%,100%{opacity:1;transform:scale(1);} 50%{opacity:.7;transform:scale(1.15);} }
+@keyframes healPulseWarn { 0%,100%{opacity:1;transform:scale(1);} 50%{opacity:.6;transform:scale(1.25);} }
+@keyframes healPulseCrit { 0%,100%{opacity:1;transform:scale(1);} 50%{opacity:.5;transform:scale(1.35);} }
+
+.heal-overall {
+  font-size:10.5px; font-weight:700; padding:3px 12px; border-radius:99px;
+  background:var(--surface-2); color:var(--t3); border:1px solid var(--border);
+  text-transform:uppercase; letter-spacing:.05em;
+}
+.heal-overall.healthy  { background:var(--green-light); color:var(--green-fg); border-color:var(--green-border); }
+.heal-overall.degraded { background:var(--amber-light); color:var(--amber-fg); border-color:var(--amber-border); }
+.heal-overall.unhealthy{ background:var(--red-light);   color:var(--red-fg);   border-color:var(--red-border); }
+
+.hl-check-row {
+  display:flex; align-items:center; gap:10px; padding:10px 14px;
+  border:1px solid var(--border); border-radius:var(--r);
+  background:linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+  transition:all .2s ease;
+}
+.hl-check-row:hover { transform:translateX(3px); box-shadow:var(--shadow-sm); }
+.hl-check-dot {
+  width:10px; height:10px; border-radius:50%; flex-shrink:0;
+}
+.hl-check-dot.healthy  { background:var(--green); box-shadow:0 0 6px rgba(16,185,129,.3); }
+.hl-check-dot.degraded { background:var(--amber); box-shadow:0 0 6px rgba(245,158,11,.3); }
+.hl-check-dot.unhealthy{ background:var(--red);   box-shadow:0 0 6px rgba(239,68,68,.3); }
+.hl-check-dot.unknown  { background:var(--t4); }
+.hl-check-name { font-size:12.5px; font-weight:600; color:var(--t1); flex:1; }
+.hl-check-detail { font-size:11px; color:var(--t3); max-width:60%; text-align:right; }
+
+.hl-diag-card {
+  padding:14px; border-radius:var(--r); border-left:4px solid var(--border);
+  background:linear-gradient(135deg, var(--surface-2) 0%, rgba(241,245,249,.6) 100%);
+}
+.hl-diag-card.info     { border-left-color:var(--blue); }
+.hl-diag-card.warning  { border-left-color:var(--amber); }
+.hl-diag-card.error    { border-left-color:var(--red); }
+.hl-diag-card.critical { border-left-color:#7C3AED; }
+.hl-diag-hdr { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.hl-diag-cat { font-size:12px; font-weight:700; color:var(--t1); }
+.hl-diag-sev {
+  font-size:9.5px; font-weight:700; padding:2px 10px; border-radius:99px;
+  text-transform:uppercase; letter-spacing:.05em;
+}
+.hl-diag-sev.info     { background:var(--blue-light); color:var(--blue-fg); }
+.hl-diag-sev.warning  { background:var(--amber-light); color:var(--amber-fg); }
+.hl-diag-sev.error    { background:var(--red-light); color:var(--red-fg); }
+.hl-diag-sev.critical { background:#F5F3FF; color:#7C3AED; }
+.hl-diag-desc { font-size:11.5px; color:var(--t2); margin-bottom:6px; }
+.hl-diag-rec  { font-size:11.5px; color:var(--green-fg); background:var(--green-light); padding:8px 12px; border-radius:var(--r-sm); border:1px solid var(--green-border); }
+
+.hl-rule-row {
+  display:flex; align-items:center; gap:8px; padding:8px 12px;
+  border:1px solid var(--border); border-radius:var(--r-sm);
+  background:var(--surface); transition:all .2s ease;
+}
+.hl-rule-row:hover { background:var(--surface-2); }
+.hl-rule-toggle {
+  width:36px; height:20px; border-radius:10px; background:var(--surface-3);
+  border:1px solid var(--border); cursor:pointer; position:relative; transition:all .25s;
+  flex-shrink:0;
+}
+.hl-rule-toggle::after {
+  content:''; position:absolute; top:2px; left:2px; width:14px; height:14px;
+  border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.15);
+  transition:all .25s;
+}
+.hl-rule-toggle.on { background:var(--green); border-color:var(--green); }
+.hl-rule-toggle.on::after { left:18px; }
+.hl-rule-name { font-size:12px; font-weight:600; color:var(--t1); flex:1; }
+.hl-rule-cat  { font-size:9.5px; font-weight:600; color:var(--t3); padding:2px 8px; border-radius:99px; background:var(--surface-2); border:1px solid var(--border); }
+
+.hl-evt {
+  padding:6px 0; border-bottom:1px solid rgba(226,232,240,.5); display:flex; gap:8px;
+  align-items:flex-start; font-size:11px; line-height:1.5;
+}
+.hl-evt:last-child { border-bottom:none; }
+.hl-evt-sev {
+  width:6px; height:6px; border-radius:50%; margin-top:5px; flex-shrink:0;
+}
+.hl-evt-sev.info     { background:var(--blue); }
+.hl-evt-sev.warning  { background:var(--amber); }
+.hl-evt-sev.error    { background:var(--red); }
+.hl-evt-sev.critical { background:#7C3AED; }
+.hl-evt-time { color:var(--t4); flex-shrink:0; white-space:nowrap; }
+.hl-evt-msg  { color:var(--t2); flex:1; word-break:break-word; }
+
+.hl-monitor-row {
+  display:flex; align-items:center; gap:8px; padding:8px 12px;
+  border:1px solid var(--border); border-radius:var(--r-sm);
+  background:var(--surface); transition:all .2s ease;
+}
+.hl-monitor-row:hover { background:var(--surface-2); }
+.hl-mon-status {
+  width:8px; height:8px; border-radius:50%; flex-shrink:0;
+}
+.hl-mon-status.watching  { background:var(--blue);  box-shadow:0 0 6px rgba(59,130,246,.3); }
+.hl-mon-status.running   { background:var(--green); box-shadow:0 0 6px rgba(16,185,129,.3); animation:healPulse 1.5s ease-in-out infinite; }
+.hl-mon-status.failed    { background:var(--red);   box-shadow:0 0 6px rgba(239,68,68,.3); }
+.hl-mon-status.completed { background:var(--green); }
+.hl-mon-status.stopped   { background:var(--t4); }
+
+.hl-rp-row {
+  display:flex; align-items:center; gap:8px; padding:8px 12px;
+  border-bottom:1px solid var(--border); transition:all .2s ease;
+}
+.hl-rp-row:hover { background:var(--surface-2); }
+.hl-rp-row:last-child { border-bottom:none; }
+.hl-rp-name { font-size:12px; font-weight:600; color:var(--t1); flex:1; }
+.hl-rp-time { font-size:10.5px; color:var(--t3); }
+.hl-rp-del  { font-size:10px; color:var(--red); cursor:pointer; padding:2px 6px; border-radius:4px; border:1px solid transparent; transition:all .2s; }
+.hl-rp-del:hover { border-color:var(--red-border); background:var(--red-light); }
+
+.hl-sev-btn.active {
+  background:var(--blue-light) !important; color:var(--blue-fg) !important;
+  border-color:var(--blue-border) !important;
+}
+
+.hl-stats-grid {
+  display:grid; grid-template-columns:repeat(3,1fr); gap:8px;
+}
+.hl-stat-box {
+  background:linear-gradient(135deg, var(--surface-2) 0%, rgba(241,245,249,.6) 100%);
+  border:1px solid var(--border); border-radius:var(--r-sm); padding:10px; text-align:center;
+}
+.hl-stat-box .n { font-size:20px; font-weight:800; line-height:1; }
+.hl-stat-box .l { font-size:9px; text-transform:uppercase; letter-spacing:.08em; color:var(--t3); margin-top:3px; font-weight:700; }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   ENTERPRISE POLISH LAYER
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* Dot-grid content background */
+#content {
+  background-image: radial-gradient(circle, rgba(100,120,150,.12) 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-position: 0 0;
+}
+
+/* Sidebar nav section labels */
+.sb-sec {
+  font-size:8.5px; font-weight:800; color:rgba(255,255,255,.16);
+  text-transform:uppercase; letter-spacing:.18em; padding:16px 14px 5px; user-select:none;
+  display:flex; align-items:center; gap:8px;
+}
+.sb-sec::after {
+  content:''; flex:1; height:1px;
+  background:linear-gradient(90deg, rgba(255,255,255,.08), transparent);
+}
+
+/* Sidebar divider between sections */
+.sb-divider {
+  height:1px; margin:6px 14px;
+  background:linear-gradient(90deg, transparent, rgba(255,255,255,.06), transparent);
+}
+
+/* Card accent colors per section type */
+.card.accent-blue::before   { background:linear-gradient(90deg, var(--blue), rgba(99,102,241,.6), transparent); opacity:.6; }
+.card.accent-green::before  { background:linear-gradient(90deg, var(--green), rgba(52,211,153,.6), transparent); opacity:.5; }
+.card.accent-orange::before { background:linear-gradient(90deg, var(--accent-primary), rgba(255,122,86,.6), transparent); opacity:.5; }
+.card.accent-purple::before { background:linear-gradient(90deg, #7C3AED, rgba(167,139,250,.6), transparent); opacity:.5; }
+.card:hover.accent-blue::before, .card:hover.accent-green::before,
+.card:hover.accent-orange::before, .card:hover.accent-purple::before { opacity:.9; }
+
+/* Enterprise table header */
+.uc-tbl th {
+  background:linear-gradient(135deg, var(--surface-2), #ECF2FC);
+  padding:9px 14px; text-align:left; font-weight:800;
+  border-bottom:2px solid rgba(37,99,235,.15); border-right:1px solid var(--border);
+  color:var(--t2); white-space:nowrap; font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+}
+
+/* Selection count pill upgrade */
+.sel-count {
+  font-size:10px; font-weight:800; letter-spacing:.02em;
+}
+
+/* Code box enterprise glow */
+.code-box {
+  box-shadow:0 8px 32px rgba(0,0,0,.25), 0 2px 8px rgba(0,0,0,.18),
+             inset 0 1px 0 rgba(255,255,255,.05), 0 0 0 1px rgba(37,99,235,.08);
+}
+
+/* Grp header upgrade */
+.grp-hd {
+  background:linear-gradient(135deg, #F0F4FB 0%, rgba(237,241,248,.7) 100%);
+}
+
+/* Mig stats upgrade */
+.mig-stat { border-radius:var(--r-lg); }
+.mig-stat .n { font-size:28px; font-weight:900; }
+
+/* Better badge */
+.badge { letter-spacing:.04em; font-weight:900; }
+
+/* Loading state enterprise */
+.loading-state { gap:16px; padding:56px; }
+.loading-state .spin-lg { border-color:rgba(37,99,235,.1); border-top-color:var(--blue); }
+
+/* Tag refinement */
+.tag { font-weight:900; letter-spacing:.03em; }
+
+/* Better form group gap */
+.form-row-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.g2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+</style>
+</head>
+<body>
+<div id="app">
+<nav id="sidebar">
+  <div class="sb-logo">
+    <div class="brand">
+      <div class="brand-ico">
+        <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+      </div>
+      <div>
+        <div class="brand-name">Migration Studio</div>
+        <div class="brand-sub">SQL → Databricks</div>
+      </div>
+    </div>
+  </div>
+  <div class="sb-stats">
+    <div class="stat-pill"><div class="n" id="statSP" style="color:var(--sp-c)">0</div><div class="l">SP</div></div>
+    <div class="stat-pill"><div class="n" id="statVW" style="color:var(--vw-c)">0</div><div class="l">Views</div></div>
+    <div class="stat-pill"><div class="n" id="statUDF" style="color:var(--udf-c)">0</div><div class="l">UDFs</div></div>
+  </div>
+  <div class="sb-nav">
+    <div class="sb-sec">Workflow</div>
+    <button class="nav-btn active" id="nav-convert" onclick="switchTab('convert',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg></span>
+      Convert to PySpark<span class="nav-badge">0</span>
+    </button>
+    <button class="nav-btn" id="nav-connect" onclick="switchTab('connect',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg></span>
+      Databricks Connect<span class="nav-badge">0</span>
+    </button>
+    <button class="nav-btn" id="nav-deploy" onclick="switchTab('deploy',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg></span>
+      Deploy Notebooks<span class="nav-badge">0</span>
+    </button>
+    <button class="nav-btn" id="nav-uc" onclick="switchTab('uc',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></span>
+      Unity Catalog<span class="nav-badge">0</span>
+    </button>
+    <button class="nav-btn" id="nav-migrate" onclick="switchTab('migrate',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><polyline points="5 9 2 12 5 15"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/></svg></span>
+      Data Migration<span class="nav-badge">0</span>
+    </button>
+    <button class="nav-btn" id="nav-medallion" onclick="switchTab('medallion',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/><path d="M2 12h20"/></svg></span>
+      Medallion Arch<span class="nav-badge">0</span>
+    </button>
+    <button class="nav-btn" id="nav-healer" onclick="switchTab('healer',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M19.69 14a6.9 6.9 0 00.31-2 6.9 6.9 0 00-.31-2l2.15-1.68a.51.51 0 00.12-.64l-2.04-3.53a.51.51 0 00-.61-.22l-2.54 1.02a6.76 6.76 0 00-3.46-2l-.39-2.7a.5.5 0 00-.49-.42h-4.08a.5.5 0 00-.49.42l-.39 2.7a6.76 6.76 0 00-3.46 2L1.73 3.93a.5.5 0 00-.61.22L.09 7.68a.5.5 0 00.12.64L2.36 10a6.9 6.9 0 000 4L.21 15.68a.51.51 0 00-.12.64l2.04 3.53c.12.22.39.3.61.22l2.54-1.02a6.76 6.76 0 003.46 2l.39 2.7c.04.24.25.42.49.42h4.08c.24 0 .45-.18.49-.42l.39-2.7a6.76 6.76 0 003.46-2l2.54 1.02c.22.08.49 0 .61-.22l2.04-3.53a.51.51 0 00-.12-.64L19.69 14zM12 15.5A3.5 3.5 0 1115.5 12 3.5 3.5 0 0112 15.5z"/></svg></span>
+      Self-Healing Bot<span class="nav-badge">0</span>
+    </button>
+  </div>
+  <div class="sb-footer">
+    <div class="wf-bar">
+      <div class="wf-step active" id="wf1"></div>
+      <div class="wf-step" id="wf2"></div>
+      <div class="wf-step" id="wf3"></div>
+      <div class="wf-step" id="wf4"></div>
+      <div class="wf-step" id="wf5"></div>
+      <div class="wf-step" id="wf6"></div>
+      <div class="wf-step" id="wf7"></div>
+    </div>
+    <div class="wf-lbl" id="wfLbl">Step 1 of 7 &mdash; Convert SQL Objects</div>
+    <div class="sb-footer-meta">
+      <span class="sb-ver">v2.4.0</span>
+      <span class="sb-build">build 2026.03.01</span>
+    </div>
+  </div>
+</nav>
+
+<div id="main">
+  <div id="topbar">
+    <div class="top-icon-wrap">
+      <svg id="topIco" viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
+    </div>
+    <div>
+      <div class="top-title" id="topTitle">Convert SQL Objects to PySpark</div>
+      <div class="top-sub" id="topSub">Select objects &mdash; one .py per SP/View + UDFs in HelperFunction.py</div>
+    </div>
+    <div class="top-divider"></div>
+    <div class="top-breadcrumb">
+      <span>Workspace</span>
+      <span class="bc-sep">/</span>
+      <span>Migration</span>
+      <span class="bc-sep">/</span>
+      <span class="bc-cur" id="topBcCur">Convert</span>
+    </div>
+    <div class="top-right">
+      <span class="env-badge">Dev</span>
+      <span class="ver-tag">v2.4</span>
+      <div class="status-chip"><div class="dot-pulse"></div><span>Online</span></div>
+      <div class="user-chip" title="Signed in">
+        <div class="user-avatar">DX</div>
+        <span class="user-name">Databricks</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="content">
+
+    <!-- ═══════════ CONVERT ═══════════ -->
+    <div id="pane-convert" class="tab-pane active">
+      <div class="l-col">
+
+        <!-- SOURCE CONNECTION CARD -->
+        <div class="src-conn-card">
+          <div class="src-conn-hd" onclick="toggleSrcConn()">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+            <span class="card-title">Source Connection</span>
+            <div class="src-conn-dot" id="srcConnDot"></div>
+            <span class="src-conn-chv open" id="srcConnChv">▾</span>
+          </div>
+          <div class="src-conn-body" id="srcConnBody">
+            <div class="form-grp">
+              <label class="form-lbl">Source Type</label>
+              <div class="src-select-wrap">
+                <select id="srcType" class="src-select">
+                  <option value="sqlserver">SQL Server — On-premises &amp; self-hosted</option>
+                  <option value="azuresql">Azure SQL — Azure SQL Database (PaaS)</option>
+                  <option value="synapse">Synapse SQL — Azure Synapse Analytics</option>
+                  <option value="sqlmi">SQL Managed Instance — Near-100% compat</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row-2">
+              <div class="form-grp"><label class="form-lbl">Server / Host</label><input id="srcServer" class="form-inp" placeholder="server.database.windows.net"></div>
+              <div class="form-grp"><label class="form-lbl">Database</label><input id="srcDb" class="form-inp" placeholder="my_database"></div>
+            </div>
+            <div class="form-row-2">
+              <div class="form-grp"><label class="form-lbl">Username</label><input id="srcUser" class="form-inp" placeholder="sa"></div>
+              <div class="form-grp"><label class="form-lbl">Password</label><input id="srcPass" class="form-inp" type="password" placeholder="••••••••"></div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button type="button" class="btn btn-ghost btn-sm" style="flex:1" id="btnTestSrc" onclick="testSourceConn()">
+                <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+                Test
+              </button>
+              <button type="button" class="btn btn-primary btn-sm" style="flex:2" id="btnLoadSrc" onclick="loadFromSource()" disabled>
+                <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+                Load SQL Objects
+              </button>
+            </div>
+            <div class="src-msg" id="srcConnMsg"></div>
+          </div>
+        </div>
+
+        <div class="card" style="flex:1;display:flex;flex-direction:column;min-height:0;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></div>
+            <div class="card-title">SQL Objects</div>
+            <span class="sel-count" id="selCnt">0 / —</span>
+          </div>
+          <div class="sel-toolbar">
+            <button id="fbAll"  class="btn btn-ghost btn-xs" onclick="selectAll()">All</button>
+            <button id="fbNone" class="btn btn-ghost btn-xs" onclick="deselectAll()">None</button>
+            <button id="fbSP"  onclick="selType('SP')"   style="background:var(--sp-bg);color:var(--sp-c);border:1px solid var(--sp-b);font-weight:800;border-radius:5px;padding:4px 10px;cursor:pointer;font-size:10.5px;font-family:var(--font);letter-spacing:.02em">SP</button>
+            <button id="fbVW"  onclick="selType('VIEW')" style="background:var(--vw-bg);color:var(--vw-c);border:1px solid var(--vw-b);font-weight:800;border-radius:5px;padding:4px 10px;cursor:pointer;font-size:10.5px;font-family:var(--font);letter-spacing:.02em">Views</button>
+            <button id="fbUDF" onclick="selType('UDF')"  style="background:var(--udf-bg);color:var(--udf-c);border:1px solid var(--udf-b);font-weight:800;border-radius:5px;padding:4px 10px;cursor:pointer;font-size:10.5px;font-family:var(--font);letter-spacing:.02em">UDFs</button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;">
+            <button type="button" class="btn btn-primary btn-full" id="btnConvert" onclick="convertSelected()" disabled>
+              <svg id="bci" viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
+              <span id="bct">Convert - SQL → PySpark</span>
+              <div class="btn-prog" id="bprog" style="width:0%"></div>
+            </button>
+            <button type="button" class="btn btn-ghost btn-sm btn-full" onclick="previewSource()">
+              <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              View Source SQL
+            </button>
+          </div>
+          <div class="obj-scroll" id="objList">
+            <div class="empty"><div class="empty-ico">🔌</div><div class="empty-t">No objects loaded</div><div class="empty-s">Fill in connection details above,<br>then click <strong>Load SQL Objects</strong></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="r-col">
+        <!-- SOURCE ANALYSIS CARD -->
+        <div class="card" id="analysisCard" style="display:none;flex-shrink:0;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+            <div class="card-title">Source Analysis</div>
+          </div>
+          <!-- Distribution bar -->
+          <div class="an-distbar"><div id="anDistBar" class="an-distbar-inner"></div></div>
+          <!-- Type stat blocks -->
+          <div class="an-types">
+            <div class="an-type-block" style="border-color:#FDBA74;background:#FFF7ED;">
+              <span class="an-type-n" style="color:#C2410C;" id="anCntSP">0</span>
+              <span class="an-type-l">Stored Procs</span>
+            </div>
+            <div class="an-type-block" style="border-color:#7DD3FC;background:#F0F9FF;">
+              <span class="an-type-n" style="color:#0369A1;" id="anCntVIEW">0</span>
+              <span class="an-type-l">Views</span>
+            </div>
+            <div class="an-type-block" style="border-color:#C4B5FD;background:#F5F3FF;">
+              <span class="an-type-n" style="color:#6D28D9;" id="anCntUDF">0</span>
+              <span class="an-type-l">Functions</span>
+            </div>
+          </div>
+          <!-- Type tabs -->
+          <div class="an-tabs">
+            <button class="an-tab" id="anTabSP" onclick="showAnTab('SP')">SP</button>
+            <button class="an-tab" id="anTabVIEW" onclick="showAnTab('VIEW')">VIEW</button>
+            <button class="an-tab" id="anTabUDF" onclick="showAnTab('UDF')">UDF</button>
+          </div>
+          <!-- Object list per tab -->
+          <div class="an-list" id="anList"></div>
+          <!-- Selection summary -->
+          <div class="an-sel-row">
+            <span class="an-sel-label" id="anSelSummary">0 selected · 0 total</span>
+            <div class="an-sel-badges">
+              <span class="an-sel-badge" id="anSelSP"  style="background:#FFF7ED;color:#C2410C;"></span>
+              <span class="an-sel-badge" id="anSelVIEW" style="background:#F0F9FF;color:#0369A1;"></span>
+              <span class="an-sel-badge" id="anSelUDF"  style="background:#F5F3FF;color:#6D28D9;"></span>
+            </div>
+          </div>
+        </div>
+
+        <div id="srcPanel" class="src-panel" style="display:none;">
+          <div class="src-hd">
+            <span class="src-hd-lbl">Source SQL</span>
+            <span id="srcName" style="font-size:11px;color:var(--t3);margin-left:6px;font-family:var(--font-mono)"></span>
+            <button class="btn btn-ghost btn-xs" style="margin-left:auto;" onclick="closeSrc()">✕</button>
+          </div>
+          <div class="src-body" id="srcBody"></div>
+        </div>
+        <div class="code-box">
+          <div class="code-toolbar">
+            <div class="win-btns"><div class="win-btn r"></div><div class="win-btn a"></div><div class="win-btn g"></div></div>
+            <div class="code-fname"><span id="codeTitle">Select objects → Convert</span><span class="py-badge" id="pyBadge" style="display:none">PY</span></div>
+            <button class="btn btn-ghost btn-xs" onclick="copyCode()" id="btnCopy" disabled>📋 Copy</button>
+            <button class="btn btn-ghost btn-xs" onclick="dlCode()" id="btnDL" disabled>↓ Save</button>
+            <button class="btn btn-ghost btn-xs" onclick="dlAllFiles()" id="btnDLAll" disabled>↓ All Files</button>
+          </div>
+          <div class="nb-bar" id="nbBar" style="display:none;"><div id="nbTabs" style="display:flex;gap:4px;flex-wrap:wrap;width:100%;"></div></div>
+          <div class="editor" id="codeOut"><div class="empty" style="color:#4b5563;"><div class="empty-ico">📓</div><div class="empty-t" style="color:#8B949E;">No Output Yet</div><div class="empty-s" style="color:#4B5563;">Select SQL objects, then click<br><strong style="color:#58A6FF;">Convert - SQL → PySpark</strong></div></div></div>
+        </div>
+        <div class="card" id="notesCard" style="display:none;flex-shrink:0;max-height:200px;overflow-y:auto;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg></div>
+            <div class="card-title">Migration Notes</div>
+          </div>
+          <div id="notesList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════ CONNECT ═══════════ -->
+    <div id="pane-connect" class="tab-pane">
+      <div class="l-col">
+        <div class="card">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div>
+            <div class="card-title">Credentials</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <div class="form-grp"><label class="form-lbl">Workspace Host</label><input id="dbHost" class="form-inp" type="text" placeholder="https://adb-xxxx.azuredatabricks.net"></div>
+            <div class="form-grp"><label class="form-lbl">Personal Access Token</label><input id="dbToken" class="form-inp" type="password" placeholder="dapi…"></div>
+            <button class="btn btn-primary btn-full" onclick="testConn()">
+              <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+              Test Connection
+            </button>
+          </div>
+        </div>
+        <div id="connStatus"></div>
+      </div>
+      <div class="r-col">
+        <div class="card" style="flex:1;overflow-y:auto;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+            <div class="card-title">Workspace &amp; Clusters</div>
+          </div>
+          <div id="connInfo"><div class="empty"><div class="empty-ico">🔌</div><div class="empty-t">Not Connected</div><div class="empty-s">Enter credentials and click Test Connection.</div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════ DEPLOY ═══════════ -->
+    <div id="pane-deploy" class="tab-pane">
+      <div class="l-col" style="overflow-y:hidden;">
+        <div class="card" style="flex-shrink:0;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M16.24 7.76a6 6 0 010 8.49M4.93 4.93a10 10 0 000 14.14M7.76 7.76a6 6 0 000 8.49"/></svg></div>
+            <div class="card-title">Deploy Settings</div>
+            <button class="btn btn-ghost btn-xs" onclick="syncDepCreds()" title="Copy credentials from Connect tab" style="margin-left:auto;">
+              <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+              Sync
+            </button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <div class="form-grp"><label class="form-lbl">Workspace Host</label><input id="depHost" class="form-inp" type="text" placeholder="https://adb-xxxx.azuredatabricks.net"></div>
+            <div class="form-grp"><label class="form-lbl">Access Token</label><input id="depToken" class="form-inp" type="password" placeholder="dapi…"></div>
+            <div class="form-grp"><label class="form-lbl">Workspace Path</label><input id="depPath" class="form-inp" value="/Shared/Migrations"></div>
+            <button class="btn btn-success btn-full" id="btnDeployAll" onclick="deployAll()">
+              <svg viewBox="0 0 24 24"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>
+              <span id="depBtnTxt">Deploy All to Databricks</span>
+              <div class="btn-prog" id="depProg" style="width:0%"></div>
+            </button>
+          </div>
+        </div>
+        <div class="card" style="flex:1;display:flex;flex-direction:column;min-height:0;">
+          <div class="card-hd" style="flex-shrink:0;">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg></div>
+            <div class="card-title">Ready to Deploy</div>
+            <span class="sel-count" id="depCnt" style="margin-left:auto;">0 files</span>
+          </div>
+          <div id="deployList" style="flex:1;overflow-y:auto;padding-right:2px;"><div class="empty" style="padding:12px;"><div class="empty-ico">📓</div><div class="empty-s">Convert objects in Step 1 first.</div></div></div>
+        </div>
+      </div>
+      <div class="r-col">
+        <div class="card" style="flex:1;overflow-y:auto;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/></svg></div>
+            <div class="card-title">Upload Log</div>
+          </div>
+          <div id="deployLog"><div class="empty"><div class="empty-ico">📤</div><div class="empty-t">No Deployments Yet</div><div class="empty-s">Results appear here after deploy.</div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════ UNITY CATALOG ═══════════ -->
+    <div id="pane-uc" class="tab-pane">
+      <div class="l-col">
+        <div class="card">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+            <div class="card-title">Unity Catalog Settings</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <div class="form-grp"><label class="form-lbl">Workspace Host</label><input id="ucHost" class="form-inp" type="text" placeholder="https://adb-xxxx.azuredatabricks.net"></div>
+            <div class="form-grp"><label class="form-lbl">Access Token</label><input id="ucToken" class="form-inp" type="password" placeholder="dapi…"></div>
+            <div class="g2">
+              <div class="form-grp"><label class="form-lbl">Catalog</label><input id="ucCatalog" class="form-inp" value="main"></div>
+              <div class="form-grp"><label class="form-lbl">Schema</label><input id="ucSchema" class="form-inp" value="default"></div>
+            </div>
+            <button class="btn btn-primary btn-full" onclick="loadUCTables()">
+              <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+              Load Tables
+            </button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
+            <div class="card-title">SQL Warehouse</div>
+          </div>
+          <select id="ucWarehouse" class="form-inp"><option value="">— load tables first —</option></select>
+        </div>
+        <div class="card" style="flex:1;min-height:0;display:flex;flex-direction:column;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg></div>
+            <div class="card-title">Tables</div>
+          </div>
+          <div class="tbl-list" id="ucTableList"><div class="empty" style="padding:12px;"><div class="empty-s">Load tables first.</div></div></div>
+          <div style="display:flex;gap:8px;margin-top:12px;">
+            <button class="btn btn-outline btn-sm" style="flex:1;" onclick="previewTable()">
+              <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              Preview
+            </button>
+            <button class="btn btn-success btn-sm" style="flex:1;" onclick="executeTable()">
+              <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Execute
+            </button>
+          </div>
+          <input type="hidden" id="ucTable" value="">
+        </div>
+      </div>
+      <div class="r-col">
+        <div class="card" style="flex-shrink:0;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+            <div class="card-title">Custom SQL</div>
+          </div>
+          <textarea id="ucSQL" class="form-inp" rows="4" placeholder="SELECT * FROM main.default.my_table LIMIT 100;"></textarea>
+          <button class="btn btn-primary btn-sm" style="margin-top:10px;" onclick="runCustomSQL()">
+            <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Run SQL
+          </button>
+        </div>
+        <div class="card" style="flex:1;overflow-y:auto;min-height:0;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+            <div class="card-title">Results</div>
+          </div>
+          <div id="ucResults"><div class="empty"><div class="empty-ico">🔍</div><div class="empty-t">No Results Yet</div><div class="empty-s">Preview a table or run a query.</div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════ DATA MIGRATION ═══════════ -->
+    <div id="pane-migrate" class="tab-pane">
+      <div class="l-col">
+        <div class="card" style="flex-shrink:0;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+            <div class="card-title">Source Database</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div class="form-grp">
+              <label class="form-lbl">Source Type</label>
+              <select id="migSrcType" class="form-inp">
+                <option value="sqlserver">🗄️ SQL Server</option>
+                <option value="azuresql">☁️ Azure SQL</option>
+                <option value="synapse">⚡ Synapse SQL</option>
+                <option value="sqlmi">🔒 SQL Managed Instance</option>
+              </select>
+            </div>
+            <div class="g2">
+              <div class="form-grp"><label class="form-lbl">Server</label><input id="migServer" class="form-inp" placeholder="server.database.windows.net"></div>
+              <div class="form-grp"><label class="form-lbl">Database</label><input id="migDb" class="form-inp" placeholder="my_database"></div>
+            </div>
+            <div class="g2">
+              <div class="form-grp"><label class="form-lbl">Username</label><input id="migUser" class="form-inp" placeholder="sa"></div>
+              <div class="form-grp"><label class="form-lbl">Password</label><input id="migPass" class="form-inp" type="password" placeholder="········"></div>
+            </div>
+            <button class="btn btn-primary btn-full" onclick="loadMigTables()" id="btnLoadMigTbls">
+              <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+              Discover Tables
+            </button>
+            <div id="migSrcMsg" style="display:none;"></div>
+          </div>
+        </div>
+        <div class="card" style="flex:1;min-height:0;display:flex;flex-direction:column;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg></div>
+            <div class="card-title">Tables</div>
+            <span id="migTblSelCnt" class="sel-count" style="display:none;">0 selected</span>
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:10px;">
+            <input id="migSearch" class="form-inp" placeholder="Filter tables…" style="flex:1;padding:6px 10px;font-size:12px;" oninput="filterMigTables(this.value)">
+            <button class="btn btn-ghost btn-xs" onclick="selAllMig()">All</button>
+            <button class="btn btn-ghost btn-xs" onclick="deselAllMig()">None</button>
+          </div>
+          <div id="migTblList" style="flex:1;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r);">
+            <div class="empty" style="padding:24px;"><div class="empty-ico">🗄️</div><div class="empty-t">No Tables Loaded</div><div class="empty-s">Click Discover Tables to load source tables.</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="r-col">
+        <div class="card" style="flex-shrink:0;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+            <div class="card-title">Databricks Target</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div class="form-grp"><label class="form-lbl">Workspace Host</label><input id="migHost" class="form-inp" placeholder="https://adb-xxxx.azuredatabricks.net"></div>
+            <div class="form-grp"><label class="form-lbl">Access Token</label><input id="migToken" class="form-inp" type="password" placeholder="dapi…"></div>
+            <div class="g2">
+              <div class="form-grp"><label class="form-lbl">Catalog</label><input id="migCatalog" class="form-inp" value="main"></div>
+              <div class="form-grp"><label class="form-lbl">Schema</label><input id="migSchema" class="form-inp" value="default"></div>
+            </div>
+            <div class="form-grp">
+              <label class="form-lbl">SQL Warehouse</label>
+              <div style="display:flex;gap:6px;">
+                <select id="migWarehouse" class="form-inp" style="flex:1;"><option value="">— load warehouses —</option></select>
+                <button class="btn btn-ghost btn-xs" onclick="loadMigWarehouses()" title="Refresh warehouses">
+                  <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="form-grp">
+              <label class="form-lbl">Parallel Workers: <strong id="migWkrLbl">3</strong></label>
+              <input type="range" id="migWorkers" class="wkr-slider" min="1" max="8" value="3" oninput="G('migWkrLbl').textContent=this.value">
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="flex-shrink:0;">
+          <div id="migSummary" class="mig-summary" style="display:none;">
+            <div class="mig-stat"><div class="n" id="migStTotal" style="color:var(--blue);">0</div><div class="l">Total</div></div>
+            <div class="mig-stat"><div class="n" id="migStDone" style="color:var(--green);">0</div><div class="l">Done</div></div>
+            <div class="mig-stat"><div class="n" id="migStFail" style="color:var(--red);">0</div><div class="l">Failed</div></div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-primary" style="flex:1;justify-content:center;" id="btnStartMig" onclick="startMigration()">
+              <svg viewBox="0 0 24 24"><polyline points="5 9 2 12 5 15"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+              <span id="migBtnTxt">Start Migration</span>
+              <div class="btn-prog" id="migBtnProg" style="width:0%"></div>
+            </button>
+            <button class="btn btn-ghost btn-xs" id="btnStopMig" onclick="stopMigPoll()" style="display:none;" title="Stop polling">
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+            </button>
+          </div>
+          <div id="migStatusBadge" style="margin-top:8px;"></div>
+        </div>
+
+        <div class="card" style="flex-shrink:0;display:none;" id="migProgCard">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+            <div class="card-title">Table Progress</div>
+          </div>
+          <div id="migProgList" style="display:flex;flex-direction:column;"></div>
+        </div>
+
+        <div class="card" id="migLogCard">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+            <div class="card-title">Migration Log</div>
+            <div style="margin-left:auto;display:flex;gap:5px;">
+              <button class="btn btn-ghost btn-xs" onclick="copyMigLog()" title="Copy log"><svg viewBox="0 0 24 24" style="width:11px;height:11px;"><rect x="9" y="9" width="13" height="13" rx="1"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Copy</button>
+              <button class="btn btn-ghost btn-xs" onclick="G('migLog').innerHTML='';_migLogCount=0;">Clear</button>
+            </div>
+          </div>
+          <div id="migLog" style="height:320px;overflow-y:scroll;font-family:var(--font-mono);font-size:11.5px;line-height:1.75;border:1px solid var(--border);border-radius:var(--r);padding:8px 10px;background:#FAFBFC;scrollbar-width:thin;scrollbar-color:#CBD5E1 #F1F5F9;">
+            <div class="empty" style="padding:20px;"><div class="empty-s">Migration log will appear here.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════ MEDALLION ARCHITECTURE ═══════════ -->
+    <div id="pane-medallion" class="tab-pane">
+      <div class="l-col">
+        <!-- Source Config -->
+        <div class="card" style="flex-shrink:0;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+            <div class="card-title">Source Configuration</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div class="form-grp">
+              <label class="form-lbl">Source Type</label>
+              <select id="mdlSrcType" class="form-inp">
+                <option value="sqlserver">🗄️ SQL Server</option>
+                <option value="azuresql">☁️ Azure SQL</option>
+                <option value="synapse">⚡ Synapse SQL</option>
+                <option value="sqlmi">🔒 SQL Managed Instance</option>
+              </select>
+            </div>
+            <div class="g2">
+              <div class="form-grp"><label class="form-lbl">Server</label><input id="mdlServer" class="form-inp" placeholder="server.database.windows.net"></div>
+              <div class="form-grp"><label class="form-lbl">Database</label><input id="mdlDb" class="form-inp" placeholder="my_database"></div>
+            </div>
+            <div class="g2">
+              <div class="form-grp"><label class="form-lbl">Username</label><input id="mdlUser" class="form-inp" placeholder="sa"></div>
+              <div class="form-grp"><label class="form-lbl">Password</label><input id="mdlPass" class="form-inp" type="password" placeholder="········"></div>
+            </div>
+            <button class="btn btn-primary btn-full" onclick="mdlDiscoverTables()" id="btnMdlDiscover">
+              <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+              Discover Tables
+            </button>
+            <div id="mdlSrcMsg" style="display:none;"></div>
+          </div>
+        </div>
+
+        <!-- Table Selection -->
+        <div class="card" style="flex:1;min-height:0;display:flex;flex-direction:column;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg></div>
+            <div class="card-title">Tables for Medallion Pipeline</div>
+            <span id="mdlSelCnt" class="sel-count" style="display:none;">0 selected</span>
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:10px;">
+            <input id="mdlSearch" class="form-inp" placeholder="Filter tables…" style="flex:1;padding:6px 10px;font-size:12px;" oninput="mdlFilterTables(this.value)">
+            <button class="btn btn-ghost btn-xs" onclick="mdlSelAll()">All</button>
+            <button class="btn btn-ghost btn-xs" onclick="mdlSelNone()">None</button>
+          </div>
+          <div id="mdlTblList" style="flex:1;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r);">
+            <div class="empty" style="padding:24px;"><div class="empty-ico">🗄️</div><div class="empty-t">No Tables Loaded</div><div class="empty-s">Discover tables from your source database.</div></div>
+          </div>
+          <!-- Incremental config hint -->
+          <div style="margin-top:8px;padding:8px 12px;background:linear-gradient(135deg,rgba(219,234,254,.5),rgba(191,219,254,.3));border:1px solid rgba(59,130,246,.15);border-radius:var(--r);font-size:11px;color:var(--t3);">
+            💡 <strong>Tip:</strong> After selecting tables, specify an incremental column (e.g. <code>ModifiedDate</code>) for CDC-based incremental loads.
+          </div>
+        </div>
+      </div>
+
+      <div class="r-col">
+        <!-- Databricks Target -->
+        <div class="card" style="flex-shrink:0;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+            <div class="card-title">Databricks Target</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div class="form-grp"><label class="form-lbl">Workspace Host</label><input id="mdlHost" class="form-inp" placeholder="https://adb-xxxx.azuredatabricks.net"></div>
+            <div class="form-grp"><label class="form-lbl">Access Token</label><input id="mdlToken" class="form-inp" type="password" placeholder="dapi…"></div>
+            <div class="g2">
+              <div class="form-grp"><label class="form-lbl">Catalog</label><input id="mdlCatalog" class="form-inp" value="main"></div>
+              <div class="form-grp"><label class="form-lbl">Schema</label><input id="mdlSchema" class="form-inp" value="default"></div>
+            </div>
+            <div class="g2">
+              <div class="form-grp"><label class="form-lbl">Landing Path</label><input id="mdlLandingPath" class="form-inp" value="/mnt/landing"></div>
+              <div class="form-grp"><label class="form-lbl">Workspace Path</label><input id="mdlWsPath" class="form-inp" value="/Shared/Medallion"></div>
+            </div>
+            <div class="form-grp">
+              <label class="form-lbl">Pipeline Mode</label>
+              <select id="mdlMode" class="form-inp">
+                <option value="standard">🏗️ Standard Spark (Manual)</option>
+                <option value="dlt">⚡ Delta Live Tables (DLT)</option>
+              </select>
+            </div>
+            <div class="form-grp">
+              <label class="form-lbl">Load Type</label>
+              <select id="mdlLoadType" class="form-inp">
+                <option value="full">📦 Full Load</option>
+                <option value="incremental">🔄 Incremental Load (CDC)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Medallion Flow Visual -->
+        <div class="card" style="flex-shrink:0;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/><path d="M2 12h20"/></svg></div>
+            <div class="card-title">Medallion Pipeline</div>
+          </div>
+          <div class="mdl-flow">
+            <div class="mdl-stage" id="mdlStLanding">
+              <div class="mdl-stage-hdr">
+                <span class="mdl-stage-num">1</span>
+                <span class="mdl-stage-name">Landing Zone</span>
+              </div>
+              <div class="mdl-stage-desc">JDBC Extract → Parquet</div>
+              <div class="mdl-stage-badge" id="mdlBadgeLanding">Pending</div>
+            </div>
+            <div class="mdl-arrow">→</div>
+            <div class="mdl-stage" id="mdlStBronze">
+              <div class="mdl-stage-hdr">
+                <span class="mdl-stage-num" style="background:linear-gradient(135deg,#CD7F32,#A0522D);">2</span>
+                <span class="mdl-stage-name">Bronze</span>
+              </div>
+              <div class="mdl-stage-desc">Raw → Delta (DLT)</div>
+              <div class="mdl-stage-badge" id="mdlBadgeBronze">Pending</div>
+            </div>
+            <div class="mdl-arrow">→</div>
+            <div class="mdl-stage" id="mdlStSilver">
+              <div class="mdl-stage-hdr">
+                <span class="mdl-stage-num" style="background:linear-gradient(135deg,#C0C0C0,#808080);">3</span>
+                <span class="mdl-stage-name">Silver</span>
+              </div>
+              <div class="mdl-stage-desc">Cleanse + Validate</div>
+              <div class="mdl-stage-badge" id="mdlBadgeSilver">Pending</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="card" style="flex-shrink:0;">
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <button class="btn btn-primary btn-full" id="btnMdlGenerate" onclick="mdlGenerate()">
+              <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+              Generate Medallion Notebooks
+            </button>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-primary" style="flex:1;" id="btnMdlDeploy" onclick="mdlDeploy()" disabled>
+                <svg viewBox="0 0 24 24"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>
+                Deploy to Databricks
+              </button>
+              <button class="btn btn-ghost" style="flex:1;" id="btnMdlRun" onclick="mdlRunPipeline()" disabled>
+                <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Run Pipeline
+              </button>
+            </div>
+          </div>
+          <div id="mdlStatusMsg" style="margin-top:8px;display:none;"></div>
+        </div>
+
+        <!-- Generated Notebooks Preview -->
+        <div class="card" style="flex:1;min-height:0;display:flex;flex-direction:column;" id="mdlPreviewCard">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+            <div class="card-title">Generated Notebooks</div>
+            <span id="mdlNbCount" class="sel-count" style="display:none;">0 notebooks</span>
+          </div>
+          <!-- Notebook tabs -->
+          <div id="mdlNbTabs" style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;"></div>
+          <!-- Code preview -->
+          <div id="mdlCodePreview" style="flex:1;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r);background:#1E1E2E;padding:12px;">
+            <pre style="margin:0;color:#CDD6F4;font-family:var(--font-mono);font-size:12px;line-height:1.7;white-space:pre-wrap;"><code id="mdlCodeBody">// Notebooks will appear here after generation…</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════ SELF-HEALING BOT ═══════════ -->
+    <div id="pane-healer" class="tab-pane">
+      <div class="l-col">
+        <!-- Health Dashboard -->
+        <div class="card" style="flex-shrink:0;">
+          <div class="card-hd">
+            <div class="card-ico" style="color:var(--green);"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+            <div class="card-title">System Health</div>
+            <span class="heal-pulse" id="hlPulse"></span>
+            <span id="hlOverall" class="heal-overall">Unknown</span>
+          </div>
+          <div id="hlChecks" style="display:flex;flex-direction:column;gap:6px;">
+            <div class="empty" style="padding:20px;"><div class="empty-ico">🩺</div><div class="empty-t">Click "Run Health Check" to diagnose all subsystems</div></div>
+          </div>
+          <button class="btn btn-primary btn-full" style="margin-top:10px;" onclick="hlRunHealthCheck()" id="btnHlCheck">
+            <svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            Run Health Check
+          </button>
+        </div>
+
+        <!-- Diagnose Error -->
+        <div class="card" style="flex-shrink:0;">
+          <div class="card-hd">
+            <div class="card-ico" style="color:var(--amber);"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+            <div class="card-title">Diagnose Error</div>
+          </div>
+          <textarea id="hlErrorText" class="form-inp" rows="4" placeholder="Paste an error message or exception traceback here…\n\nExamples:\n  java.lang.OutOfMemoryError: GC overhead limit exceeded\n  Connection timed out after 15 seconds\n  AnalysisException: Table not found" style="font-family:var(--font-mono);font-size:11.5px;resize:vertical;"></textarea>
+          <button class="btn btn-primary btn-full" style="margin-top:8px;" onclick="hlDiagnose()" id="btnHlDiagnose">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            Diagnose & Recommend
+          </button>
+          <div id="hlDiagResult" style="margin-top:8px;display:none;"></div>
+        </div>
+
+        <!-- Restore Points -->
+        <div class="card" style="flex:1;min-height:0;display:flex;flex-direction:column;">
+          <div class="card-hd">
+            <div class="card-ico" style="color:var(--blue);"><svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg></div>
+            <div class="card-title">Restore Points</div>
+            <span id="hlRpCount" class="sel-count" style="display:none;">0</span>
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:8px;">
+            <input id="hlRpName" class="form-inp" placeholder="Restore point name…" style="flex:1;padding:6px 10px;font-size:12px;">
+            <button class="btn btn-primary btn-xs" onclick="hlCreateRp()">+ Create</button>
+          </div>
+          <div id="hlRpList" style="flex:1;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r);">
+            <div class="empty" style="padding:20px;"><div class="empty-ico">📌</div><div class="empty-t">No Restore Points</div><div class="empty-s">Create one before running pipelines.</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="r-col">
+        <!-- Connection for healer -->
+        <div class="card" style="flex-shrink:0;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg></div>
+            <div class="card-title">Bot Configuration</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div class="g2">
+              <div class="form-grp"><label class="form-lbl">Databricks Host</label><input id="hlHost" class="form-inp" placeholder="https://adb-xxxx.azuredatabricks.net"></div>
+              <div class="form-grp"><label class="form-lbl">Access Token</label><input id="hlToken" class="form-inp" type="password" placeholder="dapi…"></div>
+            </div>
+            <div class="g2">
+              <div class="form-grp"><label class="form-lbl">Source Server</label><input id="hlSrcServer" class="form-inp" placeholder="server (optional)"></div>
+              <div class="form-grp"><label class="form-lbl">Source Database</label><input id="hlSrcDb" class="form-inp" placeholder="database"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Active Monitors -->
+        <div class="card" style="flex-shrink:0;">
+          <div class="card-hd">
+            <div class="card-ico" style="color:var(--blue);"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+            <div class="card-title">Job Monitor</div>
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:8px;">
+            <input id="hlRunId" class="form-inp" placeholder="Databricks Run ID…" style="flex:1;padding:6px 10px;font-size:12px;">
+            <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--t3);white-space:nowrap;"><input type="checkbox" id="hlAutoHeal" checked> Auto-heal</label>
+            <button class="btn btn-primary btn-xs" onclick="hlStartMonitor()">Monitor</button>
+          </div>
+          <div id="hlMonitors" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;">
+            <div style="font-size:12px;color:var(--t4);text-align:center;padding:10px;">No active monitors</div>
+          </div>
+        </div>
+
+        <!-- Healing Rules -->
+        <div class="card" style="flex-shrink:0;">
+          <div class="card-hd">
+            <div class="card-ico" style="color:var(--accent-primary);"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+            <div class="card-title">Healing Rules</div>
+            <span id="hlRuleCount" class="sel-count" style="display:none;">0 active</span>
+          </div>
+          <div id="hlRules" style="display:flex;flex-direction:column;gap:4px;max-height:260px;overflow-y:auto;"></div>
+          <button class="btn btn-ghost btn-full" style="margin-top:8px;font-size:11px;" onclick="hlLoadRules()">Refresh Rules</button>
+        </div>
+
+        <!-- Audit Trail -->
+        <div class="card" style="flex:1;min-height:0;display:flex;flex-direction:column;">
+          <div class="card-hd">
+            <div class="card-ico" style="color:var(--t3);"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></div>
+            <div class="card-title">Audit Trail</div>
+            <span id="hlEventCount" class="sel-count" style="display:none;">0 events</span>
+            <button class="btn btn-ghost btn-xs" style="margin-left:auto;font-size:10px;" onclick="hlClearHistory()">Clear</button>
+          </div>
+          <div style="display:flex;gap:4px;margin-bottom:8px;">
+            <button class="btn btn-ghost btn-xs hl-sev-btn active" onclick="hlFilterSev(null,this)">All</button>
+            <button class="btn btn-ghost btn-xs hl-sev-btn" onclick="hlFilterSev('info',this)">Info</button>
+            <button class="btn btn-ghost btn-xs hl-sev-btn" onclick="hlFilterSev('warning',this)">Warn</button>
+            <button class="btn btn-ghost btn-xs hl-sev-btn" onclick="hlFilterSev('error',this)">Error</button>
+            <button class="btn btn-ghost btn-xs hl-sev-btn" onclick="hlFilterSev('critical',this)">Critical</button>
+          </div>
+          <div id="hlHistory" style="flex:1;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r);background:var(--surface-2);padding:8px;font-family:var(--font-mono);font-size:11px;">
+            <div style="color:var(--t4);text-align:center;padding:16px;">No events yet — run a health check to start.</div>
+          </div>
+          <div style="margin-top:8px;display:flex;gap:8px;">
+            <button class="btn btn-ghost btn-full btn-xs" onclick="hlRefreshHistory()">
+              <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+              Refresh
+            </button>
+            <button class="btn btn-ghost btn-full btn-xs" onclick="hlRefreshStats()">
+              <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+              Stats
+            </button>
+          </div>
+          <div id="hlStatsBox" style="margin-top:6px;display:none;"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+<div id="toasts"></div>
+
+<!-- Pre-diagnostic: runs in its own script block to detect if JS works at all -->
+<script>
+(function(){
+  window.__jsPhase = 'pre';
+  var d = document.createElement('div');
+  d.id = 'jsDiag';
+  d.style.cssText = 'position:fixed;bottom:6px;right:6px;z-index:99999;background:#fef3c7;color:#92400e;border:1.5px solid #f59e0b;padding:6px 12px;border-radius:6px;font:11px/1.3 monospace;box-shadow:0 2px 8px rgba(0,0,0,.15);';
+  d.textContent = 'JS Phase: pre (main script loading...)';
+  document.body.appendChild(d);
+})();
+</script>
+
+<!-- ════════════════════════════════════════════════════════════════════════════
+     JAVASCRIPT — all logic unchanged, just the file
+     ════════════════════════════════════════════════════════════════════════════ -->
+<script>
+window.onerror=function(msg,src,line,col,err){const d=document.createElement('div');d.style.cssText='position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:99999;background:#fee2e2;color:#b91c1c;border:2px solid #f87171;padding:12px 18px;border-radius:8px;font:13px/1.4 monospace;max-width:80vw;white-space:pre-wrap;box-shadow:0 8px 32px rgba(0,0,0,.2);';d.textContent='JS ERROR (line '+line+'): '+msg;document.body.appendChild(d);setTimeout(()=>d.remove(),15000);return false;};
+const G = id => document.getElementById(id);
+let ALL_OBJECTS=[], HELPER_RESULT=null, ACTIVE_FILE=null, UC_TABLE=null;
+
+function toast(msg,type='tinfo',dur=3200){
+  const icons={tok:'✓',terr:'✕',tinfo:'ℹ'};
+  const el=document.createElement('div');
+  el.className='toast '+type;
+  el.innerHTML='<span style="font-weight:700;font-size:13px;flex-shrink:0;">'+(icons[type]||'ℹ')+'</span><span>'+msg+'</span>';
+  G('toasts').prepend(el);
+  setTimeout(()=>{el.classList.add('hiding');setTimeout(()=>el.remove(),220);},dur);
+}
+
+const TAB_META={
+  convert:{title:'Convert SQL Objects to PySpark',sub:'One .py per SP/View · All UDFs bundled into HelperFunction.py',step:1},
+  connect:{title:'Databricks Connection',sub:'Test and verify your Databricks workspace connection',step:2},
+  deploy:{title:'Deploy Notebooks',sub:'Upload individual notebooks to your Databricks workspace',step:3},
+  uc:{title:'Unity Catalog Execute',sub:'Execute pipelines and query tables in Unity Catalog',step:4},
+  migrate:{title:'Data Migration',sub:'Bulk-migrate source tables → Databricks Unity Catalog Delta tables',step:5},
+  medallion:{title:'Medallion Architecture',sub:'Landing → Bronze → Silver pipeline with DLT, quality checks & restore points',step:6},
+  healer:{title:'Self-Healing Bot',sub:'Intelligent failure detection, auto-recovery, and system health monitoring',step:7},
+};
+const WF_LBL=['Convert SQL Objects','Test Connection','Deploy Notebooks','Unity Catalog','Data Migration','Medallion Architecture','Self-Healing Bot'];
+const TAB_ICONS={
+  convert:'<polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/>',
+  connect:'<path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>',
+  deploy:'<polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/>',
+  uc:'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
+  migrate:'<polyline points="5 9 2 12 5 15"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/>',
+  medallion:'<circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/><path d="M2 12h20"/>',
+  healer:'<path d="M19.69 14a6.9 6.9 0 00.31-2 6.9 6.9 0 00-.31-2l2.15-1.68a.51.51 0 00.12-.64l-2.04-3.53a.51.51 0 00-.61-.22l-2.54 1.02a6.76 6.76 0 00-3.46-2l-.39-2.7a.5.5 0 00-.49-.42h-4.08a.5.5 0 00-.49.42l-.39 2.7a6.76 6.76 0 00-3.46 2L1.73 3.93a.5.5 0 00-.61.22L.09 7.68a.5.5 0 00.12.64L2.36 10a6.9 6.9 0 000 4L.21 15.68a.51.51 0 00-.12.64l2.04 3.53c.12.22.39.3.61.22l2.54-1.02a6.76 6.76 0 003.46 2l.39 2.7c.04.24.25.42.49.42h4.08c.24 0 .45-.18.49-.42l.39-2.7a6.76 6.76 0 003.46-2l2.54 1.02c.22.08.49 0 .61-.22l2.04-3.53a.51.51 0 00-.12-.64L19.69 14zM12 15.5A3.5 3.5 0 1115.5 12 3.5 3.5 0 0112 15.5z"/>',
+};
+
+function switchTab(id,btn){
+  document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  G('pane-'+id).classList.add('active');
+  G('nav-'+id).classList.add('active');
+
+  if(id==='deploy'){
+    const h=G('dbHost'),t=G('dbToken'),dh=G('depHost'),dt=G('depToken');
+    if(dh&&h&&h.value&&!dh.value)dh.value=h.value;
+    if(dt&&t&&t.value&&!dt.value)dt.value=t.value;
+  }
+  if(id==='migrate'){
+    const h=G('dbHost'),t=G('dbToken'),mh=G('migHost'),mt=G('migToken');
+    if(mh&&h&&h.value&&!mh.value)mh.value=h.value;
+    if(mt&&t&&t.value&&!mt.value)mt.value=t.value;
+  }
+  if(id==='medallion'){
+    const h=G('dbHost'),t=G('dbToken'),mh=G('mdlHost'),mt=G('mdlToken');
+    if(mh&&h&&h.value&&!mh.value)mh.value=h.value;
+    if(mt&&t&&t.value&&!mt.value)mt.value=t.value;
+  }
+  if(id==='healer'){
+    const h=G('dbHost'),t=G('dbToken'),hh=G('hlHost'),ht=G('hlToken');
+    if(hh&&h&&h.value&&!hh.value)hh.value=h.value;
+    if(ht&&t&&t.value&&!ht.value)ht.value=t.value;
+  }
+  const m=TAB_META[id];
+  if(m){
+    G('topIco').innerHTML=TAB_ICONS[id]||TAB_ICONS.convert;
+    G('topTitle').textContent=m.title;
+    G('topSub').textContent=m.sub;
+    if(G('topBcCur')) G('topBcCur').textContent=m.title;
+    for(let i=1;i<=7;i++){const s=G('wf'+i);if(s) s.className='wf-step'+(i<m.step?' done':i===m.step?' active':'');}
+    G('wfLbl').textContent='Step '+m.step+' of 7 \u2014 '+WF_LBL[m.step-1];
+  }
+}
+
+async function loadObjects(){
+  try{
+    const r=await fetch('/api/all-objects');
+    const d=await r.json();
+    if(!d.success)throw new Error(d.error||'Load failed');
+    const MAP={stored_procedure:'SP',view:'VIEW',udf:'UDF'};
+    ALL_OBJECTS=[];
+    const C={SP:0,VIEW:0,UDF:0};
+    for(const[ot,items]of Object.entries(d.grouped||{})){
+      items.forEach(o=>{
+        const t=MAP[ot]||ot.toUpperCase();
+        ALL_OBJECTS.push({key:o.key,name:o.name,description:o.description,object_type:ot,type:t});
+        if(C[t]!==undefined)C[t]++;
+      });
+    }
+    G('statSP').textContent=C.SP;G('statVW').textContent=C.VIEW;G('statUDF').textContent=C.UDF;
+    renderObjects();
+  }catch(e){G('objList').innerHTML='<div class="alert a-err"><span class="a-ico">✕</span>Failed: '+e.message+'</div>';}
+}
+
+function renderObjects(){
+  const GRPS={SP:[],VIEW:[],UDF:[]};
+  ALL_OBJECTS.forEach(o=>{if(GRPS[o.type])GRPS[o.type].push(o);});
+  const M={
+    SP:{label:'Stored Procedures',dot:'var(--sp-c)',lc:'var(--sp-c)',tc:'sp'},
+    VIEW:{label:'SQL Views',dot:'var(--vw-c)',lc:'var(--vw-c)',tc:'vw'},
+    UDF:{label:'User-Defined Functions',dot:'var(--udf-c)',lc:'var(--udf-c)',tc:'udf'},
+  };
+  let html='';
+  for(const[t,items]of Object.entries(GRPS)){
+    if(!items.length)continue;
+    const m=M[t];
+    html+=`<div class="grp-hd" onclick="toggleGrp('${t}')">
+      <span class="grp-dot" style="background:${m.dot}"></span>
+      <span class="grp-lbl" style="color:${m.lc}">${m.label}</span>
+      <span class="grp-badge">${items.length}</span>
+      <span class="grp-chv" id="gc${t}">▾</span>
+    </div><div id="gi${t}">`;
+    items.forEach(o=>{
+      html+=`<div class="obj-item" id="oi${o.key}" onclick="togItem('${o.key}',event)">
+        <input type="checkbox" id="ck${o.key}">
+        <span class="chk" id="cb${o.key}">✓</span>
+        <span class="badge b${m.tc}">${t}</span>
+        <div class="obj-info"><div class="obj-name">${o.key}</div><div class="obj-desc">${o.description||''}</div></div>
+        <button class="sql-btn" onclick="event.stopPropagation();loadSrc('${o.key}')">SQL</button>
+      </div>`;
+    });
+    html+='</div>';
+  }
+  G('objList').innerHTML=html||'<div class="empty"><div class="empty-s">No objects loaded.</div></div>';
+  updSelCnt();
+}
+
+function toggleGrp(t){const el=G('gi'+t),chv=G('gc'+t);if(!el)return;const hide=el.style.display!=='none';el.style.display=hide?'none':'';if(chv)chv.textContent=hide?'▸':'▾';}
+function togItem(key,e){if(e.target.classList.contains('sql-btn'))return;const c=G('ck'+key);if(c){c.checked=!c.checked;updSel();}}
+function updSel(){ALL_OBJECTS.forEach(o=>{const c=G('ck'+o.key),item=G('oi'+o.key),cb=G('cb'+o.key);const s=c&&c.checked;if(item)item.classList.toggle('selected',s);if(cb)cb.style.color=s?'#fff':'transparent';});updSelCnt();}
+function updSelCnt(){const n=getSel().length;G('selCnt').textContent=n+' / '+ALL_OBJECTS.length;const b=G('btnConvert');if(b)b.disabled=(n===0);updAnalysisSel();}
+function getSel(){return ALL_OBJECTS.filter(o=>{const c=G('ck'+o.key);return c&&c.checked;});}
+
+/* ── Source Analysis ── */
+function renderAnalysis(objects){
+  const card=G('analysisCard');
+  if(!objects||!objects.length){card.style.display='none';return;}
+  const byType={SP:[],VIEW:[],UDF:[]};
+  objects.forEach(o=>{const t=o.type;if(byType[t])byType[t].push(o);else byType[t]=[o];});
+  const total=objects.length;
+  const cnts={SP:byType.SP.length,VIEW:byType.VIEW.length,UDF:byType.UDF.length};
+  // Distribution bar
+  const BGMAP={SP:'#FB923C',VIEW:'#38BDF8',UDF:'#A78BFA'};
+  G('anDistBar').innerHTML=['SP','VIEW','UDF'].map(t=>{
+    const w=total?Math.round(cnts[t]/total*100):0;
+    return w?`<div class="an-bar-seg" style="width:${w}%;background:${BGMAP[t]}" title="${cnts[t]} ${t}"></div>`:'';
+  }).join('');
+  // Type counts
+  ['SP','VIEW','UDF'].forEach(t=>{const el=G('anCnt'+t);if(el)el.textContent=cnts[t];});
+  // Show first non-empty tab
+  window._AN_DATA=byType;
+  const first=['SP','VIEW','UDF'].find(t=>cnts[t]>0)||'SP';
+  showAnTab(first);
+  card.style.display='';
+  updAnalysisSel();
+}
+function showAnTab(type){
+  const d=window._AN_DATA;
+  if(!d)return;
+  ['SP','VIEW','UDF'].forEach(t=>{const btn=G('anTab'+t);if(btn)btn.classList.toggle('active',t===type);});
+  const items=d[type]||[];
+  const DOTMAP={SP:'#C2410C',VIEW:'#0369A1',UDF:'#6D28D9'};
+  if(!items.length){G('anList').innerHTML='<div class="an-empty">No '+type+' objects loaded</div>';return;}
+  G('anList').innerHTML=items.map(o=>{
+    const len=(o.code||'').length;
+    const cx=len===0?null:len<500?'LOW':len<1500?'MED':'HIGH';
+    const cxS=cx==='LOW'?'background:#DCFCE7;color:#15803D':cx==='MED'?'background:#FEF9C3;color:#92400E':cx==='HIGH'?'background:#FEE2E2;color:#B91C1C':'';
+    return `<div class="an-item" onclick="loadSrc('${o.key}')" title="Click to view SQL">`+
+      `<span class="an-item-dot" style="background:${DOTMAP[type]}"></span>`+
+      `<span class="an-item-name">${o.name}</span>`+
+      (cx?`<span class="an-cx" style="${cxS}">${cx}</span>`:'')+
+      `</div>`;
+  }).join('');
+}
+function updAnalysisSel(){
+  const sel=typeof getSel==='function'?getSel():[];
+  const total=ALL_OBJECTS?ALL_OBJECTS.length:0;
+  const el=G('anSelSummary');
+  if(el)el.textContent=sel.length+' selected · '+total+' total';
+  ['SP','VIEW','UDF'].forEach(t=>{
+    const n=ALL_OBJECTS?ALL_OBJECTS.filter(o=>o.type===t&&(()=>{const c=G('ck'+o.key);return c&&c.checked;})()).length:0;
+    const badge=G('anSel'+t);
+    if(badge){badge.textContent=n?(n+''):'';badge.style.opacity=n?'1':'0';}
+  });
+}
+
+/* ── Source Connection ── */
+const IDD_OPTS = {
+  sqlserver: {label:'SQL Server'},
+  azuresql: {label:'Azure SQL'},
+  synapse:  {label:'Synapse SQL'},
+  sqlmi:    {label:'SQL Managed Instance'}
+};
+// toggleIDD / pickSrcType no longer needed — native <select> handles it
+function toggleIDD(){}
+function pickSrcType(){}
+
+function toggleSrcConn(){
+  const body=G('srcConnBody'),chv=G('srcConnChv');
+  body.classList.toggle('collapsed');
+  chv.classList.toggle('open');
+}
+
+async function testSourceConn(){
+  const btn=G('btnTestSrc');
+  const server=G('srcServer').value.trim(),db=G('srcDb').value.trim(),user=G('srcUser').value.trim();
+  if(!server||!db||!user){toast('Server, database and username are required.','terr');return;}
+  const origHTML=btn.innerHTML;
+  btn.disabled=true;btn.innerHTML='<div class="spin"></div>';
+  const msg=G('srcConnMsg');
+  msg.style.display='none';
+  try{
+    const r=await fetch('/api/source/test-connection',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source_type:G('srcType').value,server,database:db,username:user,password:G('srcPass').value})});
+    const d=await r.json();
+    msg.style.display='';
+    if(d.success){
+      msg.style.cssText='display:block;background:var(--green-light);color:var(--green-fg);border:1px solid var(--green-border);font-size:11.5px;padding:8px 10px;border-radius:var(--r);';
+      msg.textContent='✓ '+d.server_version;
+      G('srcConnDot').className='src-conn-dot ok';
+      G('btnLoadSrc').disabled=false;
+      toast('Source connected successfully!','tok');
+    }else{
+      msg.style.cssText='display:block;background:var(--red-light);color:var(--red-fg);border:1px solid var(--red-border);font-size:11.5px;padding:8px 10px;border-radius:var(--r);';
+      msg.textContent='✕ '+d.error;
+      G('srcConnDot').className='src-conn-dot err';
+      G('btnLoadSrc').disabled=true;
+      toast(d.error,'terr',5000);
+    }
+  }catch(e){
+    msg.style.cssText='display:block;background:var(--red-light);color:var(--red-fg);border:1px solid var(--red-border);font-size:11.5px;padding:8px 10px;border-radius:var(--r);';
+    msg.textContent='✕ '+e.message;
+    G('srcConnDot').className='src-conn-dot err';
+    toast(e.message,'terr');
+  }finally{btn.disabled=false;btn.innerHTML=origHTML;}
+}
+
+async function loadFromSource(){
+  const btn=G('btnLoadSrc');
+  const server=G('srcServer').value.trim(),db=G('srcDb').value.trim(),user=G('srcUser').value.trim();
+  const origHTML=btn.innerHTML;
+  btn.disabled=true;btn.innerHTML='<div class="spin"></div> Loading…';
+  G('objList').innerHTML='<div class="loading-state"><div class="spin spin-lg"></div><span>Fetching objects from source…</span></div>';
+  try{
+    const r=await fetch('/api/source/load-objects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source_type:G('srcType').value,server,database:db,username:user,password:G('srcPass').value})});
+    const d=await r.json();
+    if(!d.success)throw new Error(d.error||'Load failed');
+    const MAP={stored_procedure:'SP',view:'VIEW',udf:'UDF'};
+    ALL_OBJECTS=[];
+    const C={SP:0,VIEW:0,UDF:0};
+    for(const[ot,items]of Object.entries(d.grouped||{})){
+      items.forEach(o=>{
+        const t=MAP[ot]||ot.toUpperCase();
+        ALL_OBJECTS.push({key:o.key,name:o.name,description:o.description||'',object_type:ot,type:t,code:o.code||''});
+        if(C[t]!==undefined)C[t]++;
+      });
+    }
+    G('statSP').textContent=C.SP;
+    G('statVW').textContent=C.VIEW;
+    G('statUDF').textContent=C.UDF;
+    renderObjects();
+    renderAnalysis(ALL_OBJECTS);
+    toast('Loaded '+ALL_OBJECTS.length+' objects from '+db+'.','tok',4000);
+    const body=G('srcConnBody'),chv=G('srcConnChv');
+    if(!body.classList.contains('collapsed')){body.classList.add('collapsed');chv.classList.remove('open');}
+  }catch(e){
+    G('objList').innerHTML='<div class="alert a-err"><span class="a-ico">✕</span>'+e.message+'</div>';
+    toast(e.message,'terr');
+  }finally{btn.disabled=false;btn.innerHTML=origHTML;}
+}
+
+function setFilterActive(id){['fbAll','fbNone','fbSP','fbVW','fbUDF'].forEach(i=>{const b=G(i);if(b)b.classList.remove('active');});if(id){const b=G(id);if(b)b.classList.add('active');}}
+function selectAll(){
+  const allChecked=ALL_OBJECTS.length>0&&ALL_OBJECTS.every(o=>{const c=G('ck'+o.key);return c&&c.checked;});
+  ALL_OBJECTS.forEach(o=>{const c=G('ck'+o.key);if(c)c.checked=!allChecked;});
+  updSel();setFilterActive(allChecked?'fbNone':'fbAll');
+}
+function deselectAll(){ALL_OBJECTS.forEach(o=>{const c=G('ck'+o.key);if(c)c.checked=false;});updSel();setFilterActive('fbNone');}
+function selType(t){
+  const MAP={SP:'fbSP',VIEW:'fbVW',UDF:'fbUDF'};
+  const allOfType=ALL_OBJECTS.filter(o=>o.type===t);
+  const alreadyActive=allOfType.length>0&&allOfType.every(o=>{const c=G('ck'+o.key);return c&&c.checked;})&&ALL_OBJECTS.filter(o=>o.type!==t).every(o=>{const c=G('ck'+o.key);return c&&!c.checked;});
+  if(alreadyActive){ALL_OBJECTS.forEach(o=>{const c=G('ck'+o.key);if(c)c.checked=false;});updSel();setFilterActive('fbNone');}
+  else{ALL_OBJECTS.forEach(o=>{const c=G('ck'+o.key);if(c)c.checked=(o.type===t);});updSel();setFilterActive(MAP[t]||null);}
+}
+
+async function loadSrc(key){
+  const local=ALL_OBJECTS.find(o=>o.key===key);
+  if(local&&local.code&&local.code.trim()){
+    G('srcName').textContent=key+'  ['+(local.object_type||local.type||'').toUpperCase()+']';
+    G('srcBody').textContent=local.code.trim();
+    G('srcPanel').style.display='';
+    return;
+  }
+  try{
+    const r=await fetch('/api/object-code/'+encodeURIComponent(key));
+    const d=await r.json();
+    if(d.success){G('srcName').textContent=key+'  ['+(d.object_type||'').toUpperCase()+']';G('srcBody').textContent=d.code;G('srcPanel').style.display='';}
+    else toast('Source not found: '+(d.error||'?'),'terr');
+  }catch(e){toast(e.message,'terr');}
+}
+async function previewSource(){const sel=getSel();if(!sel.length){toast('Select at least one object first.','tinfo');return;}loadSrc(sel[0].key);}
+function closeSrc(){G('srcPanel').style.display='none';}
+
+async function convertSelected(){
+  const sel=getSel();
+  if(!sel.length){toast('Select at least one object.','tinfo');return;}
+  const btn=G('btnConvert');btn.disabled=true;
+  G('bci').style.display='none';
+  const spinEl=document.createElement('span');spinEl.className='spin';spinEl.style.cssText='border-top-color:#fff;margin-right:0';
+  btn.insertBefore(spinEl,btn.querySelector('#bct'));
+  G('bct').textContent='Converting…';
+  let pct=0;const prog=G('bprog');
+  const iv=setInterval(()=>{pct=Math.min(pct+6,82);prog.style.width=pct+'%';},120);
+  const cnt=sel.length;
+  G('codeOut').innerHTML='<div class="loading-state"><div class="spin spin-lg"></div><span>Building notebooks for '+cnt+' object'+(cnt>1?'s':'')+'…</span></div>';
+  G('nbTabs').innerHTML='';G('nbBar').style.display='none';
+  G('notesCard').style.display='none';G('pyBadge').style.display='none';
+  HELPER_RESULT=null;
+  try{
+    const r=await fetch('/api/convert-separate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      object_names: sel.map(o=>o.key),
+      objects_with_code: Object.fromEntries(sel.filter(o=>o.code).map(o=>[o.key,{type:o.object_type||o.type,code:o.code}]))
+    })});
+    const d=await r.json();
+    clearInterval(iv);prog.style.width='100%';
+    setTimeout(()=>prog.style.width='0%',450);
+    if(!d.success){G('codeOut').innerHTML='<div class="alert a-err" style="margin:14px;"><span class="a-ico">✕</span>'+(d.error||'Conversion failed')+'</div>';toast(d.error||'Conversion failed','terr');return;}
+    HELPER_RESULT=d;renderSeparateFiles(d);updDeployList();
+    const msg=(d.sp_view_count||0)+' file'+((d.sp_view_count||0)!==1?'s':'')+(d.udf_count?' + HelperFunction.py ('+d.udf_count+' UDF'+(d.udf_count!==1?'s':'')+')'  :'')+' — '+d.object_count+' objects converted';
+    toast(msg,'tok',4500);G('wf1').className='wf-step done';
+  }catch(e){
+    clearInterval(iv);prog.style.width='0%';
+    G('codeOut').innerHTML='<div class="alert a-err" style="margin:14px;"><span class="a-ico">✕</span>'+e.message+'</div>';
+    toast('Error: '+e.message,'terr');
+  }finally{
+    btn.disabled=false;
+    if(spinEl.parentNode)spinEl.remove();
+    G('bci').style.display='';
+    G('bct').textContent='Convert - SQL → PySpark';
+    updSelCnt();
+  }
+}
+
+function renderSeparateFiles(d){
+  const udfLbl=d.udf_count?d.udf_count+' UDF'+(d.udf_count!==1?'s':''):'Shared';
+  let th=`<button class="nb-tab helper active" id="nbt___helper" onclick="showFile('__helper__')">⚙ HelperFunction.py <span style="opacity:.5;font-size:9px">${udfLbl}</span></button>`;
+  (d.files||[]).forEach(f=>{
+    const cls=f.object_type==='stored_procedure'?'sp':f.object_type==='view'?'vw':'ud';
+    const ico=f.object_type==='stored_procedure'?'▸':f.object_type==='view'?'◉':'ƒ';
+    th+=`<button class="nb-tab ${cls}" id="nbt_${f.name}" onclick="showFile('${f.name}')">${ico} ${f.name}.py</button>`;
+  });
+  G('nbTabs').innerHTML=th;G('nbBar').style.display='';
+  ACTIVE_FILE='__helper__';G('codeTitle').textContent='HelperFunction.py';G('pyBadge').style.display='';
+  G('codeOut').textContent=d.helper_code;
+  const btnDL=G('btnDL'),btnALL=G('btnDLAll');
+  if(btnDL)btnDL.disabled=false;if(btnALL)btnALL.disabled=false;G('btnCopy').disabled=false;
+  const notes=d.conversion_notes||{};let nh='';
+  Object.entries(notes).forEach(([name,ns])=>{
+    const o=ALL_OBJECTS.find(x=>x.key===name)||{type:'SP'};const tc=o.type.toLowerCase();
+    nh+=`<div class="note-grp"><span class="badge b${tc}">${o.type}</span> ${name}</div><div>`;
+    (ns||[]).forEach(n=>{nh+=`<div class="note-item">${n}</div>`;});nh+='</div>';
+  });
+  if(nh){G('notesList').innerHTML=nh;G('notesCard').style.display='';}
+}
+
+function showFile(name){
+  if(!HELPER_RESULT)return;
+  document.querySelectorAll('.nb-tab').forEach(t=>t.classList.remove('active'));
+  ACTIVE_FILE=name;
+  if(name==='__helper__'){const t=G('nbt___helper');if(t)t.classList.add('active');G('codeTitle').textContent='HelperFunction.py';G('codeOut').textContent=HELPER_RESULT.helper_code;}
+  else{const t=G('nbt_'+name);if(t)t.classList.add('active');const f=(HELPER_RESULT.files||[]).find(x=>x.name===name);G('codeTitle').textContent=name+'.py';G('codeOut').textContent=f?f.code:'# File "'+name+'" not found.';}
+  G('btnCopy').disabled=false;const btnDL=G('btnDL');if(btnDL)btnDL.disabled=false;
+}
+
+function copyCode(){const c=G('codeOut').textContent;if(!c||c.trim().length<5){toast('Nothing to copy.','tinfo');return;}navigator.clipboard.writeText(c).then(()=>{toast('Copied to clipboard!','tok',2000);const b=G('btnCopy'),orig=b.innerHTML;b.textContent='✓ Copied!';setTimeout(()=>b.innerHTML=orig,1800);});}
+function dlCode(){const c=G('codeOut').textContent;if(!c||c.trim().length<5){toast('Nothing to download.','tinfo');return;}const fn=(!ACTIVE_FILE||ACTIVE_FILE==='__helper__')?'HelperFunction.py':(ACTIVE_FILE+'.py');Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([c],{type:'text/plain'})),download:fn}).click();toast('Downloaded '+fn,'tok',2000);}
+function dlAllFiles(){
+  if(!HELPER_RESULT){toast('Convert first.','tinfo');return;}
+  const allFiles=[{filename:'HelperFunction.py',code:HELPER_RESULT.helper_code},...(HELPER_RESULT.files||[]).map(f=>({filename:f.filename,code:f.code}))];
+  allFiles.forEach((f,i)=>{setTimeout(()=>{Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([f.code],{type:'text/plain'})),download:f.filename}).click();},i*350);});
+  toast('Downloading '+allFiles.length+' files…','tok',2500);
+}
+
+function updDeployList(){
+  if(!HELPER_RESULT){G('deployList').innerHTML='<div class="empty" style="padding:12px;"><div class="empty-ico">📓</div><div class="empty-s">Convert objects in Step 1 first.</div></div>';if(G('depCnt'))G('depCnt').textContent='0 files';return;}
+  const files=HELPER_RESULT.files||[];
+  const total=files.length+(HELPER_RESULT.udf_count>0?1:0);
+  if(G('depCnt'))G('depCnt').textContent=total+' file'+(total!==1?'s':'');
+  let h='<div style="display:flex;flex-direction:column;gap:6px;">';
+  if(HELPER_RESULT.udf_count>0){
+    h+=`<div style="display:flex;align-items:center;gap:9px;padding:8px 6px;border-bottom:1px solid var(--border);margin-bottom:2px;">
+    <div style="flex:1;"><div style="font-size:12.5px;font-weight:700;color:var(--blue-fg);">⚙ HelperFunction.py</div><div style="font-size:10.5px;color:var(--t3);">${HELPER_RESULT.udf_count||0} UDFs · ${HELPER_RESULT.helper_lines||0} lines</div></div>
+  </div>`;
+  }
+  files.forEach(f=>{const cls=f.object_type==='stored_procedure'?'bsp':f.object_type==='view'?'bvw':'budf';const lbl=f.object_type==='stored_procedure'?'SP':f.object_type==='view'?'VIEW':'UDF';h+=`<div style="display:flex;align-items:center;gap:8px;padding:6px 4px;"><span class="badge ${cls}">${lbl}</span><span style="font-size:12.5px;color:var(--t2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${f.filename}</span><span style="font-size:10.5px;color:var(--t3);flex-shrink:0;">${f.lines} lines</span></div>`;});
+  G('deployList').innerHTML=h+'</div>';
+}
+
+async function deployAll(){
+  const host=G('depHost').value.trim(),token=G('depToken').value.trim(),path=G('depPath').value.trim()||'/Shared/Migrations';
+  if(!host||!token){toast('Enter Workspace Host and Access Token.','terr');syncDepCreds();return;}
+  if(!HELPER_RESULT){toast('Convert objects in Step 1 first.','tinfo');return;}
+  const btn=G('btnDeployAll'),lbl=G('depBtnTxt'),prog=G('depProg');
+  btn.disabled=true;lbl.textContent='Deploying…';
+  let pct=0;const iv=setInterval(()=>{pct=Math.min(pct+4,88);prog.style.width=pct+'%';},200);
+  G('deployLog').innerHTML='<div class="loading-state"><div class="spin spin-lg"></div><span>Uploading notebooks to Databricks…</span></div>';
+  const notebooks=[{name:'HelperFunction',code:HELPER_RESULT.helper_code},...(HELPER_RESULT.files||[]).map(f=>({name:f.name,code:f.code}))];
+  try{
+    const r=await fetch('/api/databricks/upload-multiple',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({host,token,workspace_path:path,notebooks})});
+    const d=await r.json();
+    clearInterval(iv);prog.style.width='100%';setTimeout(()=>prog.style.width='0%',500);
+    if(d.results&&d.results.length){
+      let logHtml='';
+      d.results.forEach(res=>{const ok=res.success;logHtml+=`<div class="dep-row ${ok?'ok':'err'}"><div class="blt ${ok?'blt-ok':'blt-err'}"></div><span class="dep-name">${res.name}.py</span><span class="dep-path">${res.path||res.error||''}</span></div>`;});
+      if(d.uploaded===notebooks.length){logHtml+=`<div class="alert a-ok" style="margin-top:10px;"><span class="a-ico">✓</span> All ${d.uploaded} notebooks deployed to <strong>${path}</strong></div>`;G('wf3').className='wf-step done';lbl.textContent='✓ Deployed!';toast('All '+d.uploaded+' notebooks deployed!','tok');}
+      else{logHtml+=`<div class="alert a-warn" style="margin-top:10px;"><span class="a-ico">⚠</span> ${d.uploaded} of ${d.total} notebooks uploaded.</div>`;lbl.textContent='Deploy All to Databricks';toast(d.uploaded+'/'+d.total+' deployed.','tinfo');}
+      G('deployLog').innerHTML=logHtml;
+    }else{G('deployLog').innerHTML=`<div class="alert a-err"><span class="a-ico">✕</span>${d.error||'Upload failed'}</div>`;lbl.textContent='Deploy All to Databricks';toast('Deploy failed.','terr');}
+  }catch(e){
+    clearInterval(iv);prog.style.width='0%';
+    G('deployLog').innerHTML=`<div class="alert a-err"><span class="a-ico">✕</span>${e.message}</div>`;lbl.textContent='Deploy All to Databricks';toast('Deploy error: '+e.message,'terr');
+  }finally{btn.disabled=false;}
+}
+
+function syncDepCreds(){
+  const h=G('dbHost'),t=G('dbToken');
+  if(h&&h.value){G('depHost').value=h.value;}
+  if(t&&t.value){G('depToken').value=t.value;}
+  if((h&&h.value)||(t&&t.value))toast('Credentials synced from Connect tab.','tok',2000);
+  else toast('No credentials saved yet — fill in the Connect tab first.','tinfo');
+}
+
+async function testConn(){
+  const host=G('dbHost').value.trim(),token=G('dbToken').value.trim();
+  if(!host||!token){toast('Host and token required.','terr');return;}
+  G('connStatus').innerHTML='<div class="alert a-info"><span class="spin" style="border-top-color:var(--blue-fg)"></span> Connecting…</div>';
+  G('connInfo').innerHTML='<div class="loading-state"><div class="spin spin-lg"></div><span>Fetching workspace info…</span></div>';
+  try{
+    const r=await fetch('/api/databricks/test-connection',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({host,token})});
+    const d=await r.json();
+    if(d.success){
+      G('connStatus').innerHTML='<div class="alert a-ok"><span class="a-ico">✓</span> Connected to Databricks</div>';
+      let h=`<div class="alert a-info" style="margin-bottom:12px;"><span class="a-ico">🌐</span><span><strong>Host:</strong> ${host}</span></div>`;
+      (d.clusters||[]).forEach(c=>{const sc=c.state==='RUNNING'?'tag-run':c.state==='TERMINATED'?'tag-stop':'tag-pend';h+=`<div class="cl-card"><div class="cl-name">${c.cluster_name} <span class="tag ${sc}">${c.state}</span></div><div class="cl-meta"><span>ID: ${c.cluster_id}</span><span>DBR ${c.spark_version||'N/A'}</span></div></div>`;});
+      if(!(d.clusters||[]).length)h+='<div class="alert a-warn"><span class="a-ico">⚠</span> No clusters found.</div>';
+      G('connInfo').innerHTML=h;toast('Connected to Databricks!','tok');G('wf2').className='wf-step done';
+    }else{G('connStatus').innerHTML=`<div class="alert a-err"><span class="a-ico">✕</span>${d.error}</div>`;G('connInfo').innerHTML=`<pre style="font-size:11px;color:var(--t3);padding:10px;">${JSON.stringify(d,null,2)}</pre>`;toast('Connection failed: '+d.error,'terr');}
+  }catch(e){G('connStatus').innerHTML=`<div class="alert a-err"><span class="a-ico">✕</span>${e.message}</div>`;toast('Error: '+e.message,'terr');}
+}
+
+async function loadUCTables(){
+  const host=G('ucHost').value.trim(),token=G('ucToken').value.trim(),cat=G('ucCatalog').value.trim(),sch=G('ucSchema').value.trim();
+  if(!host||!token){toast('Host and token required.','terr');return;}
+  G('ucResults').innerHTML='<div class="loading-state"><div class="spin spin-lg"></div><span>Loading…</span></div>';
+  try{
+    const r=await fetch('/api/unity-catalog/tables',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({host,token,catalog:cat,schema:sch})});
+    const d=await r.json();
+    if(d.success){
+      const tbls=d.tables||[];
+      G('ucTableList').innerHTML=tbls.length?tbls.map(t=>`<div class="tbl-item" id="utbl${t.table_name}" onclick="selUCTbl('${t.table_name}')"><span style="color:var(--t4);font-size:11px;">⊞</span> ${cat}.${sch}.<strong>${t.table_name}</strong>${t.table_type&&t.table_type!=='N/A'?`<span style="margin-left:auto;font-size:10px;color:var(--t3);">${t.table_type}</span>`:''}</div>`).join(''):'<div class="empty" style="padding:10px;"><div class="empty-s">No tables found.</div></div>';
+      G('ucWarehouse').innerHTML=(d.warehouses||[]).map(w=>`<option value="${w.id}">${w.name} (${w.state})</option>`).join('')||'<option value="">No warehouses</option>';
+      G('ucResults').innerHTML=`<div class="alert a-ok"><span class="a-ico">✓</span> Loaded ${tbls.length} tables, ${(d.warehouses||[]).length} warehouses.</div>`;
+      toast('Loaded '+tbls.length+' tables!','tok');
+    }else{G('ucResults').innerHTML=`<div class="alert a-err"><span class="a-ico">✕</span>${d.error}</div>`;}
+  }catch(e){G('ucResults').innerHTML=`<div class="alert a-err"><span class="a-ico">✕</span>${e.message}</div>`;}
+}
+
+function selUCTbl(t){UC_TABLE=t;G('ucTable').value=t;document.querySelectorAll('.tbl-item').forEach(el=>el.classList.remove('selected'));const el=G('utbl'+t);if(el)el.classList.add('selected');}
+
+function _renderUCResult(d){
+  if(!d.success) return `<div class="alert a-err"><span class="a-ico">✕</span>${d.error||d.message||'Unknown error'}</div>`;
+  if(d.sql_type==='query'){
+    if(!d.columns||d.columns.length===0) return '<div class="alert a-ok"><span class="a-ico">✓</span> Statement executed successfully (no rows returned).</div>';
+    const colDefs=d.columns.map(c=>`<th>${c}</th>`).join('');
+    const rowDefs=(d.rows||[]).map(r=>`<tr>${r.map(v=>`<td title="${String(v??'').replace(/"/g,'&quot;')}">${v??'<em style="color:var(--t3)">null</em>'}</td>`).join('')}</tr>`).join('');
+    const info=`<div style="font-size:11px;color:var(--t3);margin-top:6px;padding:0 2px;">${d.row_count} row${d.row_count!==1?'s':''} · ${d.columns.length} column${d.columns.length!==1?'s':''}</div>`;
+    return `<div style="overflow-x:auto;"><table class="uc-tbl"><thead><tr>${colDefs}</tr></thead><tbody>${rowDefs}</tbody></table></div>${info}`;
+  }
+  if(d.sql_type==='statement') return '<div class="alert a-ok"><span class="a-ico">✓</span> Statement executed successfully.</div>';
+  if(d.steps){
+    const cfg={PASS:{ico:'✓',col:'var(--green)',bg:'var(--green-light)'},FAIL:{ico:'✕',col:'var(--red)',bg:'var(--red-light)'},WARN:{ico:'⚠',col:'var(--amber)',bg:'var(--amber-light)'},INFO:{ico:'ℹ',col:'var(--blue)',bg:'var(--blue-light)'}};
+    const stepsHtml=d.steps.map(s=>{
+      const c=cfg[s.status]||{ico:'·',col:'var(--t2)',bg:'var(--surface-2)'};
+      let extra='';
+      if(s.columns&&s.sample_rows&&s.sample_rows.length>0){
+        const h=s.columns.map(c=>`<th>${c}</th>`).join('');
+        const b=s.sample_rows.map(r=>`<tr>${r.map(v=>`<td>${v??''}</td>`).join('')}</tr>`).join('');
+        extra=`<div style="overflow-x:auto;margin-top:6px;"><table class="uc-tbl"><thead><tr>${h}</tr></thead><tbody>${b}</tbody></table></div>`;
+      }
+      return `<div class="uc-step"><span class="uc-step-icon" style="color:${c.col};">${c.ico}</span><div style="flex:1;"><div class="uc-step-title">${s.step}</div><div class="uc-step-detail">${s.detail}</div>${extra}</div><span class="uc-step-badge" style="color:${c.col};background:${c.bg};">${s.status}</span></div>`;
+    }).join('');
+    const meta=`<div style="font-size:10.5px;color:var(--t3);margin-top:8px;padding:0 2px;">Table: <code>${d.table}</code> · ${d.executed_at||''}</div>`;
+    return `<div>${stepsHtml}</div>${meta}`;
+  }
+  if(d.columns&&d.rows){
+    const h=d.columns.map(c=>`<th>${c}</th>`).join('');
+    const b=(d.rows||[]).map(r=>`<tr>${r.map(v=>`<td>${v??''}</td>`).join('')}</tr>`).join('');
+    return `<div style="overflow-x:auto;"><table class="uc-tbl"><thead><tr>${h}</tr></thead><tbody>${b}</tbody></table></div><div style="font-size:11px;color:var(--t3);margin-top:6px;">${d.preview_rows} preview rows · ${d.total_rows} total</div>`;
+  }
+  return `<pre style="font-size:11px;color:var(--t2);white-space:pre-wrap;">${JSON.stringify(d,null,2)}</pre>`;
+}
+
+async function _ucPost(endpoint,extra={}){
+  const host=G('ucHost').value.trim(),token=G('ucToken').value.trim(),cat=G('ucCatalog').value.trim(),sch=G('ucSchema').value.trim(),wh=G('ucWarehouse').value;
+  G('ucResults').innerHTML='<div class="loading-state"><div class="spin spin-lg"></div><span>Running…</span></div>';
+  try{
+    const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({host,token,catalog:cat,schema:sch,warehouse_id:wh,...extra})});
+    const d=await r.json();
+    G('ucResults').innerHTML=_renderUCResult(d);
+    if(d.success!==false)toast('Done!','tok');
+  }catch(e){G('ucResults').innerHTML=`<div class="alert a-err"><span class="a-ico">✕</span>${e.message}</div>`;}
+}
+
+function previewTable(){const t=UC_TABLE||G('ucTable').value,wh=G('ucWarehouse').value;if(!t||!wh){toast('Select a table and warehouse.','tinfo');return;}_ucPost('/api/unity-catalog/preview',{table_name:t});}
+function executeTable(){const t=UC_TABLE||G('ucTable').value,wh=G('ucWarehouse').value;if(!t||!wh){toast('Select a table and warehouse.','tinfo');return;}_ucPost('/api/unity-catalog/execute',{table_name:t});}
+function runCustomSQL(){const sql=G('ucSQL').value.trim(),wh=G('ucWarehouse').value;if(!sql||!wh){toast('Enter SQL and select a warehouse.','tinfo');return;}_ucPost('/api/unity-catalog/execute',{table_name:'__custom__',execute_sql:sql});}
+
+// loadObjects() removed — counts stay at 0 until user clicks "Load SQL Objects"
+
+// ═══════════════════════════════════════════════════════
+// DATA MIGRATION
+// ═══════════════════════════════════════════════════════
+let MIG_TABLES=[], MIG_JOB_ID=null, MIG_POLL_IV=null;
+
+function _migCreds(){
+  return {
+    source_type: G('migSrcType').value,
+    server:      G('migServer').value.trim(),
+    database:    G('migDb').value.trim(),
+    username:    G('migUser').value.trim(),
+    password:    G('migPass').value,
+    host:        G('migHost').value.trim(),
+    token:       G('migToken').value.trim(),
+    catalog:     G('migCatalog').value.trim()||'main',
+    schema:      G('migSchema').value.trim()||'default',
+  };
+}
+
+function _migMsg(el,msg,type='info'){
+  const c={info:'a-info',ok:'a-ok',err:'a-err'};
+  G(el).style.display='';
+  G(el).innerHTML=`<div class="alert ${c[type]||'a-info'}"><span class="a-ico">${type==='ok'?'✓':type==='err'?'✕':'ℹ'}</span>${msg}</div>`;
+}
+
+let _migLogCount=0;
+function _appendMigLog(msg, type=''){
+  const box=G('migLog');
+  if(box.querySelector('.empty'))box.innerHTML='';
+  const d=document.createElement('div');
+  d.className='mig-log-entry'+(type?' '+type:'');
+  const ts=new Date().toLocaleTimeString();
+  const lines=String(msg).split('\n');
+  d.innerHTML=`<span style="color:var(--t4);user-select:none;">[${ts}]</span> ${lines.map((l,i)=>i===0?escHtml(l):'<span style="padding-left:60px;display:block;color:var(--t3);">'+escHtml(l)+'</span>').join('')}`;
+  box.appendChild(d);
+  _migLogCount++;
+  box.scrollTop=box.scrollHeight;
+}
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function copyMigLog(){
+  const lines=[...G('migLog').querySelectorAll('.mig-log-entry')].map(e=>e.textContent).join('\n');
+  navigator.clipboard.writeText(lines).then(()=>toast('Log copied to clipboard','tok')).catch(()=>toast('Copy failed','twarn'));
+}
+
+async function loadMigTables(){
+  const c=_migCreds();
+  if(!c.server||!c.database){toast('Enter server and database first.','tinfo');return;}
+  const btn=G('btnLoadMigTbls');
+  btn.disabled=true; btn.textContent='Loading…';
+  G('migSrcMsg').style.display='none';
+  try{
+    const r=await fetch('/api/migrate/list-tables',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(c)});
+    const d=await r.json();
+    if(!r.ok||d.error){_migMsg('migSrcMsg',d.error||'Failed to list tables','err');return;}
+    MIG_TABLES=d.tables||[];
+    renderMigTableList(MIG_TABLES);
+    _migMsg('migSrcMsg',`Loaded ${MIG_TABLES.length} tables.`,'ok');
+    _appendMigLog(`Discovered ${MIG_TABLES.length} tables in ${c.database}.`,'ok');
+  }catch(e){_migMsg('migSrcMsg',e.message,'err');}
+  finally{btn.disabled=false; btn.innerHTML='<svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> Discover Tables';}
+}
+
+function renderMigTableList(tables){
+  const box=G('migTblList');
+  if(!tables.length){box.innerHTML='<div class="empty" style="padding:20px;"><div class="empty-t">No tables found.</div></div>';return;}
+  box.innerHTML=tables.map(t=>`
+  <div class="mig-tbl-row" onclick="toggleMigRow(this)">
+    <input type="checkbox" class="chk" onchange="updMigSelCnt()" onclick="event.stopPropagation()">
+    <div class="mig-tbl-info">
+      <div class="mig-tbl-name">${t.full_name}</div>
+      <div class="mig-tbl-meta">~${Number(t.row_estimate||0).toLocaleString()} rows &middot; ${t.col_count||'?'} cols</div>
+    </div>
+  </div>`).join('');
+  updMigSelCnt();
+}
+
+function toggleMigRow(row){
+  const cb=row.querySelector('input[type=checkbox]');
+  cb.checked=!cb.checked;
+  row.classList.toggle('selected',cb.checked);
+  updMigSelCnt();
+}
+
+function updMigSelCnt(){
+  const sel=document.querySelectorAll('#migTblList input[type=checkbox]:checked').length;
+  const el=G('migTblSelCnt');
+  el.style.display=sel?'':'none';
+  el.textContent=`${sel} selected`;
+}
+
+function filterMigTables(q){
+  q=q.toLowerCase();
+  renderMigTableList(q?MIG_TABLES.filter(t=>t.full_name.toLowerCase().includes(q)):MIG_TABLES);
+}
+
+function selAllMig(){
+  document.querySelectorAll('#migTblList .mig-tbl-row').forEach(r=>{
+    r.querySelector('input').checked=true; r.classList.add('selected');
+  });updMigSelCnt();
+}
+function deselAllMig(){
+  document.querySelectorAll('#migTblList .mig-tbl-row').forEach(r=>{
+    r.querySelector('input').checked=false; r.classList.remove('selected');
+  });updMigSelCnt();
+}
+
+function getMigSel(){
+  const sel=[];
+  document.querySelectorAll('#migTblList .mig-tbl-row').forEach((r,i)=>{
+    if(r.querySelector('input').checked){
+      const t=MIG_TABLES.find(x=>`${x.schema}.${x.table}`===r.querySelector('.mig-tbl-name').textContent.trim())||MIG_TABLES[i];
+      if(t)sel.push({schema:t.schema,table:t.table});
+    }
+  });
+  return sel;
+}
+
+async function loadMigWarehouses(){
+  const c=_migCreds();
+  if(!c.host||!c.token){toast('Enter Databricks host and token first.','tinfo');return;}
+  try{
+    const r=await fetch('/api/migrate/warehouses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(c)});
+    const d=await r.json();
+    if(!d.warehouses){toast('Failed to load warehouses','twarn');return;}
+    const sel=G('migWarehouse');
+    sel.innerHTML=d.warehouses.map(w=>`<option value="${w.id}">${w.name} (${w.state||'?'})</option>`).join('');
+    toast(`Loaded ${d.warehouses.length} warehouses`,'tok');
+  }catch(e){toast(e.message,'terr');}
+}
+
+async function startMigration(){
+  const sel=getMigSel();
+  if(!sel.length){toast('Select at least one table.','tinfo');return;}
+  const c=_migCreds();
+  const wh=G('migWarehouse').value;
+  if(!c.host||!c.token){toast('Enter Databricks host and token.','tinfo');return;}
+  if(!wh){toast('Select a SQL Warehouse.','tinfo');return;}
+  if(!c.server||!c.database){toast('Configure source database.','tinfo');return;}
+  const workers=parseInt(G('migWorkers').value)||3;
+
+  stopMigPoll();
+  G('migProgList').innerHTML='';
+  G('migLog').innerHTML=''; _migLogCount=0;
+  G('migProgCard').style.display='';
+  G('migSummary').style.display='';
+  G('migBtnTxt').textContent='Running…';
+  G('btnStartMig').disabled=true;
+  G('btnStopMig').style.display='';
+
+  const payload={...c, warehouse_id:wh, tables:sel, max_workers:workers};
+  _appendMigLog(`Starting migration of ${sel.length} table(s) with ${workers} workers…`);
+
+  try{
+    const r=await fetch('/api/migrate/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const d=await r.json();
+    if(!d.success){toast(d.error||'Failed to start','terr');resetMigBtn();return;}
+    MIG_JOB_ID=d.job_id;
+    _appendMigLog(`Job started: ${MIG_JOB_ID}`,'ok');
+    pollMigJob(MIG_JOB_ID);
+  }catch(e){toast(e.message,'terr');resetMigBtn();}
+}
+
+function resetMigBtn(){
+  G('migBtnTxt').textContent='Start Migration';
+  G('btnStartMig').disabled=false;
+  G('btnStopMig').style.display='none';
+}
+
+function stopMigPoll(){
+  if(MIG_POLL_IV){clearInterval(MIG_POLL_IV);MIG_POLL_IV=null;}
+  G('btnStopMig').style.display='none';
+}
+
+function pollMigJob(jobId){
+  MIG_POLL_IV=setInterval(async()=>{
+    try{
+      const r=await fetch(`/api/migrate/status/${jobId}`);
+      if(!r.ok)return;
+      const d=await r.json();
+      renderMigProgress(d);
+      if(d.status==='done'||d.status==='error'){
+        stopMigPoll();
+        resetMigBtn();
+        const ok=d.done||0,fail=d.failed||0;
+        _appendMigLog(`Migration complete. ✓ ${ok} succeeded, ✗ ${fail} failed.`, fail?'err':'ok');
+        toast(fail?`Done — ${fail} table(s) failed`:'Migration complete!',fail?'twarn':'tok');
+      }
+    }catch(e){_appendMigLog(e.message,'err');}
+  },2000);
+}
+
+function renderMigProgress(job){
+  G('migStTotal').textContent=job.total||0;
+  G('migStDone').textContent=job.done||0;
+  G('migStFail').textContent=job.failed||0;
+
+  const results=job.results||{};
+  const rows=Object.entries(results).map(([tbl,info])=>{
+    const pct=info.pct!=null?info.pct:(info.status==='done'?100:info.status==='failed'?100:info.status==='running'?8:0);
+    const cls=info.status==='done'?'done':info.status==='failed'?'failed':'running';
+    const badge=info.status==='done'?'var(--green-fg)':info.status==='failed'?'var(--red-fg)':info.status==='running'?'var(--blue-fg)':'var(--t3)';
+    const badgeBg=info.status==='done'?'var(--green-light)':info.status==='failed'?'var(--red-light)':info.status==='running'?'var(--blue-light)':'var(--surface-2)';
+    const cnt=(info.rows_copied&&info.rows_copied>0)?info.rows_copied:(info.rows&&info.rows>0)?info.rows:0;
+    const rows_txt=cnt>0?` · ${Number(cnt).toLocaleString()} rows`:'';
+    const errTip=info.status==='failed'&&info.error?` title="${(info.error||'').replace(/"/g,"'")}"`:' ';
+    const icon=info.status==='done'?'✓':info.status==='failed'?'✕':info.status==='running'?'▶':'…';
+    const label=`${icon} ${info.status||'queued'}${rows_txt}`;
+    return `<div class="mig-prog-row">
+      <div class="mig-prog-name" title="${tbl}">${tbl.split('.').pop()}</div>
+      <div class="mig-prog-bar-wrap"><div class="mig-prog-bar ${cls}" style="width:${pct}%"></div></div>
+      <span class="mig-prog-badge" style="background:${badgeBg};color:${badge};cursor:${info.error?'help':'default'}"${errTip}>${label}</span>
+    </div>`;
+  }).join('');
+  G('migProgList').innerHTML=rows||'<div style="padding:12px;font-size:12.5px;color:var(--t3);">Waiting for results…</div>';
+
+  const logs=job.logs||[];
+  const existingCount=_migLogCount;
+  const newLogs=logs.slice(existingCount);
+  newLogs.forEach(l=>{
+    const isErr=l.includes('ERROR')||l.includes('FAIL')||l.includes('failed')||l.includes('Traceback')||l.includes('Exception');
+    const isOk=l.includes('Done —')||l.includes('COPY INTO: ')||l.includes('rows loaded')||l.includes('rows via batch');
+    _appendMigLog(l,isErr?'err':isOk?'ok':'');
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// MEDALLION ARCHITECTURE
+// ═══════════════════════════════════════════════════════
+let MDL_TABLES=[], MDL_NOTEBOOKS=[], MDL_ACTIVE_NB=0;
+
+function _mdlMsg(el,msg,type='info'){
+  const c={info:'a-info',ok:'a-ok',err:'a-err'};
+  G(el).style.display='';
+  G(el).innerHTML=`<div class="alert ${c[type]||'a-info'}"><span class="a-ico">${type==='ok'?'✓':type==='err'?'✕':'ℹ'}</span>${msg}</div>`;
+}
+
+function _mdlCreds(){
+  return {
+    source_type: G('mdlSrcType').value,
+    server:      G('mdlServer').value.trim(),
+    database:    G('mdlDb').value.trim(),
+    username:    G('mdlUser').value.trim(),
+    password:    G('mdlPass').value,
+    host:        G('mdlHost').value.trim(),
+    token:       G('mdlToken').value.trim(),
+    catalog:     G('mdlCatalog').value.trim()||'main',
+    schema:      G('mdlSchema').value.trim()||'default',
+    landing_path: G('mdlLandingPath').value.trim()||'/mnt/landing',
+    workspace_path: G('mdlWsPath').value.trim()||'/Shared/Medallion',
+  };
+}
+
+async function mdlDiscoverTables(){
+  const c=_mdlCreds();
+  if(!c.server||!c.database){toast('Enter server and database.','tinfo');return;}
+  const btn=G('btnMdlDiscover');
+  btn.disabled=true; btn.textContent='Discovering…';
+  G('mdlSrcMsg').style.display='none';
+  try{
+    const r=await fetch('/api/migrate/list-tables',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(c)});
+    const d=await r.json();
+    if(!r.ok||d.error){_mdlMsg('mdlSrcMsg',d.error||'Failed','err');return;}
+    MDL_TABLES=d.tables||[];
+    mdlRenderTables(MDL_TABLES);
+    _mdlMsg('mdlSrcMsg',`Found ${MDL_TABLES.length} tables`,'ok');
+  }catch(e){_mdlMsg('mdlSrcMsg',e.message,'err');}
+  finally{btn.disabled=false; btn.innerHTML='<svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> Discover Tables';}
+}
+
+function mdlRenderTables(tables){
+  const box=G('mdlTblList');
+  if(!tables.length){box.innerHTML='<div class="empty" style="padding:20px;"><div class="empty-t">No tables found.</div></div>';return;}
+  box.innerHTML=tables.map(t=>`
+  <div class="mig-tbl-row" onclick="mdlToggleRow(this)">
+    <input type="checkbox" class="chk" onchange="mdlUpdSel()" onclick="event.stopPropagation()">
+    <div class="mig-tbl-info">
+      <div class="mig-tbl-name">${t.full_name}</div>
+      <div class="mig-tbl-meta">~${Number(t.row_estimate||0).toLocaleString()} rows · ${t.col_count||'?'} cols</div>
+    </div>
+  </div>`).join('');
+  mdlUpdSel();
+}
+
+function mdlToggleRow(row){
+  const cb=row.querySelector('input[type=checkbox]');
+  cb.checked=!cb.checked;
+  row.classList.toggle('selected',cb.checked);
+  mdlUpdSel();
+}
+
+function mdlUpdSel(){
+  const sel=document.querySelectorAll('#mdlTblList input[type=checkbox]:checked').length;
+  const el=G('mdlSelCnt');
+  el.style.display=sel?'':'none';
+  el.textContent=`${sel} selected`;
+}
+
+function mdlFilterTables(q){
+  q=q.toLowerCase();
+  mdlRenderTables(q?MDL_TABLES.filter(t=>t.full_name.toLowerCase().includes(q)):MDL_TABLES);
+}
+
+function mdlSelAll(){
+  document.querySelectorAll('#mdlTblList .mig-tbl-row').forEach(r=>{
+    r.querySelector('input').checked=true; r.classList.add('selected');
+  }); mdlUpdSel();
+}
+function mdlSelNone(){
+  document.querySelectorAll('#mdlTblList .mig-tbl-row').forEach(r=>{
+    r.querySelector('input').checked=false; r.classList.remove('selected');
+  }); mdlUpdSel();
+}
+
+function mdlGetSelected(){
+  const sel=[];
+  document.querySelectorAll('#mdlTblList .mig-tbl-row').forEach((r,i)=>{
+    if(r.querySelector('input').checked){
+      const name=r.querySelector('.mig-tbl-name').textContent.trim();
+      const t=MDL_TABLES.find(x=>x.full_name===name)||MDL_TABLES[i];
+      if(t)sel.push({schema:t.schema,table:t.table,incremental_col:''});
+    }
+  });
+  return sel;
+}
+
+function mdlSetStage(stage,state){
+  const el=G('mdlSt'+stage.charAt(0).toUpperCase()+stage.slice(1));
+  const badge=G('mdlBadge'+stage.charAt(0).toUpperCase()+stage.slice(1));
+  if(!el)return;
+  el.className='mdl-stage'+(state?' '+state:'');
+  if(badge){
+    const labels={active:'Running…',done:'Complete',failed:'Failed','':'Pending'};
+    badge.textContent=labels[state]||'Pending';
+    badge.style.background=state==='done'?'var(--green-light)':state==='failed'?'var(--red-light)':state==='active'?'var(--blue-light)':'var(--surface-2)';
+    badge.style.color=state==='done'?'var(--green-fg)':state==='failed'?'var(--red-fg)':state==='active'?'var(--blue-fg)':'var(--t3)';
+  }
+}
+
+async function mdlGenerate(){
+  const tables=mdlGetSelected();
+  if(!tables.length){toast('Select at least one table.','tinfo');return;}
+  const c=_mdlCreds();
+  const btn=G('btnMdlGenerate');
+  btn.disabled=true; btn.textContent='Generating…';
+  G('mdlStatusMsg').style.display='none';
+
+  mdlSetStage('landing','active');
+  mdlSetStage('bronze','');
+  mdlSetStage('silver','');
+
+  try{
+    const r=await fetch('/api/medallion/generate',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        source_type:c.source_type, server:c.server, database:c.database,
+        username:c.username, tables:tables, catalog:c.catalog, schema:c.schema,
+        landing_path:c.landing_path, workspace_path:c.workspace_path,
+      })
+    });
+    const d=await r.json();
+    if(!d.success){_mdlMsg('mdlStatusMsg',d.error||'Generation failed','err');return;}
+
+    MDL_NOTEBOOKS=d.notebooks;
+    mdlSetStage('landing','done');
+    mdlSetStage('bronze','done');
+    mdlSetStage('silver','done');
+
+    // Render notebook tabs
+    const tabs=G('mdlNbTabs');
+    const layerIcons={landing:'📥',bronze:'🥉',silver:'🥈',orchestrator:'🎯'};
+    tabs.innerHTML=d.notebooks.map((nb,i)=>
+      `<button class="mdl-nb-tab${i===0?' active':''}" onclick="mdlShowNb(${i})">${layerIcons[nb.layer]||'📄'} ${nb.name}<span class="nb-layer">${nb.lines} lines</span></button>`
+    ).join('');
+
+    G('mdlNbCount').style.display='';
+    G('mdlNbCount').textContent=`${d.notebooks.length} notebooks · ${d.summary.total_lines} lines`;
+
+    // Show features
+    const feats=d.summary.features||[];
+    const featHtml=feats.map(f=>`<span class="mdl-feature">${f}</span>`).join('');
+
+    mdlShowNb(0);
+    G('btnMdlDeploy').disabled=false;
+
+    _mdlMsg('mdlStatusMsg',`✅ Generated ${d.notebooks.length} notebooks (${d.summary.total_lines} lines) for ${d.summary.total_tables} tables<div class="mdl-feature-list">${featHtml}</div>`,'ok');
+    toast(`Generated ${d.notebooks.length} Medallion notebooks!`,'tok');
+
+  }catch(e){
+    _mdlMsg('mdlStatusMsg',e.message,'err');
+    mdlSetStage('landing','failed');
+  }finally{
+    btn.disabled=false;
+    btn.innerHTML='<svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Generate Medallion Notebooks';
+  }
+}
+
+function mdlShowNb(idx){
+  MDL_ACTIVE_NB=idx;
+  document.querySelectorAll('.mdl-nb-tab').forEach((t,i)=>t.classList.toggle('active',i===idx));
+  const nb=MDL_NOTEBOOKS[idx];
+  if(!nb)return;
+  G('mdlCodeBody').textContent=nb.code;
+}
+
+async function mdlDeploy(){
+  if(!MDL_NOTEBOOKS.length){toast('Generate notebooks first.','tinfo');return;}
+  const c=_mdlCreds();
+  if(!c.host||!c.token){toast('Enter Databricks host and token.','tinfo');return;}
+  const btn=G('btnMdlDeploy');
+  btn.disabled=true; btn.textContent='Deploying…';
+
+  try{
+    const r=await fetch('/api/medallion/deploy',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        host:c.host, token:c.token,
+        workspace_path:c.workspace_path,
+        notebooks:MDL_NOTEBOOKS.map(nb=>({name:nb.name,code:nb.code}))
+      })
+    });
+    const d=await r.json();
+    if(!d.success&&!d.uploaded){
+      _mdlMsg('mdlStatusMsg',d.error||'Deploy failed','err');return;
+    }
+    const ok=d.uploaded||0, total=d.total||0;
+    const results=d.results||[];
+    let html=`✅ Deployed ${ok}/${total} notebooks to <code>${c.workspace_path}</code><br>`;
+    results.forEach(r=>{
+      html+=`<div style="font-size:11px;margin-top:3px;">${r.success?'✓':'✕'} <strong>${r.name}</strong> ${r.success?'→ '+r.path:'— '+(r.error||'failed')}</div>`;
+    });
+    _mdlMsg('mdlStatusMsg',html,'ok');
+    G('btnMdlRun').disabled=false;
+    toast(`${ok} notebooks deployed to Databricks!`,'tok');
+  }catch(e){_mdlMsg('mdlStatusMsg',e.message,'err');}
+  finally{
+    btn.disabled=false;
+    btn.innerHTML='<svg viewBox="0 0 24 24"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg> Deploy to Databricks';
+  }
+}
+
+async function mdlRunPipeline(){
+  const c=_mdlCreds();
+  if(!c.host||!c.token){toast('Enter Databricks host and token.','tinfo');return;}
+  const btn=G('btnMdlRun');
+  btn.disabled=true; btn.textContent='Submitting…';
+
+  const loadType=G('mdlLoadType').value;
+  try{
+    const r=await fetch('/api/medallion/run-pipeline',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({host:c.host,token:c.token,workspace_path:c.workspace_path,load_type:loadType,password:c.password})
+    });
+    const d=await r.json();
+    if(d.success){
+      _mdlMsg('mdlStatusMsg',`🚀 Pipeline submitted! Run ID: <strong>${d.run_id}</strong><br><a href="${d.run_url||'#'}" target="_blank" style="color:var(--blue);font-size:11.5px;">Open in Databricks →</a>`,'ok');
+      toast('Pipeline submitted to Databricks!','tok');
+    }else{
+      _mdlMsg('mdlStatusMsg',d.message||d.error||'Run failed','err');
+    }
+  }catch(e){_mdlMsg('mdlStatusMsg',e.message,'err');}
+  finally{
+    btn.disabled=false;
+    btn.innerHTML='<svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg> Run Pipeline';
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// SELF-HEALING BOT
+// ═══════════════════════════════════════════════════════
+let HL_SEV_FILTER=null, HL_MONITOR_IVS={};
+
+function _hlCreds(){
+  return {
+    host:        G('hlHost').value.trim(),
+    token:       G('hlToken').value.trim(),
+    server:      G('hlSrcServer').value.trim(),
+    database:    G('hlSrcDb').value.trim(),
+    source_type: 'sqlserver',
+    username:    '',
+    password:    '',
+  };
+}
+
+// ── Health Check ───────────────────────────────────
+async function hlRunHealthCheck(){
+  const btn=G('btnHlCheck');
+  btn.disabled=true; btn.textContent='Checking…';
+  G('hlChecks').innerHTML='<div class="loading-state"><div class="spin spin-lg"></div><span>Running health diagnostics…</span></div>';
+  try{
+    const c=_hlCreds();
+    const r=await fetch('/api/healer/health-check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(c)});
+    const d=await r.json();
+    if(!d.success){G('hlChecks').innerHTML=`<div class="alert a-err"><span class="a-ico">✕</span>${d.error||'Health check failed'}</div>`;return;}
+
+    // Update overall status
+    const pulse=G('hlPulse');
+    const overall=G('hlOverall');
+    pulse.className='heal-pulse '+(d.overall||'unknown');
+    overall.className='heal-overall '+(d.overall||'unknown');
+    overall.textContent=d.overall||'Unknown';
+
+    // Render checks
+    const checks=d.checks||[];
+    G('hlChecks').innerHTML=checks.map(c=>
+      `<div class="hl-check-row">
+        <div class="hl-check-dot ${c.status}"></div>
+        <div class="hl-check-name">${escHtml(c.name)}</div>
+        <div class="hl-check-detail">${escHtml(c.detail)}</div>
+      </div>`
+    ).join('');
+
+    toast(`Health: ${d.overall} (${checks.length} checks)`,'tok');
+    hlRefreshHistory();
+  }catch(e){G('hlChecks').innerHTML=`<div class="alert a-err"><span class="a-ico">✕</span>${e.message}</div>`;toast(e.message,'terr');}
+  finally{
+    btn.disabled=false;
+    btn.innerHTML='<svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> Run Health Check';
+  }
+}
+
+// ── Diagnose ───────────────────────────────────────
+async function hlDiagnose(){
+  const text=G('hlErrorText').value.trim();
+  if(!text){toast('Paste an error message to diagnose.','tinfo');return;}
+  const btn=G('btnHlDiagnose');
+  btn.disabled=true; btn.textContent='Analyzing…';
+  G('hlDiagResult').style.display='none';
+  try{
+    const r=await fetch('/api/healer/diagnose',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({error_text:text})});
+    const d=await r.json();
+    if(!d.success){G('hlDiagResult').style.display='';G('hlDiagResult').innerHTML=`<div class="alert a-err"><span class="a-ico">✕</span>${d.error||'Diagnosis failed'}</div>`;return;}
+
+    const sev=d.severity||'info';
+    const sevIcons={info:'ℹ',warning:'⚠',error:'✕',critical:'⚡'};
+    G('hlDiagResult').style.display='';
+    G('hlDiagResult').innerHTML=`
+      <div class="hl-diag-card ${sev}">
+        <div class="hl-diag-hdr">
+          <span class="hl-diag-sev ${sev}">${sevIcons[sev]||'·'} ${sev}</span>
+          <span class="hl-diag-cat">${d.category||'UNKNOWN'}</span>
+        </div>
+        <div class="hl-diag-desc">${escHtml(d.description||'')}</div>
+        <div class="hl-diag-rec">
+          <strong>🔧 Recommendation:</strong> ${escHtml(d.recommendation||'')}
+        </div>
+        <div style="margin-top:8px;display:flex;gap:6px;">
+          <button class="btn btn-primary btn-xs" onclick="hlExecuteHeal('${d.action||'notify'}','${d.category||''}')">
+            ⚡ Auto-Heal: ${d.action||'notify'}
+          </button>
+          <button class="btn btn-ghost btn-xs" onclick="hlExecuteHeal('skip_table','${d.category||''}')">
+            ⏭ Skip & Continue
+          </button>
+        </div>
+      </div>`;
+    toast(`Diagnosed: ${d.category} (${sev})`,'tok');
+    hlRefreshHistory();
+  }catch(e){
+    G('hlDiagResult').style.display='';
+    G('hlDiagResult').innerHTML=`<div class="alert a-err"><span class="a-ico">✕</span>${e.message}</div>`;
+  }finally{
+    btn.disabled=false;
+    btn.innerHTML='<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Diagnose & Recommend';
+  }
+}
+
+// ── Execute Heal ───────────────────────────────────
+async function hlExecuteHeal(action, category){
+  const c=_hlCreds();
+  toast(`Executing heal: ${action}…`,'tinfo');
+  try{
+    const r=await fetch('/api/healer/heal',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action, host:c.host, token:c.token, context:{category, job_key:'manual_'+Date.now()}})});
+    const d=await r.json();
+    if(d.success!==false){
+      toast(`✓ Heal "${action}": ${d.message||'done'}`,'tok',4000);
+    }else{
+      toast(`✕ Heal failed: ${d.message||d.error||'unknown'}`,'terr',4000);
+    }
+    hlRefreshHistory();
+  }catch(e){toast(e.message,'terr');}
+}
+
+// ── Restore Points ─────────────────────────────────
+async function hlCreateRp(){
+  const name=G('hlRpName').value.trim();
+  if(!name){toast('Enter a restore point name.','tinfo');return;}
+  try{
+    const r=await fetch('/api/healer/restore-point',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:name, metadata:{created_by:'user',source:'ui'}})});
+    const d=await r.json();
+    if(d.success){toast(`Restore point "${name}" created!`,'tok');G('hlRpName').value='';hlLoadRps();}
+    else toast(d.error||'Failed','terr');
+  }catch(e){toast(e.message,'terr');}
+}
+
+async function hlLoadRps(){
+  try{
+    const r=await fetch('/api/healer/restore-points');
+    const d=await r.json();
+    const rps=d.restore_points||[];
+    G('hlRpCount').style.display=rps.length?'':'none';
+    G('hlRpCount').textContent=rps.length+' saved';
+    if(!rps.length){G('hlRpList').innerHTML='<div class="empty" style="padding:20px;"><div class="empty-ico">📌</div><div class="empty-t">No Restore Points</div><div class="empty-s">Create one before running pipelines.</div></div>';return;}
+    G('hlRpList').innerHTML=rps.map(rp=>
+      `<div class="hl-rp-row">
+        <div style="color:var(--blue);flex-shrink:0;">📌</div>
+        <div class="hl-rp-name">${escHtml(rp.key)}</div>
+        <div class="hl-rp-time">${new Date(rp.timestamp).toLocaleString()}</div>
+        <div class="hl-rp-del" onclick="hlDeleteRp('${rp.key}')">✕</div>
+      </div>`
+    ).join('');
+  }catch(e){toast(e.message,'terr');}
+}
+
+async function hlDeleteRp(key){
+  try{
+    await fetch(`/api/healer/restore-point/${encodeURIComponent(key)}`,{method:'DELETE'});
+    toast(`Restore point "${key}" deleted.`,'tok');
+    hlLoadRps();
+  }catch(e){toast(e.message,'terr');}
+}
+
+// ── Monitors ───────────────────────────────────────
+async function hlStartMonitor(){
+  const runId=G('hlRunId').value.trim();
+  if(!runId){toast('Enter a Databricks Run ID.','tinfo');return;}
+  const c=_hlCreds();
+  const autoHeal=G('hlAutoHeal').checked;
+  try{
+    const r=await fetch('/api/healer/monitor/start',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({run_id:parseInt(runId), host:c.host, token:c.token, auto_heal:autoHeal})});
+    const d=await r.json();
+    if(d.success){
+      toast(`Monitor started for run ${runId}`,'tok');
+      G('hlRunId').value='';
+      const mon=d.monitor;
+      // Start polling
+      HL_MONITOR_IVS[mon.monitor_id]=setInterval(()=>hlPollMonitor(mon.monitor_id),5000);
+      hlRefreshMonitors();
+    }else{toast(d.error||'Failed','terr');}
+  }catch(e){toast(e.message,'terr');}
+}
+
+async function hlPollMonitor(monitorId){
+  const c=_hlCreds();
+  try{
+    const r=await fetch(`/api/healer/monitor/check/${monitorId}`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({host:c.host,token:c.token})});
+    const d=await r.json();
+    if(d.success){
+      const mon=d.monitor;
+      if(mon.status==='completed'||mon.status==='stopped'||mon.status==='failed'){
+        clearInterval(HL_MONITOR_IVS[monitorId]);
+        delete HL_MONITOR_IVS[monitorId];
+        if(mon.status==='completed')toast(`Run ${mon.run_id} completed!`,'tok');
+        else if(mon.status==='failed')toast(`Run ${mon.run_id} failed!`,'terr');
+      }
+      hlRefreshMonitors();
+      hlRefreshHistory();
+    }
+  }catch(e){/* silently retry on next poll */}
+}
+
+async function hlRefreshMonitors(){
+  try{
+    const r=await fetch('/api/healer/monitors');
+    const d=await r.json();
+    const mons=d.monitors||[];
+    if(!mons.length){G('hlMonitors').innerHTML='<div style="font-size:12px;color:var(--t4);text-align:center;padding:10px;">No active monitors</div>';return;}
+    G('hlMonitors').innerHTML=mons.map(m=>{
+      const heals=m.heals||[];
+      const lastEvt=(m.events||[]).slice(-1)[0];
+      return `<div class="hl-monitor-row">
+        <div class="hl-mon-status ${m.status||'watching'}"></div>
+        <div style="flex:1;">
+          <div style="font-size:12px;font-weight:600;color:var(--t1);">Run #${m.run_id}</div>
+          <div style="font-size:10.5px;color:var(--t3);">${m.status||'watching'}${heals.length?' · '+heals.length+' heal(s)':''}${lastEvt?' · '+lastEvt.msg.substring(0,60):''}</div>
+        </div>
+        <button class="btn btn-ghost btn-xs" onclick="hlStopMonitor('${m.monitor_id}')">Stop</button>
+      </div>`;
+    }).join('');
+  }catch(e){/* ignore */}
+}
+
+async function hlStopMonitor(monitorId){
+  try{
+    await fetch(`/api/healer/monitor/stop/${monitorId}`,{method:'POST'});
+    if(HL_MONITOR_IVS[monitorId]){clearInterval(HL_MONITOR_IVS[monitorId]);delete HL_MONITOR_IVS[monitorId];}
+    hlRefreshMonitors();
+    toast('Monitor stopped.','tok');
+  }catch(e){toast(e.message,'terr');}
+}
+
+// ── Healing Rules ──────────────────────────────────
+async function hlLoadRules(){
+  try{
+    const r=await fetch('/api/healer/rules');
+    const d=await r.json();
+    const rules=d.rules||[];
+    G('hlRuleCount').style.display=rules.length?'':'none';
+    G('hlRuleCount').textContent=rules.filter(r=>r.enabled).length+' active';
+    G('hlRules').innerHTML=rules.map(rule=>
+      `<div class="hl-rule-row">
+        <div class="hl-rule-toggle ${rule.enabled?'on':''}" onclick="hlToggleRule(${rule.id},${!rule.enabled},this)" title="${rule.enabled?'Disable':'Enable'}"></div>
+        <div class="hl-rule-name" title="${escHtml(rule.description||'')}">${escHtml(rule.name)}</div>
+        <div class="hl-rule-cat">${rule.category}</div>
+      </div>`
+    ).join('');
+  }catch(e){toast(e.message,'terr');}
+}
+
+async function hlToggleRule(id, enabled, el){
+  try{
+    const r=await fetch('/api/healer/rules/toggle',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({rule_id:id, enabled})});
+    const d=await r.json();
+    if(d.success){
+      el.className='hl-rule-toggle '+(enabled?'on':'');
+      toast(`Rule ${d.rule.name}: ${enabled?'enabled':'disabled'}`,'tok');
+      hlLoadRules();
+    }
+  }catch(e){toast(e.message,'terr');}
+}
+
+// ── Audit History ──────────────────────────────────
+function hlFilterSev(sev, btn){
+  HL_SEV_FILTER=sev;
+  document.querySelectorAll('.hl-sev-btn').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  hlRefreshHistory();
+}
+
+async function hlRefreshHistory(){
+  try{
+    const url='/api/healer/history?limit=100'+(HL_SEV_FILTER?'&severity='+HL_SEV_FILTER:'');
+    const r=await fetch(url);
+    const d=await r.json();
+    const items=d.history||[];
+    G('hlEventCount').style.display=items.length?'':'none';
+    G('hlEventCount').textContent=items.length+' events';
+    if(!items.length){G('hlHistory').innerHTML='<div style="color:var(--t4);text-align:center;padding:16px;">No events yet — run a health check to start.</div>';return;}
+    G('hlHistory').innerHTML=items.map(h=>{
+      const t=new Date(h.timestamp).toLocaleTimeString();
+      return `<div class="hl-evt">
+        <div class="hl-evt-sev ${h.severity}"></div>
+        <div class="hl-evt-time">${t}</div>
+        <div class="hl-evt-msg">${escHtml(h.message)}${h.action_taken?' <span style="color:var(--blue);font-weight:600;">→ '+h.action_taken+'</span>':''}${h.success===true?' <span style="color:var(--green-fg);">✓</span>':h.success===false?' <span style="color:var(--red-fg);">✕</span>':''}</div>
+      </div>`;
+    }).join('');
+    G('hlHistory').scrollTop=0;
+  }catch(e){/* ignore */}
+}
+
+async function hlClearHistory(){
+  try{
+    await fetch('/api/healer/history/clear',{method:'POST'});
+    G('hlHistory').innerHTML='<div style="color:var(--t4);text-align:center;padding:16px;">History cleared.</div>';
+    G('hlEventCount').style.display='none';
+    toast('History cleared.','tok');
+  }catch(e){toast(e.message,'terr');}
+}
+
+async function hlRefreshStats(){
+  try{
+    const r=await fetch('/api/healer/stats');
+    const d=await r.json();
+    const box=G('hlStatsBox');
+    box.style.display='';
+    box.innerHTML=`
+      <div class="hl-stats-grid">
+        <div class="hl-stat-box"><div class="n" style="color:var(--blue-fg);">${d.total_events||0}</div><div class="l">Total Events</div></div>
+        <div class="hl-stat-box"><div class="n" style="color:var(--green-fg);">${d.heals_succeeded||0}</div><div class="l">Heals OK</div></div>
+        <div class="hl-stat-box"><div class="n" style="color:var(--red-fg);">${d.heals_failed||0}</div><div class="l">Heals Failed</div></div>
+        <div class="hl-stat-box"><div class="n" style="color:var(--amber-fg);">${d.active_monitors||0}</div><div class="l">Monitors</div></div>
+        <div class="hl-stat-box"><div class="n" style="color:var(--t1);">${d.restore_points||0}</div><div class="l">Restore Pts</div></div>
+        <div class="hl-stat-box"><div class="n" style="color:var(--accent-primary);">${d.active_rules||0}</div><div class="l">Active Rules</div></div>
+      </div>`;
+  }catch(e){toast(e.message,'terr');}
+}
+
+// Auto-load rules & restore points when healer tab is first opened
+(function(){
+  const origSwitch=switchTab;
+  let healerLoaded=false;
+  switchTab=function(id,btn){
+    origSwitch(id,btn);
+    if(id==='healer'&&!healerLoaded){
+      healerLoaded=true;
+      hlLoadRules();
+      hlLoadRps();
+    }
+  };
+})();
+
+// ── Startup self-check ──
+(function(){
+  const fns=['testSourceConn','loadFromSource','convertSelected','switchTab','toast','toggleSrcConn'];
+  const missing=fns.filter(f=>typeof window[f]!=='function');
+  if(missing.length){
+    const d=document.createElement('div');
+    d.style.cssText='position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:99999;background:#fef3c7;color:#92400e;border:2px solid #f59e0b;padding:12px 18px;border-radius:8px;font:13px/1.4 monospace;max-width:80vw;box-shadow:0 8px 32px rgba(0,0,0,.2);';
+    d.textContent='MISSING FUNCTIONS: '+missing.join(', ');
+    document.body.appendChild(d);
+  }else{
+    console.log('[Migration Studio] All '+fns.length+' core functions loaded OK');
+  }
+})();
+
+</script>
+
+<!-- Post-diagnostic: runs AFTER the main script to verify & add fallback listeners -->
+<script>
+(function(){
+  var diag = document.getElementById('jsDiag');
+  var fns = ['testSourceConn','loadFromSource','convertSelected','switchTab','toast','toggleSrcConn','previewSource'];
+  var missing = fns.filter(function(f){ return typeof window[f] !== 'function'; });
+
+  if(missing.length > 0){
+    /* Main script block FAILED to parse/execute */
+    if(diag){
+      diag.style.background = '#fee2e2';
+      diag.style.color = '#b91c1c';
+      diag.style.border = '2px solid #f87171';
+      diag.textContent = 'SCRIPT PARSE ERROR — Missing: ' + missing.join(', ');
+    }
+    /* Also add a big visible banner */
+    var banner = document.createElement('div');
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;padding:16px 24px;font:14px/1.5 sans-serif;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.3);';
+    banner.innerHTML = '<b>JavaScript Error:</b> The main script failed to load. Functions missing: ' + missing.join(', ') + '<br>Please open this page in Chrome/Edge and check the console (F12) for the exact error.';
+    document.body.appendChild(banner);
+  } else {
+    /* Main script loaded OK — wire up fallback event listeners */
+    if(diag){
+      diag.style.background = '#d1fae5';
+      diag.style.color = '#065f46';
+      diag.style.border = '1.5px solid #34d399';
+      diag.textContent = 'JS OK — All ' + fns.length + ' core functions loaded';
+      setTimeout(function(){ diag.style.opacity = '0'; diag.style.transition = 'opacity 1s'; setTimeout(function(){ diag.remove(); }, 1200); }, 4000);
+    }
+
+    /* Fallback: add event listeners in case inline onclick doesn't fire */
+    var btnMap = {
+      'btnTestSrc': function(){ testSourceConn(); },
+      'btnLoadSrc': function(){ loadFromSource(); },
+      'btnConvert': function(){ convertSelected(); }
+    };
+    Object.keys(btnMap).forEach(function(id){
+      var el = document.getElementById(id);
+      if(el){
+        el.addEventListener('click', btnMap[id]);
+      }
+    });
+
+    /* Also add a global click logger for debugging */
+    document.addEventListener('click', function(e){
+      var btn = e.target.closest('.btn');
+      if(btn){
+        console.log('[ClickDebug] Button clicked:', btn.id || btn.textContent.trim().substring(0,30), 'disabled:', btn.disabled, 'onclick:', btn.getAttribute('onclick'));
+      }
+    }, true);
+  }
+  window.__jsPhase = 'complete';
+})();
+</script>
+</body>
+</html>
