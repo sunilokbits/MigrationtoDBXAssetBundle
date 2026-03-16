@@ -85,19 +85,23 @@ dbutils.widgets.text("load_type", "full", "Load Type (full / incremental)")
 dbutils.widgets.text("server", "{server}", "Source Server")
 dbutils.widgets.text("database", "{database}", "Source Database")
 dbutils.widgets.text("username", "{username}", "Username")
-dbutils.widgets.text("password", "", "Password (use secrets in prod)")
+dbutils.widgets.text("password_b64", "", "Password base64 (use secrets in prod)")
 dbutils.widgets.text("catalog", "{catalog}", "Target Catalog")
 dbutils.widgets.text("schema", "{schema}", "Target Schema")
 dbutils.widgets.text("landing_path", "{landing_path}", "Landing Base Path")
 
 # COMMAND ----------
 
+import base64
+
 # ── Read widget values ────────────────────────────────────────────────────────
 LOAD_TYPE    = dbutils.widgets.get("load_type").strip().lower()
 SERVER       = dbutils.widgets.get("server").strip()
 DATABASE     = dbutils.widgets.get("database").strip()
 USERNAME     = dbutils.widgets.get("username").strip()
-PASSWORD     = dbutils.widgets.get("password").strip()
+_PWD_B64     = dbutils.widgets.get("password_b64").strip()
+# Decode base64 password — special chars like # ; {{ }} are safe this way
+PASSWORD     = base64.b64decode(_PWD_B64.encode("ascii")).decode("utf-8") if _PWD_B64 else ""
 CATALOG      = dbutils.widgets.get("catalog").strip()
 SCHEMA       = dbutils.widgets.get("schema").strip()
 LANDING_PATH = dbutils.widgets.get("landing_path").strip()
@@ -353,6 +357,7 @@ def generate_bronze(
     catalog: str = "main",
     schema: str = "default",
     landing_path: str = "/mnt/landing",
+    table_prefix: str = "bronze_",
 ) -> str:
     """Generate the Bronze layer DLT notebook."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -363,9 +368,10 @@ def generate_bronze(
     for t in tables:
         tname = t["table"]
         safe  = tname.replace(" ", "_").replace("-", "_").lower()
+        delta_name = f"{table_prefix}{safe}"
         dlt_defs.append(f'''
 @dlt.table(
-    name="bronze_{safe}",
+    name="{delta_name}",
     comment="Bronze layer — raw ingestion of {tname} with schema enforcement",
     table_properties={{
         "quality": "bronze",
@@ -383,17 +389,18 @@ def bronze_{safe}():
         .withColumn("__bronze_ts", F.current_timestamp())
         .withColumn("__bronze_version", F.lit(1))
     )''')
+        # delta_name already computed above for DLT
 
         raw_defs.append(f'''
 def load_bronze_{safe}_raw():
     """Non-DLT fallback: load {tname} into Bronze Delta table with quality checks."""
     src_path = f"{{LANDING_PATH}}/{tname}"
-    target   = f"`{{CATALOG}}`.`{{SCHEMA}}`.`bronze_{safe}`"
+    target   = f"`{{CATALOG}}`.`{{SCHEMA}}`.`{delta_name}`"
 
     print(f"  📥 Loading {{src_path}} → {{target}}")
 
     # Create restore point before write
-    restore_ver = create_restore_point(CATALOG, SCHEMA, f"bronze_{safe}", "pre-bronze-load")
+    restore_ver = create_restore_point(CATALOG, SCHEMA, f"{delta_name}", "pre-bronze-load")
 
     try:
         df = spark.read.parquet(src_path)
@@ -429,7 +436,7 @@ def load_bronze_{safe}_raw():
     except Exception as e:
         print(f"    ❌ FAILED: {{e}}")
         if restore_ver is not None:
-            restore_table(CATALOG, SCHEMA, f"bronze_{safe}", restore_ver)
+            restore_table(CATALOG, SCHEMA, f"{delta_name}", restore_ver)
         return {{"table": "{tname}", "status": "failed", "error": str(e)}}''')
 
     dlt_block = "\n".join(dlt_defs)
@@ -445,6 +452,14 @@ def load_bronze_{safe}_raw():
 # MAGIC
 # MAGIC **Target:** `{catalog}.{schema}` (Bronze Delta Tables)
 # MAGIC **Source:** Landing Zone at `{landing_path}`
+# MAGIC
+# MAGIC ### Pipeline Flow
+# MAGIC ```
+# MAGIC ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+# MAGIC │  Landing Zone   │ ──► │  Bronze Layer    │ ──► │  Silver Layer    │
+# MAGIC │  ({landing_path})    │     │  ({catalog}.{schema})  │     │                 │
+# MAGIC └─────────────────┘     └─────────────────┘     └─────────────────┘
+# MAGIC ```
 # MAGIC
 # MAGIC ### Bronze Layer Responsibilities
 # MAGIC - Raw data ingestion from Landing Zone (Parquet → Delta)
@@ -583,7 +598,7 @@ if EXEC_MODE != "dlt":
     print("─"*40)
     for tname in TABLE_NAMES:
         safe = tname.replace(" ", "_").replace("-", "_").lower()
-        validate_bronze_table(CATALOG, SCHEMA, f"bronze_{{safe}}")
+        validate_bronze_table(CATALOG, SCHEMA, f"{{TABLE_PREFIX}}{{safe}}")
 
     # ── Summary ───────────────────────────────────────────────────────────
     success = [r for r in bronze_results if r.get("status") == "success"]
@@ -613,9 +628,16 @@ def generate_silver(
     tables: list,
     catalog: str = "main",
     schema: str = "default",
+    bronze_catalog: str = "",
+    bronze_schema: str = "",
+    table_prefix: str = "silver_",
+    bronze_table_prefix: str = "bronze_",
 ) -> str:
     """Generate the Silver layer DLT notebook with quality checks."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+    # Resolve bronze catalog/schema — defaults to same catalog/schema if not specified
+    br_catalog = bronze_catalog or catalog
+    br_schema = bronze_schema or schema
 
     # Build DLT definitions
     dlt_defs = []
@@ -623,10 +645,12 @@ def generate_silver(
     for t in tables:
         tname = t["table"]
         safe  = tname.replace(" ", "_").replace("-", "_").lower()
+        delta_name = f"{table_prefix}{safe}"
+        bronze_delta_name = f"{bronze_table_prefix}{safe}"
 
         dlt_defs.append(f'''
 @dlt.table(
-    name="silver_{safe}",
+    name="{delta_name}",
     comment="Silver layer — cleansed & validated {tname}",
     table_properties={{
         "quality": "silver",
@@ -640,7 +664,7 @@ def generate_silver(
 @dlt.expect("__has_batch_id", "__batch_id IS NOT NULL")
 def silver_{safe}():
     """Read from Bronze, apply cleansing & quality rules for {tname}."""
-    bronze_df = dlt.read("bronze_{safe}")
+    bronze_df = dlt.read("{bronze_delta_name}")
 
     return (
         bronze_df
@@ -664,13 +688,13 @@ def silver_{safe}():
         std_defs.append(f'''
 def process_silver_{safe}():
     """Standard mode: Bronze → Silver for {tname} with quality checks & restore."""
-    bronze_tbl = f"`{{CATALOG}}`.`{{SCHEMA}}`.`bronze_{safe}`"
-    silver_tbl = f"`{{CATALOG}}`.`{{SCHEMA}}`.`silver_{safe}`"
+    bronze_tbl = f"`{{BRONZE_CATALOG}}`.`{{BRONZE_SCHEMA}}`.`{bronze_delta_name}`"
+    silver_tbl = f"`{{CATALOG}}`.`{{SCHEMA}}`.`{delta_name}`"
 
-    print(f"  🔄 Processing: bronze_{safe} → silver_{safe}")
+    print(f"  🔄 Processing: {bronze_delta_name} ({{BRONZE_CATALOG}}.{{BRONZE_SCHEMA}}) → {delta_name} ({{CATALOG}}.{{SCHEMA}})")
 
     # ── Create restore point ──────────────────────────────────────────
-    restore_ver = create_restore_point(CATALOG, SCHEMA, f"silver_{safe}", "pre-silver")
+    restore_ver = create_restore_point(CATALOG, SCHEMA, f"{delta_name}", "pre-silver")
 
     try:
         df = spark.sql(f"SELECT * FROM {{bronze_tbl}}")
@@ -748,7 +772,7 @@ def process_silver_{safe}():
         print(f"    ✅ Silver {{silver_tbl}}: {{final_count:,}} rows written")
 
         # ── Record DQ metrics ─────────────────────────────────────────
-        save_dq_metrics(CATALOG, SCHEMA, f"silver_{safe}", dq_results, initial_count, final_count)
+        save_dq_metrics(CATALOG, SCHEMA, f"{delta_name}", dq_results, initial_count, final_count)
 
         return {{
             "table": "{tname}", "status": "success",
@@ -759,7 +783,7 @@ def process_silver_{safe}():
     except Exception as e:
         print(f"    ❌ FAILED: {{e}}")
         if restore_ver is not None:
-            restore_table(CATALOG, SCHEMA, f"silver_{safe}", restore_ver)
+            restore_table(CATALOG, SCHEMA, f"{delta_name}", restore_ver)
         return {{"table": "{tname}", "status": "failed", "error": str(e)}}''')
 
     dlt_block = "\n".join(dlt_defs)
@@ -772,7 +796,15 @@ def process_silver_{safe}():
 # MAGIC **Generated:** {ts}
 # MAGIC
 # MAGIC **Target:** `{catalog}.{schema}` (Silver Delta Tables)
-# MAGIC **Source:** Bronze Delta Tables in `{catalog}.{schema}`
+# MAGIC **Source:** Bronze Delta Tables in `{br_catalog}.{br_schema}`
+# MAGIC
+# MAGIC ### Pipeline Flow
+# MAGIC ```
+# MAGIC ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+# MAGIC │  Bronze Layer    │ ──► │  Silver Layer    │ ──► │  Gold / Reports  │
+# MAGIC │  ({br_catalog}.{br_schema})  │     │  ({catalog}.{schema})  │     │                 │
+# MAGIC └─────────────────┘     └─────────────────┘     └─────────────────┘
+# MAGIC ```
 # MAGIC
 # MAGIC ### Silver Layer Responsibilities
 # MAGIC - Data cleansing: trim strings, remove nulls, deduplicate
@@ -799,19 +831,25 @@ def process_silver_{safe}():
 
 # COMMAND ----------
 
-dbutils.widgets.text("catalog", "{catalog}", "Target Catalog")
-dbutils.widgets.text("schema", "{schema}", "Target Schema")
+dbutils.widgets.text("catalog", "{catalog}", "Silver Catalog")
+dbutils.widgets.text("schema", "{schema}", "Silver Schema")
+dbutils.widgets.text("bronze_catalog", "{br_catalog}", "Bronze Catalog")
+dbutils.widgets.text("bronze_schema", "{br_schema}", "Bronze Schema")
 dbutils.widgets.text("mode", "standard", "Execution Mode (dlt / standard)")
 
-CATALOG   = dbutils.widgets.get("catalog").strip()
-SCHEMA    = dbutils.widgets.get("schema").strip()
-EXEC_MODE = dbutils.widgets.get("mode").strip().lower()
+CATALOG        = dbutils.widgets.get("catalog").strip()
+SCHEMA         = dbutils.widgets.get("schema").strip()
+BRONZE_CATALOG = dbutils.widgets.get("bronze_catalog").strip()
+BRONZE_SCHEMA  = dbutils.widgets.get("bronze_schema").strip()
+EXEC_MODE      = dbutils.widgets.get("mode").strip().lower()
 
-print(f"🔧 Catalog : {{CATALOG}}")
-print(f"🔧 Schema  : {{SCHEMA}}")
-print(f"🔧 Mode    : {{EXEC_MODE}}")
+print(f"🔧 Silver Catalog  : {{CATALOG}}.{{SCHEMA}}")
+print(f"🔧 Bronze Catalog  : {{BRONZE_CATALOG}}.{{BRONZE_SCHEMA}}")
+print(f"🔧 Mode           : {{EXEC_MODE}}")
 
 TABLE_NAMES = [{table_names_str}]
+TABLE_PREFIX = "{table_prefix}"
+BRONZE_TABLE_PREFIX = "{bronze_table_prefix}"
 
 # COMMAND ----------
 
@@ -950,7 +988,7 @@ if EXEC_MODE != "dlt":
     print("─"*40)
     for tname in TABLE_NAMES:
         safe = tname.replace(" ", "_").replace("-", "_").lower()
-        validate_silver_table(CATALOG, SCHEMA, f"silver_{{safe}}")
+        validate_silver_table(CATALOG, SCHEMA, f"{{TABLE_PREFIX}}{{safe}}")
 
     # ── Summary ───────────────────────────────────────────────────────────
     success = [r for r in silver_results if r.get("status") == "success"]
@@ -1020,15 +1058,35 @@ def generate_orchestrator(
     schema: str = "default",
     landing_path: str = "/mnt/landing",
     workspace_path: str = "/Shared/Medallion",
+    volumes_catalog: str = "",
+    bronze_catalog: str = "",
+    silver_catalog: str = "",
+    target_schema: str = "",
 ) -> str:
     """Generate an orchestrator notebook that chains Landing → Bronze → Silver."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+    # Resolve multi-catalog labels for display
+    vol_label = volumes_catalog or "Landing Zone"
+    brz_label = f"{bronze_catalog}.{target_schema}" if bronze_catalog else f"{catalog}.{schema}"
+    slv_label = f"{silver_catalog}.{target_schema}" if silver_catalog else f"{catalog}.{schema}"
+    brz_cat = bronze_catalog or catalog
+    brz_sch = target_schema or schema
+    slv_cat = silver_catalog or catalog
+    slv_sch = target_schema or schema
     return f'''# Databricks notebook source
 # MAGIC %md
 # MAGIC # 🎯 Medallion Pipeline Orchestrator
 # MAGIC **Generated:** {ts}
 # MAGIC
-# MAGIC Chains: **Landing Zone** → **Bronze** → **Silver**
+# MAGIC ### Pipeline Flow
+# MAGIC ```
+# MAGIC ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+# MAGIC │  Source Extract  │ ──► │  Bronze Layer    │ ──► │  Silver Layer   │
+# MAGIC │  → {vol_label:<13} │     │  ({brz_label:<13}) │     │  ({slv_label:<13}) │
+# MAGIC └─────────────────┘     └─────────────────┘     └─────────────────┘
+# MAGIC ```
+# MAGIC
+# MAGIC Chains: **Extract → {vol_label}** → **{brz_label} (Bronze)** → **{slv_label} (Silver)**
 # MAGIC
 # MAGIC Includes automatic rollback if any stage fails.
 # MAGIC ---
@@ -1036,10 +1094,10 @@ def generate_orchestrator(
 # COMMAND ----------
 
 dbutils.widgets.text("load_type", "full", "Load Type (full / incremental)")
-dbutils.widgets.text("password", "", "Source DB Password")
+dbutils.widgets.text("password_b64", "", "Source DB Password (base64)")
 
-LOAD_TYPE = dbutils.widgets.get("load_type").strip()
-PASSWORD  = dbutils.widgets.get("password").strip()
+LOAD_TYPE    = dbutils.widgets.get("load_type").strip()
+PASSWORD_B64 = dbutils.widgets.get("password_b64").strip()
 
 import json
 from datetime import datetime
@@ -1059,23 +1117,24 @@ def log(msg):
 
 # COMMAND ----------
 
-log("🚀 Stage 1: Landing Zone — starting extraction…")
+log("🚀 Stage 1: Extract → {vol_label} — starting extraction…")
 try:
     landing_result = dbutils.notebook.run(
         "{workspace_path}/01_Landing_Zone",
         timeout_seconds=3600,
         arguments={{
-            "load_type": LOAD_TYPE,
-            "password":  PASSWORD,
+            "load_type":     LOAD_TYPE,
+            "password_b64":  PASSWORD_B64,
+            "landing_path":  "{landing_path}",
         }}
     )
     landing_data = json.loads(landing_result)
     if landing_data.get("status") == "FAILED":
         raise Exception(f"Landing failed: {{landing_data.get('error', 'unknown')}}")
-    log(f"✅ Landing Zone complete: {{landing_data.get('succeeded', 0)}} tables, {{landing_data.get('total_rows', 0):,}} rows")
+    log(f"✅ Extract → {vol_label} complete: {{landing_data.get('succeeded', 0)}} tables, {{landing_data.get('total_rows', 0):,}} rows")
 except Exception as e:
-    log(f"❌ Landing Zone FAILED: {{e}}")
-    dbutils.notebook.exit(json.dumps({{"status": "FAILED", "stage": "landing", "error": str(e), "log": run_log}}))
+    log(f"❌ Extract → {vol_label} FAILED: {{e}}")
+    dbutils.notebook.exit(json.dumps({{"status": "FAILED", "stage": "extract", "error": str(e), "log": run_log}}))
 
 # COMMAND ----------
 
@@ -1084,12 +1143,12 @@ except Exception as e:
 
 # COMMAND ----------
 
-log("🚀 Stage 2: Bronze Layer — processing raw data…")
+log("🚀 Stage 2: {vol_label} → {brz_label} (Bronze) — ingesting raw data…")
 try:
     bronze_result = dbutils.notebook.run(
         "{workspace_path}/02_Bronze",
         timeout_seconds=3600,
-        arguments={{"mode": "standard"}}
+        arguments={{"mode": "standard", "catalog": "{brz_cat}", "schema": "{brz_sch}", "landing_path": "{landing_path}"}}
     )
     bronze_data = json.loads(bronze_result)
     if bronze_data.get("failed", 0) > 0:
@@ -1106,12 +1165,12 @@ except Exception as e:
 
 # COMMAND ----------
 
-log("🚀 Stage 3: Silver Layer — cleansing & validation…")
+log("🚀 Stage 3: {brz_label} (Bronze) → {slv_label} (Silver) — cleansing & validation…")
 try:
     silver_result = dbutils.notebook.run(
         "{workspace_path}/03_Silver",
         timeout_seconds=3600,
-        arguments={{"mode": "standard"}}
+        arguments={{"mode": "standard", "catalog": "{slv_cat}", "schema": "{slv_sch}", "bronze_catalog": "{brz_cat}", "bronze_schema": "{brz_sch}"}}
     )
     silver_data = json.loads(silver_result)
     log(f"✅ Silver complete: {{silver_data.get('succeeded', 0)}} tables, Bronze→Silver: {{silver_data.get('total_bronze', 0):,}} → {{silver_data.get('total_silver', 0):,}}")
@@ -1154,47 +1213,100 @@ def generate_all_medallion_notebooks(
     schema: str = "default",
     landing_path: str = "/mnt/landing",
     workspace_path: str = "/Shared/Medallion",
+    volumes_catalog: str = "",
+    bronze_catalog: str = "",
+    silver_catalog: str = "",
+    target_schema: str = "",
 ) -> dict:
     """
     Generate all Medallion notebooks and return them as a dict.
+
+    Multi-Catalog Medallion Architecture:
+      When volumes_catalog, bronze_catalog, silver_catalog are provided:
+        1. Source Extract → dev_volumes (UC Volumes: /Volumes/{volumes_catalog}/{target_schema}/landing/)
+        2. dev_volumes → bronze.{target_schema} (Bronze catalog, hr schema)
+        3. bronze.{target_schema} → silver.{target_schema} (Silver catalog, hr schema)
+
     Returns: {notebooks: [{name, code, description}], summary: {...}}
     """
+    # ── Resolve multi-catalog vs legacy mode ──
+    multi_catalog = bool(volumes_catalog and bronze_catalog and silver_catalog)
+    tgt_schema = target_schema or schema
+
+    if multi_catalog:
+        effective_landing_path = f"/Volumes/{volumes_catalog}/{tgt_schema}/landing"
+        bronze_table_prefix = ""       # No prefix — catalog IS the layer
+        silver_table_prefix = ""
+    else:
+        effective_landing_path = landing_path
+        bronze_table_prefix = "bronze_"
+        silver_table_prefix = "silver_"
+
     landing = generate_landing_zone(
-        source_type, server, database, username, tables, catalog, schema, landing_path
+        source_type, server, database, username, tables,
+        catalog=volumes_catalog or catalog,
+        schema=tgt_schema,
+        landing_path=effective_landing_path,
     )
-    bronze = generate_bronze(tables, catalog, schema, landing_path)
-    silver = generate_silver(tables, catalog, schema)
+    bronze = generate_bronze(
+        tables,
+        catalog=bronze_catalog or catalog,
+        schema=tgt_schema,
+        landing_path=effective_landing_path,
+        table_prefix=bronze_table_prefix,
+    )
+    silver = generate_silver(
+        tables,
+        catalog=silver_catalog or catalog,
+        schema=tgt_schema,
+        bronze_catalog=bronze_catalog or catalog,
+        bronze_schema=tgt_schema,
+        table_prefix=silver_table_prefix,
+        bronze_table_prefix=bronze_table_prefix,
+    )
     orchestrator = generate_orchestrator(
         source_type, server, database, username, tables,
-        catalog, schema, landing_path, workspace_path
+        catalog=catalog,
+        schema=schema,
+        landing_path=effective_landing_path,
+        workspace_path=workspace_path,
+        volumes_catalog=volumes_catalog,
+        bronze_catalog=bronze_catalog,
+        silver_catalog=silver_catalog,
+        target_schema=target_schema,
     )
+
+    # Build descriptive labels for multi-catalog or legacy mode
+    vol_lbl = volumes_catalog or "Landing Zone"
+    brz_lbl = f"{bronze_catalog}.{tgt_schema}" if bronze_catalog else f"{catalog}.{schema}"
+    slv_lbl = f"{silver_catalog}.{tgt_schema}" if silver_catalog else f"{catalog}.{schema}"
 
     notebooks = [
         {
             "name": "01_Landing_Zone",
             "code": landing,
-            "description": "Extract from source DB → Landing Zone (Parquet)",
+            "description": f"Extract from source DB → {vol_lbl} ({effective_landing_path})",
             "layer": "landing",
             "lines": len(landing.splitlines()),
         },
         {
             "name": "02_Bronze",
             "code": bronze,
-            "description": "Landing → Bronze Delta tables with DLT & quality checks",
+            "description": f"{vol_lbl} → {brz_lbl} (Bronze Delta tables with DLT & quality checks)",
             "layer": "bronze",
             "lines": len(bronze.splitlines()),
         },
         {
             "name": "03_Silver",
             "code": silver,
-            "description": "Bronze → Silver with cleansing, DQ validation & restore",
+            "description": f"{brz_lbl} → {slv_lbl} (Silver with cleansing, DQ validation & restore)",
             "layer": "silver",
             "lines": len(silver.splitlines()),
         },
         {
             "name": "00_Orchestrator",
             "code": orchestrator,
-            "description": "Chains Landing → Bronze → Silver with auto-rollback",
+            "description": f"Chains {vol_lbl} → {brz_lbl} → {slv_lbl} with auto-rollback",
             "layer": "orchestrator",
             "lines": len(orchestrator.splitlines()),
         },
@@ -1208,6 +1320,12 @@ def generate_all_medallion_notebooks(
             "total_tables": len(tables),
             "total_lines": sum(n["lines"] for n in notebooks),
             "layers": ["landing", "bronze", "silver", "orchestrator"],
+            "multi_catalog": multi_catalog,
+            "volumes_catalog": volumes_catalog,
+            "bronze_catalog": bronze_catalog or catalog,
+            "silver_catalog": silver_catalog or catalog,
+            "target_schema": tgt_schema,
+            "landing_path": effective_landing_path,
             "features": [
                 "Full Load & Incremental Load",
                 "Delta Live Tables (DLT) pipelines",
@@ -1218,6 +1336,7 @@ def generate_all_medallion_notebooks(
                 "DQ metrics recording",
                 "Parallel extraction",
                 "Auto-rollback on failure",
+                "Multi-Catalog Medallion Architecture" if multi_catalog else "Single-Catalog Mode",
             ],
         },
     }

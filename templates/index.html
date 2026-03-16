@@ -1071,6 +1071,111 @@ select.form-inp { cursor:pointer; }
 /* Better form group gap */
 .form-row-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .g2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+/* ── AI Workflow Manager Sub-Pages ── */
+.wf-child {
+  padding-left:32px !important; font-size:12px !important;
+  border-left:2px solid transparent; margin-left:8px;
+}
+.wf-child.active { border-left-color:var(--blue); }
+.wf-child .nav-ico { width:16px; height:16px; }
+.wf-nav-card:hover { transform:translateY(-3px); box-shadow:var(--shadow-md); }
+#pane-wf-dashboard.active { flex-direction:column; }
+#pane-wf-metadata.active { flex-direction:column; }
+#pane-wf-pipelines.active { flex-direction:column; }
+#pane-wf-jobs.active { flex-direction:row; gap:16px; }
+#pane-wf-jobs .l-col { flex:3; }
+#pane-wf-jobs .r-col { flex:2; display:flex; flex-direction:column; gap:16px; }
+#pane-wf-settings.active { flex-direction:column; }
+.cfg-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.cfg-grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+.cfg-section { margin-bottom:8px; }
+.cfg-section-title { font-size:12px; font-weight:700; color:var(--t2); margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+.cfg-section-title svg { width:16px; height:16px; stroke:var(--blue); fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.cfg-saved-banner { display:none; padding:10px 16px; border-radius:var(--r-sm); background:var(--green-light); border:1px solid var(--green-border); color:var(--green-fg); font-size:12px; font-weight:600; margin-bottom:12px; animation:slideDown .2s ease; }
+@keyframes cfgSpin { to { transform:rotate(360deg); } }
+.cfg-spin { display:inline-block; animation:cfgSpin 1s linear infinite; }
+
+/* ── Dynamic Medallion Architecture ── */
+.mdl-layer {
+  flex-shrink:0; min-width:170px; text-align:center; cursor:pointer;
+  transition:transform .25s, box-shadow .25s; position:relative;
+}
+.mdl-layer:hover { transform:translateY(-4px); }
+.mdl-layer-inner {
+  border-radius:var(--r-lg); padding:16px 14px; color:#fff; position:relative;
+  overflow:hidden; transition:box-shadow .25s;
+}
+.mdl-layer:hover .mdl-layer-inner { box-shadow:0 8px 28px rgba(0,0,0,.25); }
+.mdl-layer-inner::before {
+  content:''; position:absolute; inset:0; opacity:0;
+  background:linear-gradient(135deg,rgba(255,255,255,.18),transparent 50%);
+  transition:opacity .25s;
+}
+.mdl-layer:hover .mdl-layer-inner::before { opacity:1; }
+.mdl-layer .mdl-count {
+  font-size:10px; opacity:.8; margin-top:6px;
+  background:rgba(255,255,255,.15); border-radius:4px; padding:2px 8px;
+  display:inline-block; transition:all .2s;
+}
+.mdl-layer.has-data .mdl-count { background:rgba(255,255,255,.3); font-weight:700; }
+
+/* Animated arrows */
+.mdl-arrow {
+  flex-shrink:0; display:flex; flex-direction:column; align-items:center; width:90px; position:relative;
+}
+.mdl-arrow-line {
+  width:64px; height:3px; border-radius:2px; position:relative;
+  overflow:hidden;
+}
+.mdl-arrow-line::after {
+  content:''; position:absolute; top:0; left:-100%; width:60%; height:100%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.7),transparent);
+  animation:flowPulse 2s ease-in-out infinite;
+}
+.mdl-arrow.active .mdl-arrow-line::after { animation-duration:1.2s; }
+@keyframes flowPulse {
+  0%   { left:-60%; opacity:0; }
+  40%  { opacity:1; }
+  100% { left:120%; opacity:0; }
+}
+.mdl-arrow-tip {
+  position:absolute; right:-7px; top:50%; transform:translateY(-50%);
+  width:0; height:0; border-left:9px solid currentColor;
+  border-top:6px solid transparent; border-bottom:6px solid transparent;
+}
+.mdl-arrow-label { font-size:9px; color:var(--t4); font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+.mdl-arrow-job { font-size:8px; color:var(--t4); font-family:var(--font-mono); }
+
+/* Layer detail panel */
+.mdl-detail {
+  display:none; margin-top:12px; padding:14px; border-radius:var(--r);
+  border:1.5px solid var(--border); background:var(--surface);
+  box-shadow:var(--shadow-sm); animation:slideDown .2s ease;
+}
+.mdl-detail.open { display:block; }
+@keyframes slideDown { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+.mdl-detail-hd {
+  display:flex; align-items:center; justify-content:space-between;
+  padding-bottom:8px; margin-bottom:8px; border-bottom:1px solid var(--border);
+}
+.mdl-detail-title { font-weight:700; font-size:13px; }
+.mdl-detail-close { background:none; border:none; font-size:16px; cursor:pointer; color:var(--t3); padding:2px 6px; border-radius:4px; }
+.mdl-detail-close:hover { background:var(--surface-2); color:var(--t1); }
+.mdl-detail-jobs { display:flex; flex-direction:column; gap:4px; max-height:200px; overflow-y:auto; }
+.mdl-detail-job {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:6px 10px; border-radius:var(--r-xs);
+  border:1px solid var(--border); background:var(--surface-2); font-size:11px;
+  transition:background .15s;
+}
+.mdl-detail-job:hover { background:var(--surface-3); }
+
+/* Quick-create inline */
+.mdl-quick-create {
+  padding:14px; border-radius:var(--r);
+  border:1.5px dashed var(--blue-border); background:var(--blue-light);
+}
 </style>
 </head>
 <body>
@@ -1087,20 +1192,37 @@ select.form-inp { cursor:pointer; }
       </div>
     </div>
   </div>
-  <div class="sb-stats">
-    <div class="stat-pill"><div class="n" id="statSP" style="color:var(--sp-c)">0</div><div class="l">SP</div></div>
-    <div class="stat-pill"><div class="n" id="statVW" style="color:var(--vw-c)">0</div><div class="l">Views</div></div>
-    <div class="stat-pill"><div class="n" id="statUDF" style="color:var(--udf-c)">0</div><div class="l">UDFs</div></div>
-  </div>
   <div class="sb-nav">
+    <div class="sb-sec">AI Workflow Manager</div>
+    <button class="nav-btn active wf-child" id="nav-wf-dashboard" onclick="switchTab('wf-dashboard',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+      Dashboard<span class="nav-badge" id="navBadgeWf">0</span>
+    </button>
+    <button class="nav-btn wf-child" id="nav-wf-metadata" onclick="switchTab('wf-metadata',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></span>
+      MetadataFlow
+    </button>
+    <button class="nav-btn wf-child" id="nav-wf-pipelines" onclick="switchTab('wf-pipelines',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></span>
+      Pipeline Studio
+    </button>
+    <button class="nav-btn wf-child" id="nav-wf-jobs" onclick="switchTab('wf-jobs',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span>
+      Job Manager
+    </button>
+    <button class="nav-btn wf-child" id="nav-wf-settings" onclick="switchTab('wf-settings',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg></span>
+      Settings
+    </button>
     <div class="sb-sec">Workflow</div>
-    <button class="nav-btn active" id="nav-convert" onclick="switchTab('convert',this)">
+    <div class="sb-stats" style="margin:4px 8px 8px 8px;">
+      <div class="stat-pill"><div class="n" id="statSP" style="color:var(--sp-c)">0</div><div class="l">SP</div></div>
+      <div class="stat-pill"><div class="n" id="statVW" style="color:var(--vw-c)">0</div><div class="l">Views</div></div>
+      <div class="stat-pill"><div class="n" id="statUDF" style="color:var(--udf-c)">0</div><div class="l">UDFs</div></div>
+    </div>
+    <button class="nav-btn" id="nav-convert" onclick="switchTab('convert',this)">
       <span class="nav-ico"><svg viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg></span>
       Convert to PySpark<span class="nav-badge">0</span>
-    </button>
-    <button class="nav-btn" id="nav-connect" onclick="switchTab('connect',this)">
-      <span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg></span>
-      Databricks Connect<span class="nav-badge">0</span>
     </button>
     <button class="nav-btn" id="nav-deploy" onclick="switchTab('deploy',this)">
       <span class="nav-ico"><svg viewBox="0 0 24 24"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg></span>
@@ -1135,7 +1257,7 @@ select.form-inp { cursor:pointer; }
     </div>
     <div class="wf-lbl" id="wfLbl">Step 1 of 7 &mdash; Convert SQL Objects</div>
     <div class="sb-footer-meta">
-      <span class="sb-ver">v2.4.0</span>
+      <span class="sb-ver">v2.5.0</span>
       <span class="sb-build">build 2026.03.01</span>
     </div>
   </div>
@@ -1319,9 +1441,11 @@ select.form-inp { cursor:pointer; }
     </div>
 
     <!-- ═══════════ CONNECT ═══════════ -->
-    <div id="pane-connect" class="tab-pane">
-      <div class="l-col">
-        <div class="card">
+
+    <!-- ═══════════ DEPLOY ═══════════ -->
+    <div id="pane-deploy" class="tab-pane">
+      <div class="l-col" style="overflow-y:hidden;">
+        <div class="card" style="flex-shrink:0;">
           <div class="card-hd">
             <div class="card-ico"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div>
             <div class="card-title">Credentials</div>
@@ -1336,33 +1460,12 @@ select.form-inp { cursor:pointer; }
           </div>
         </div>
         <div id="connStatus"></div>
-      </div>
-      <div class="r-col">
-        <div class="card" style="flex:1;overflow-y:auto;">
-          <div class="card-hd">
-            <div class="card-ico"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
-            <div class="card-title">Workspace &amp; Clusters</div>
-          </div>
-          <div id="connInfo"><div class="empty"><div class="empty-ico">🔌</div><div class="empty-t">Not Connected</div><div class="empty-s">Enter credentials and click Test Connection.</div></div></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══════════ DEPLOY ═══════════ -->
-    <div id="pane-deploy" class="tab-pane">
-      <div class="l-col" style="overflow-y:hidden;">
         <div class="card" style="flex-shrink:0;">
           <div class="card-hd">
-            <div class="card-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M16.24 7.76a6 6 0 010 8.49M4.93 4.93a10 10 0 000 14.14M7.76 7.76a6 6 0 000 8.49"/></svg></div>
+            <div class="card-ico"><svg viewBox="0 0 24 24"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg></div>
             <div class="card-title">Deploy Settings</div>
-            <button class="btn btn-ghost btn-xs" onclick="syncDepCreds()" title="Copy credentials from Connect tab" style="margin-left:auto;">
-              <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
-              Sync
-            </button>
           </div>
           <div style="display:flex;flex-direction:column;gap:12px;">
-            <div class="form-grp"><label class="form-lbl">Workspace Host</label><input id="depHost" class="form-inp" type="text" placeholder="https://adb-xxxx.azuredatabricks.net"></div>
-            <div class="form-grp"><label class="form-lbl">Access Token</label><input id="depToken" class="form-inp" type="password" placeholder="dapi…"></div>
             <div class="form-grp"><label class="form-lbl">Workspace Path</label><input id="depPath" class="form-inp" value="/Shared/Migrations"></div>
             <button class="btn btn-success btn-full" id="btnDeployAll" onclick="deployAll()">
               <svg viewBox="0 0 24 24"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>
@@ -1381,6 +1484,13 @@ select.form-inp { cursor:pointer; }
         </div>
       </div>
       <div class="r-col">
+        <div class="card" style="overflow-y:auto;">
+          <div class="card-hd">
+            <div class="card-ico"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+            <div class="card-title">Workspace &amp; Clusters</div>
+          </div>
+          <div id="connInfo"><div class="empty"><div class="empty-ico">🔌</div><div class="empty-t">Not Connected</div><div class="empty-s">Enter credentials and click Test Connection.</div></div></div>
+        </div>
         <div class="card" style="flex:1;overflow-y:auto;">
           <div class="card-hd">
             <div class="card-ico"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/></svg></div>
@@ -1536,6 +1646,16 @@ select.form-inp { cursor:pointer; }
               <label class="form-lbl">Parallel Workers: <strong id="migWkrLbl">3</strong></label>
               <input type="range" id="migWorkers" class="wkr-slider" min="1" max="8" value="3" oninput="G('migWkrLbl').textContent=this.value">
             </div>
+            <div class="form-grp">
+              <label class="form-lbl">Load Mode</label>
+              <select id="migLoadMode" class="form-inp" onchange="updateMigModeHint()">
+                <option value="full">📦 Full Load</option>
+                <option value="incremental">🔄 Incremental (Hash-Key)</option>
+              </select>
+            </div>
+            <div id="migModeHint" style="display:none;padding:8px 12px;background:linear-gradient(135deg,rgba(219,234,254,.5),rgba(191,219,254,.3));border:1px solid rgba(59,130,246,.15);border-radius:var(--r);font-size:11px;color:var(--t3);">
+              💡 <strong>Hash-Key Incremental:</strong> Each row gets a SHA-256 hash of all column values. Only new/changed rows are inserted — no watermark column needed. First run loads all rows; subsequent runs detect changes automatically.
+            </div>
           </div>
         </div>
 
@@ -1657,6 +1777,22 @@ select.form-inp { cursor:pointer; }
               <div class="form-grp"><label class="form-lbl">Landing Path</label><input id="mdlLandingPath" class="form-inp" value="/mnt/landing"></div>
               <div class="form-grp"><label class="form-lbl">Workspace Path</label><input id="mdlWsPath" class="form-inp" value="/Shared/Medallion"></div>
             </div>
+            <!-- Multi-Catalog Architecture -->
+            <details id="mdlMultiCatToggle" style="margin-top:4px;">
+              <summary style="cursor:pointer;font-weight:600;color:var(--t2);font-size:13px;">🏗️ Multi-Catalog Architecture (Optional)</summary>
+              <div style="margin-top:8px;padding:10px;background:var(--surface-2);border-radius:8px;display:flex;flex-direction:column;gap:8px;">
+                <div style="font-size:12px;color:var(--t3);margin-bottom:4px;">Define separate catalogs for each medallion layer. Leave blank for single-catalog mode.</div>
+                <div class="g2">
+                  <div class="form-grp"><label class="form-lbl">Volumes Catalog</label><input id="mdlVolCatalog" class="form-inp" placeholder="e.g. dev_volumes"></div>
+                  <div class="form-grp"><label class="form-lbl">Target Schema</label><input id="mdlTargetSchema" class="form-inp" placeholder="e.g. hr"></div>
+                </div>
+                <div class="g2">
+                  <div class="form-grp"><label class="form-lbl">Bronze Catalog</label><input id="mdlBrzCatalog" class="form-inp" placeholder="e.g. bronze"></div>
+                  <div class="form-grp"><label class="form-lbl">Silver Catalog</label><input id="mdlSlvCatalog" class="form-inp" placeholder="e.g. silver"></div>
+                </div>
+                <div style="font-size:11px;color:var(--t3);">Flow: Source → <b>Volumes Catalog</b> (landing) → <b>Bronze Catalog</b>.schema → <b>Silver Catalog</b>.schema</div>
+              </div>
+            </details>
             <div class="form-grp">
               <label class="form-lbl">Pipeline Mode</label>
               <select id="mdlMode" class="form-inp">
@@ -1878,6 +2014,996 @@ select.form-inp { cursor:pointer; }
       </div>
     </div>
 
+    <!-- ═══════════ AI WORKFLOW MANAGER — DASHBOARD ═══════════ -->
+    <div id="pane-wf-dashboard" class="tab-pane">
+      <!-- Page Header -->
+      <div>
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px;">
+          <div style="width:52px;height:52px;border-radius:14px;background:var(--accent-gradient);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg viewBox="0 0 24 24" style="width:26px;height:26px;stroke:white;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          </div>
+          <div>
+            <h2 style="margin:0;font-size:22px;font-weight:800;color:var(--t1);letter-spacing:-.3px;">AI Workflow Manager</h2>
+            <p style="margin:2px 0 0;font-size:12px;color:var(--t3);">Metadata-driven pipeline orchestration &amp; job management on Databricks</p>
+          </div>
+          <button class="btn btn-ghost btn-xs" onclick="wfRefreshAll()" style="margin-left:auto;">
+            <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+            Refresh All
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI Stats Row -->
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;">
+        <div class="card" style="text-align:center;padding:16px 8px;border-bottom:3px solid var(--blue);">
+          <div style="font-size:28px;font-weight:800;color:var(--blue);" id="wfStatPipelines">0</div>
+          <div style="font-size:10px;color:var(--t3);margin-top:4px;font-weight:600;">Pipelines</div>
+        </div>
+        <div class="card" style="text-align:center;padding:16px 8px;border-bottom:3px solid var(--green);">
+          <div style="font-size:28px;font-weight:800;color:var(--green);" id="wfStatJobs">0</div>
+          <div style="font-size:10px;color:var(--t3);margin-top:4px;font-weight:600;">Total Jobs</div>
+        </div>
+        <div class="card" style="text-align:center;padding:16px 8px;border-bottom:3px solid #10b981;">
+          <div style="font-size:28px;font-weight:800;color:#10b981;" id="wfStatSuccess">0</div>
+          <div style="font-size:10px;color:var(--t3);margin-top:4px;font-weight:600;">Succeeded</div>
+        </div>
+        <div class="card" style="text-align:center;padding:16px 8px;border-bottom:3px solid var(--red);">
+          <div style="font-size:28px;font-weight:800;color:var(--red);" id="wfStatFailed">0</div>
+          <div style="font-size:10px;color:var(--t3);margin-top:4px;font-weight:600;">Failed</div>
+        </div>
+        <div class="card" style="text-align:center;padding:16px 8px;border-bottom:3px solid var(--amber);">
+          <div style="font-size:28px;font-weight:800;color:var(--amber);" id="wfStatRows">0</div>
+          <div style="font-size:10px;color:var(--t3);margin-top:4px;font-weight:600;">Rows Processed</div>
+        </div>
+      </div>
+
+      <!-- Navigation Cards -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;">
+        <!-- MetadataFlow -->
+        <div class="card wf-nav-card" onclick="switchTab('wf-metadata',G('nav-wf-metadata'))" style="cursor:pointer;transition:all .2s;border:1px solid var(--border);">
+          <div style="text-align:center;padding:20px 14px;">
+            <div style="width:52px;height:52px;border-radius:14px;background:rgba(37,99,235,.08);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;">
+              <svg viewBox="0 0 24 24" style="width:26px;height:26px;stroke:var(--blue);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            </div>
+            <div style="font-weight:700;font-size:15px;color:var(--t1);margin-bottom:6px;">MetadataFlow</div>
+            <div style="font-size:11px;color:var(--t3);line-height:1.5;">Configure Databricks connection, provision Delta metadata tables &amp; deploy notebooks</div>
+            <div style="margin-top:12px;font-size:11px;font-weight:700;color:var(--blue);">Configure &rarr;</div>
+          </div>
+        </div>
+        <!-- Pipeline Studio -->
+        <div class="card wf-nav-card" onclick="switchTab('wf-pipelines',G('nav-wf-pipelines'))" style="cursor:pointer;transition:all .2s;border:1px solid var(--border);">
+          <div style="text-align:center;padding:20px 14px;">
+            <div style="width:52px;height:52px;border-radius:14px;background:rgba(16,185,129,.08);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;">
+              <svg viewBox="0 0 24 24" style="width:26px;height:26px;stroke:var(--green);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+            </div>
+            <div style="font-weight:700;font-size:15px;color:var(--t1);margin-bottom:6px;">Pipeline Studio</div>
+            <div style="font-size:11px;color:var(--t3);line-height:1.5;">Connect data sources, create 3-stage medallion pipelines &amp; manage pipeline groups</div>
+            <div style="margin-top:12px;font-size:11px;font-weight:700;color:var(--green);">Create Pipelines &rarr;</div>
+          </div>
+        </div>
+        <!-- Job Manager -->
+        <div class="card wf-nav-card" onclick="switchTab('wf-jobs',G('nav-wf-jobs'))" style="cursor:pointer;transition:all .2s;border:1px solid var(--border);">
+          <div style="text-align:center;padding:20px 14px;">
+            <div style="width:52px;height:52px;border-radius:14px;background:rgba(245,158,11,.08);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;">
+              <svg viewBox="0 0 24 24" style="width:26px;height:26px;stroke:var(--amber);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            </div>
+            <div style="font-weight:700;font-size:15px;color:var(--t1);margin-bottom:6px;">Job Manager</div>
+            <div style="font-size:11px;color:var(--t3);line-height:1.5;">Create workflow jobs, monitor execution runs, track watermarks &amp; view logs</div>
+            <div style="margin-top:12px;font-size:11px;font-weight:700;color:var(--amber);">Manage Jobs &rarr;</div>
+          </div>
+        </div>
+        <!-- Settings -->
+        <div class="card wf-nav-card" onclick="switchTab('wf-settings',G('nav-wf-settings'))" style="cursor:pointer;transition:all .2s;border:1px solid var(--border);">
+          <div style="text-align:center;padding:20px 14px;">
+            <div style="width:52px;height:52px;border-radius:14px;background:rgba(124,58,237,.08);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;">
+              <svg viewBox="0 0 24 24" style="width:26px;height:26px;stroke:#7C3AED;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            </div>
+            <div style="font-weight:700;font-size:15px;color:var(--t1);margin-bottom:6px;">Settings</div>
+            <div style="font-size:11px;color:var(--t3);line-height:1.5;">Configure Azure infra, Storage, Access Connector, Unity Catalog &amp; deploy config</div>
+            <div style="margin-top:12px;font-size:11px;font-weight:700;color:#7C3AED;">Configure &rarr;</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Pipeline Groups Overview -->
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-ico" style="color:var(--green);"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+          <div class="card-title">Recent Pipeline Groups</div>
+          <button class="btn btn-ghost btn-xs" onclick="switchTab('wf-pipelines',G('nav-wf-pipelines'))" style="margin-left:auto;">View All &rarr;</button>
+        </div>
+        <div id="wfDashPipelinePreview" style="color:var(--t4);text-align:center;padding:16px;font-size:12px;">
+          No pipelines yet &mdash; go to <a href="#" onclick="switchTab('wf-pipelines',G('nav-wf-pipelines'));return false;" style="color:var(--blue);font-weight:600;">Pipeline Studio</a> to create your first pipeline
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════ AI WORKFLOW MANAGER — SETTINGS ═══════════ -->
+    <div id="pane-wf-settings" class="tab-pane">
+      <!-- Page Header -->
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+          <button class="btn btn-ghost btn-xs" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'))" style="padding:4px 8px;">
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <div style="font-size:11px;color:var(--t4);">
+            <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">AI Workflow Manager</a>
+            <span style="margin:0 4px;">/</span>
+            <span style="color:var(--t1);font-weight:600;">Settings</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Saved Banner -->
+      <div id="cfgSavedBanner" class="cfg-saved-banner">
+        &#10003; Configuration saved to <strong>deployconfig.json</strong> successfully!
+      </div>
+
+      <!-- Azure Subscription & Region -->
+      <div class="card cfg-section">
+        <div class="card-hd">
+          <div class="card-ico" style="color:var(--blue);"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg></div>
+          <div class="card-title">Azure Subscription &amp; Region</div>
+        </div>
+        <div class="cfg-grid">
+          <div><label class="lbl">Subscription ID</label><input class="inp" id="cfgSubId" placeholder="e.g. 97d4958e-c22e-451a-ad4c-09493a58a851"></div>
+          <div><label class="lbl">Databricks Workspace (Resource Group)</label><input class="inp" id="cfgResourceGroup" placeholder="e.g. azdb_sunilpoc"></div>
+          <div><label class="lbl">Region</label>
+            <select class="inp" id="cfgRegion">
+              <option value="centralindia">Central India</option>
+              <option value="eastus">East US</option>
+              <option value="eastus2">East US 2</option>
+              <option value="westus">West US</option>
+              <option value="westus2">West US 2</option>
+              <option value="westeurope">West Europe</option>
+              <option value="northeurope">North Europe</option>
+              <option value="southeastasia">Southeast Asia</option>
+              <option value="uksouth">UK South</option>
+              <option value="australiaeast">Australia East</option>
+            </select>
+          </div>
+          <div><label class="lbl">Databricks Host URL</label><input class="inp" id="cfgDbrHost" placeholder="https://adb-xxx.azuredatabricks.net"></div>
+          <div><label class="lbl">Databricks PAT Token</label><input class="inp" id="cfgDbrToken" type="password" placeholder="dapi…"></div>
+        </div>
+        <div style="margin-top:6px;font-size:10px;color:var(--t4);">PAT Token is required for Steps 3-6 (Storage Credential, External Locations, Catalogs, Volume). It is saved to deployconfig.json.</div>
+      </div>
+
+      <!-- Storage Account -->
+      <div class="card cfg-section">
+        <div class="card-hd">
+          <div class="card-ico" style="color:var(--green);"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+          <div class="card-title">Storage Account (ADLS Gen2)</div>
+        </div>
+        <div class="cfg-grid">
+          <div><label class="lbl">Storage Account Name</label><input class="inp" id="cfgStorageAcct" placeholder="e.g. sqltodatabrciksmig"></div>
+          <div><label class="lbl">Container Name</label><input class="inp" id="cfgContainer" placeholder="e.g. datalake"></div>
+        </div>
+        <div style="margin-top:12px;">
+          <label class="lbl">Folder Paths <span style="font-weight:400;color:var(--t4);">(one per line)</span></label>
+          <textarea class="inp" id="cfgFolders" rows="4" style="font-family:var(--font-mono);font-size:12px;resize:vertical;" placeholder="dev/landing
+dev/uc-managed/bronze
+dev/uc-managed/silver"></textarea>
+        </div>
+      </div>
+
+      <!-- Access Connector -->
+      <div class="card cfg-section">
+        <div class="card-hd">
+          <div class="card-ico" style="color:#7C3AED;"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+          <div class="card-title">Access Connector &amp; RBAC</div>
+        </div>
+        <div class="cfg-grid">
+          <div><label class="lbl">Access Connector Name</label><input class="inp" id="cfgAccessConnector" placeholder="e.g. sqltodatabrciks_access_mig"></div>
+          <div><label class="lbl">Role Assignment</label>
+            <select class="inp" id="cfgRole">
+              <option value="Storage Blob Data Contributor">Storage Blob Data Contributor</option>
+              <option value="Storage Blob Data Reader">Storage Blob Data Reader</option>
+              <option value="Storage Blob Data Owner">Storage Blob Data Owner</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- External Locations -->
+      <div class="card cfg-section">
+        <div class="card-hd">
+          <div class="card-ico" style="color:var(--amber);"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
+          <div class="card-title">External Locations</div>
+          <button class="btn btn-ghost btn-xs" onclick="cfgAddExtLoc()" style="margin-left:auto;"><svg viewBox="0 0 24 24" style="width:12px;height:12px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add</button>
+        </div>
+        <div id="cfgExtLocList">
+          <div class="cfg-grid" style="margin-bottom:8px;" data-extloc>
+            <div><label class="lbl">Location Name</label><input class="inp cfg-extloc-name" placeholder="e.g. landing_loc_mig"></div>
+            <div><label class="lbl">ABFSS URL</label><input class="inp cfg-extloc-url" placeholder="abfss://container@account.dfs.core.windows.net/path"></div>
+          </div>
+          <div class="cfg-grid" style="margin-bottom:8px;" data-extloc>
+            <div><label class="lbl">Location Name</label><input class="inp cfg-extloc-name" placeholder="e.g. dev_managed_root_mig"></div>
+            <div><label class="lbl">ABFSS URL</label><input class="inp cfg-extloc-url" placeholder="abfss://container@account.dfs.core.windows.net/path"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Catalogs -->
+      <div class="card cfg-section">
+        <div class="card-hd">
+          <div class="card-ico" style="color:var(--blue);"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg></div>
+          <div class="card-title">Unity Catalogs</div>
+          <button class="btn btn-ghost btn-xs" onclick="cfgAddCatalog()" style="margin-left:auto;"><svg viewBox="0 0 24 24" style="width:12px;height:12px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add</button>
+        </div>
+        <div id="cfgCatalogList">
+          <!-- catalog rows added dynamically -->
+        </div>
+        <p style="font-size:11px;color:var(--t4);margin-top:4px;">Schemas: comma-separated list of schemas to create in each catalog (e.g. default,hr,raw). Leave blank for just "default".</p>
+      </div>
+
+      <!-- Volume -->
+      <div class="card cfg-section">
+        <div class="card-hd">
+          <div class="card-ico" style="color:var(--green);"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg></div>
+          <div class="card-title">Volume</div>
+        </div>
+        <div class="cfg-grid-3">
+          <div><label class="lbl">Volume Name</label><input class="inp" id="cfgVolName" placeholder="e.g. landing_volume"></div>
+          <div><label class="lbl">Catalog</label><input class="inp" id="cfgVolCatalog" placeholder="e.g. dev_volumes"></div>
+          <div><label class="lbl">Schema</label><input class="inp" id="cfgVolSchema" placeholder="default" value="default"></div>
+        </div>
+        <div style="margin-top:10px;">
+          <label class="lbl">Storage Location (ABFSS)</label>
+          <input class="inp" id="cfgVolPath" placeholder="abfss://container@account.dfs.core.windows.net/path">
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div style="display:flex;gap:12px;justify-content:flex-end;padding:4px 0 12px;">
+        <button class="btn btn-ghost" onclick="loadDeployConfig()">
+          <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+          Reload Saved Config
+        </button>
+        <button class="btn btn-primary" onclick="saveDeployConfig()" id="btnSaveCfg">
+          <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          Save to deployconfig.json
+        </button>
+        <button class="btn" style="background:var(--accent-gradient);color:#fff;border:none;font-weight:700;" onclick="deployInfrastructure()" id="btnDeployInfra">
+          <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          Deploy Infrastructure
+        </button>
+      </div>
+
+
+
+      <!-- Deployment Progress -->
+      <div class="card" id="cfgDeployProgress" style="display:none;margin-bottom:12px;">
+        <div class="card-hd">
+          <div class="card-ico" style="color:var(--accent-primary);"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+          <div class="card-title">Deployment Progress</div>
+          <span id="cfgDeploySummary" style="margin-left:auto;font-size:11px;font-weight:600;color:var(--t3);"></span>
+        </div>
+        <div id="cfgDeploySteps" style="display:flex;flex-direction:column;gap:6px;"></div>
+        <div style="margin-top:12px;">
+          <div style="font-size:11px;font-weight:600;color:var(--t3);margin-bottom:6px;">Deployment Logs</div>
+          <pre id="cfgDeployLogs" style="background:#1e1e2e;color:#cdd6f4;border-radius:var(--r-sm);padding:14px;font-family:var(--font-mono);font-size:11px;max-height:350px;overflow:auto;margin:0;white-space:pre-wrap;"></pre>
+        </div>
+      </div>
+
+      <!-- Config Preview -->
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-hd">
+          <div class="card-ico" style="color:var(--t3);"><svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></div>
+          <div class="card-title">Config Preview (JSON)</div>
+          <button class="btn btn-ghost btn-xs" onclick="cfgPreview()" style="margin-left:auto;">Refresh Preview</button>
+        </div>
+        <pre id="cfgJsonPreview" style="background:#1e1e2e;color:#cdd6f4;border-radius:var(--r-sm);padding:14px;font-family:var(--font-mono);font-size:11px;max-height:300px;overflow:auto;margin:0;white-space:pre-wrap;">Click &ldquo;Refresh Preview&rdquo; to see the JSON that will be saved.</pre>
+      </div>
+    </div>
+
+    <!-- ═══════════ AI WORKFLOW MANAGER — METADATAFLOW ═══════════ -->
+    <div id="pane-wf-metadata" class="tab-pane">
+
+      <!-- Page Header -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+        <button class="btn btn-ghost btn-xs" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'))" style="padding:4px 8px;">
+          <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div style="font-size:11px;color:var(--t4);">
+          <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">AI Workflow Manager</a>
+          <span style="margin:0 4px;">/</span>
+          <span style="color:var(--t1);font-weight:600;">MetadataFlow</span>
+        </div>
+      </div>
+
+      <!-- ──── STEP 0: Databricks MetadataFlow Provisioning ──── -->
+      <div class="card" id="wfMetaCard" style="border-left:3px solid var(--blue);">
+        <div class="card-hd">
+          <div class="card-ico" style="color:var(--blue);">
+            <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+          </div>
+          <div class="card-title">Databricks MetadataFlow</div>
+          <div id="wfMetaStatus" style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--t4);">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#6b7280;" id="wfMetaDot"></span>
+            <span id="wfMetaLabel">Not Configured</span>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--t3);margin-bottom:12px;">
+          Connect to Databricks and provision metadata Delta tables. This stores all pipeline, job, run, and watermark data persistently in Unity Catalog.
+          <strong>Flow:</strong> Connect Databricks → Create MetadataFlow → Connect SQL Source → Select Tables → Create Workflows → Run Pipelines.
+        </div>
+        <div style="display:grid;grid-template-columns:1.5fr 1.5fr 1fr 1fr;gap:10px;">
+          <div>
+            <label class="lbl">Databricks Host</label>
+            <input class="inp" id="wfDbrHost" placeholder="https://adb-xxxx.azuredatabricks.net" style="font-size:12px;">
+          </div>
+          <div>
+            <label class="lbl">PAT Token <span style="font-weight:400;color:var(--t4);">(Databricks auth)</span></label>
+            <input class="inp" id="wfDbrToken" type="password" placeholder="dapi…" style="font-size:12px;">
+          </div>
+          <div>
+            <label class="lbl">Catalog</label>
+            <input class="inp" id="wfDbrCatalog" value="main" style="font-size:12px;">
+          </div>
+          <div>
+            <label class="lbl">Schema</label>
+            <input class="inp" id="wfDbrSchema" value="default" style="font-size:12px;">
+          </div>
+        </div>
+        <!-- Multi-Catalog Architecture for Workflow Manager -->
+        <details style="margin-top:8px;">
+          <summary style="cursor:pointer;font-weight:600;color:var(--t2);font-size:12px;">🏗️ Multi-Catalog Architecture (Optional)</summary>
+          <div style="margin-top:6px;padding:8px;background:var(--surface-2);border-radius:8px;">
+            <div style="font-size:11px;color:var(--t3);margin-bottom:6px;">Separate catalogs per medallion layer. Leave blank for single-catalog mode.</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;">
+              <div>
+                <label class="lbl">Volumes Catalog</label>
+                <input class="inp" id="wfVolCatalog" placeholder="e.g. dev_volumes" style="font-size:12px;">
+              </div>
+              <div>
+                <label class="lbl">Bronze Catalog</label>
+                <input class="inp" id="wfBrzCatalog" placeholder="e.g. bronze" style="font-size:12px;">
+              </div>
+              <div>
+                <label class="lbl">Silver Catalog</label>
+                <input class="inp" id="wfSlvCatalog" placeholder="e.g. silver" style="font-size:12px;">
+              </div>
+              <div>
+                <label class="lbl">Target Schema</label>
+                <input class="inp" id="wfTgtSchema" placeholder="e.g. hr" style="font-size:12px;">
+              </div>
+            </div>
+            <div style="font-size:10px;color:var(--t3);margin-top:4px;">Flow: Source → <b>Volumes Catalog</b> → <b>Bronze Catalog</b>.schema → <b>Silver Catalog</b>.schema</div>
+          </div>
+        </details>
+        <div style="display:flex;gap:8px;margin-top:12px;align-items:center;">
+          <button class="btn btn-primary btn-sm" onclick="wfCreateMetadataFlow()" id="btnWfMeta" style="min-width:200px;">
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            Create MetadataFlow
+          </button>
+          <button class="btn btn-ghost btn-xs" onclick="wfLoadMetadata()" id="btnWfMetaLoad" style="display:none;">
+            <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+            Load Existing Metadata
+          </button>
+          <button class="btn btn-ghost btn-xs" onclick="wfSyncMetadata()" id="btnWfMetaSync" style="display:none;">
+            <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>
+            Sync to Databricks
+          </button>
+          <button class="btn btn-ghost btn-xs" onclick="wfCheckMetaStatus()" title="Check status">
+            <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            Status
+          </button>
+          <div id="wfMetaMsg" style="flex:1;font-size:11px;color:var(--t4);"></div>
+        </div>
+        <!-- Metadata Tables Info (shown after init) -->
+        <div id="wfMetaTablesInfo" style="display:none;margin-top:12px;padding:10px;background:var(--surface-2);border-radius:var(--r-sm);border:1px solid var(--border);">
+          <div style="font-size:11px;font-weight:600;color:var(--t2);margin-bottom:8px;">📋 Metadata Delta Tables</div>
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;" id="wfMetaTableGrid">
+            <div class="wf-meta-tbl" style="padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xs);text-align:center;">
+              <div style="font-size:10px;font-weight:600;color:var(--blue);">wf_pipeline_metadata</div>
+              <div style="font-size:18px;font-weight:800;color:var(--t1);margin:4px 0;" id="wfMetaTblPipelines">—</div>
+              <div style="font-size:9px;color:var(--t4);">Pipelines</div>
+            </div>
+            <div class="wf-meta-tbl" style="padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xs);text-align:center;">
+              <div style="font-size:10px;font-weight:600;color:var(--green);">wf_job_metadata</div>
+              <div style="font-size:18px;font-weight:800;color:var(--t1);margin:4px 0;" id="wfMetaTblJobs">—</div>
+              <div style="font-size:9px;color:var(--t4);">Jobs</div>
+            </div>
+            <div class="wf-meta-tbl" style="padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xs);text-align:center;">
+              <div style="font-size:10px;font-weight:600;color:var(--amber);">wf_run_history</div>
+              <div style="font-size:18px;font-weight:800;color:var(--t1);margin:4px 0;" id="wfMetaTblRuns">—</div>
+              <div style="font-size:9px;color:var(--t4);">Run History</div>
+            </div>
+            <div class="wf-meta-tbl" style="padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xs);text-align:center;">
+              <div style="font-size:10px;font-weight:600;color:var(--purple,#a855f7);">wf_watermark_metadata</div>
+              <div style="font-size:18px;font-weight:800;color:var(--t1);margin:4px 0;" id="wfMetaTblWm">—</div>
+              <div style="font-size:9px;color:var(--t4);">Watermarks</div>
+            </div>
+            <div class="wf-meta-tbl" style="padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xs);text-align:center;">
+              <div style="font-size:10px;font-weight:600;color:var(--red);">wf_source_tables</div>
+              <div style="font-size:18px;font-weight:800;color:var(--t1);margin:4px 0;" id="wfMetaTblSrc">—</div>
+              <div style="font-size:9px;color:var(--t4);">Source Tables</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── Deploy Metadata Notebooks Card ─── -->
+      <div class="card" id="wfNotebookCard" style="display:none;margin-bottom:16px;border:1px solid var(--border);">
+        <div class="card-hd">
+          <div class="card-ico" style="color:var(--amber);">
+            <svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+          </div>
+          <div class="card-title">Deploy Metadata Notebooks</div>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#6b7280;" id="wfNbDot"></span>
+            <span style="font-size:11px;font-weight:600;color:var(--t3);" id="wfNbLabel">Not Deployed</span>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--t3);margin-bottom:10px;">
+          Upload 4 metadata-driven notebooks (Extract, Bronze, Silver, Orchestrator) to Databricks.
+          These notebooks read from your metadata tables — deploy once, run many times.
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+          <div>
+            <label class="lbl">Workspace Path</label>
+            <input class="inp" id="wfNbWsPath" value="/Shared/MetadataPipeline" style="font-size:12px;" placeholder="/Shared/MetadataPipeline">
+          </div>
+          <div>
+            <label class="lbl">Landing Path</label>
+            <input class="inp" id="wfNbLandingPath" value="/mnt/landing" style="font-size:12px;" placeholder="/mnt/landing">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+          <div>
+            <label class="lbl">Pipeline Mode</label>
+            <select class="inp" id="wfNbPipelineMode" style="font-size:12px;">
+              <option value="standard">Standard (PySpark)</option>
+              <option value="dlt">⚡ Delta Live Tables (DLT)</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:end;">
+            <div id="wfNbModeHint" style="font-size:10px;color:var(--t4);line-height:1.3;padding-bottom:6px;">
+              Standard: 4 notebooks (Extract, Bronze, Silver, Orchestrator)
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn btn-primary btn-sm" onclick="wfDeployNotebooks()" id="btnWfDeployNb" style="min-width:180px;">
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>
+            Deploy Notebooks
+          </button>
+          <button class="btn btn-ghost btn-xs" onclick="wfCheckNbStatus()" title="Check deployment status">
+            <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            Status
+          </button>
+          <div id="wfNbMsg" style="flex:1;font-size:11px;color:var(--t4);"></div>
+        </div>
+        <!-- Deploy results -->
+        <div id="wfNbResults" style="display:none;margin-top:10px;">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;" id="wfNbResultGrid"></div>
+        </div>
+
+        <!-- ─── Data Quality Checks Panel ─── -->
+        <div id="wfDqPanel" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+            <svg viewBox="0 0 24 24" style="width:16px;height:16px;color:var(--green);"><path d="M9 12l2 2 4-4"/><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/></svg>
+            <span style="font-size:12px;font-weight:700;color:var(--t1);">Data Quality Checks Implemented</span>
+            <span id="wfDqModeTag" style="font-size:9px;padding:2px 7px;border-radius:8px;background:var(--blue);color:#fff;font-weight:600;margin-left:4px;">STANDARD</span>
+          </div>
+
+          <!-- Standard Mode DQ Checks -->
+          <div id="wfDqStandard">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+              <!-- Bronze DQ -->
+              <div style="padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-xs);">
+                <div style="font-size:11px;font-weight:700;color:var(--amber);margin-bottom:6px;">🥉 Bronze Layer DQ</div>
+                <div style="font-size:10px;color:var(--t2);line-height:1.8;">
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--green);">✓</span> <strong>DQ-01</strong> Empty file detection — skip on 0 rows</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--green);">✓</span> <strong>DQ-02</strong> Null-key row detection — all data cols null</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--green);">✓</span> <strong>DQ-03</strong> Duplicate detection — row-level dedup count</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--green);">✓</span> <strong>DQ-04</strong> Schema drift detection — new/missing columns</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--green);">✓</span> <strong>DQ-05</strong> Quarantine flagging — bad rows flagged, not dropped</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--blue);">●</span> <strong>Audit</strong> __bronze_ts, __source_table, __is_quarantined</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--blue);">●</span> <strong>Metrics</strong> DQ score saved to __dq_metrics Delta table</div>
+                </div>
+              </div>
+              <!-- Silver DQ -->
+              <div style="padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-xs);">
+                <div style="font-size:11px;font-weight:700;color:#a0a0a0;margin-bottom:6px;">🥈 Silver Layer DQ</div>
+                <div style="font-size:10px;color:var(--t2);line-height:1.8;">
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--green);">✓</span> <strong>DQ-01</strong> Quarantine filter — exclude flagged Bronze rows</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--green);">✓</span> <strong>DQ-02</strong> All-null row removal — drop empty records</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--green);">✓</span> <strong>DQ-03</strong> Per-column null % — flag cols &gt;80% null</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--green);">✓</span> <strong>DQ-04</strong> Deduplication — remove exact duplicates</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--green);">✓</span> <strong>DQ-05</strong> String trimming — whitespace normalization</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--green);">✓</span> <strong>DQ-06</strong> Empty→NULL — empty strings to NULL</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--green);">✓</span> <strong>DQ-07</strong> Row count anomaly — &gt;50% change alert</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--blue);">●</span> <strong>Audit</strong> __dq_status (passed/warn), __silver_ts</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--blue);">●</span> <strong>Metrics</strong> DQ score + breakdown → __dq_metrics</div>
+                </div>
+              </div>
+            </div>
+            <!-- Restore + Metadata -->
+            <div style="padding:8px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-xs);font-size:10px;color:var(--t2);display:flex;flex-wrap:wrap;gap:12px;">
+              <span><span style="color:var(--green);">✓</span> <strong>Restore Points</strong> — auto version snapshot before each write</span>
+              <span><span style="color:var(--green);">✓</span> <strong>Auto Rollback</strong> — reverts table on write failure</span>
+              <span><span style="color:var(--green);">✓</span> <strong>Run History</strong> — DQ metrics tracked per run in wf_run_history</span>
+              <span><span style="color:var(--green);">✓</span> <strong>DQ Metrics Table</strong> — __dq_metrics with score, nulls, dupes, drift</span>
+            </div>
+          </div>
+
+          <!-- DLT Mode DQ Checks -->
+          <div id="wfDqDlt" style="display:none;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+              <!-- DLT Bronze -->
+              <div style="padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-xs);">
+                <div style="font-size:11px;font-weight:700;color:var(--amber);margin-bottom:6px;">⚡ DLT Bronze Expectations</div>
+                <div style="font-size:10px;color:var(--t2);line-height:1.8;">
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:#ef4444;">✕</span> <strong>dq01</strong> expect_or_drop — __landing_ts IS NOT NULL</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--green);">✓</span> <strong>dq02</strong> expect — __source_system IS NOT NULL</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--green);">✓</span> <strong>dq03</strong> expect — __batch_id IS NOT NULL</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--green);">✓</span> <strong>dq04</strong> expect — data freshness (&lt;7 days)</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--green);">✓</span> <strong>dq05</strong> expect — not all audit columns null</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--blue);">●</span> <strong>Auto Loader</strong> — streaming ingestion + schema evolution</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--blue);">●</span> <strong>Metrics</strong> — auto-tracked in DLT event log</div>
+                </div>
+              </div>
+              <!-- DLT Silver -->
+              <div style="padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-xs);">
+                <div style="font-size:11px;font-weight:700;color:#a0a0a0;margin-bottom:6px;">⚡ DLT Silver Expectations</div>
+                <div style="font-size:10px;color:var(--t2);line-height:1.8;">
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:#ef4444;">✕</span> <strong>dq01</strong> expect_or_drop — __bronze_ts IS NOT NULL</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:#ef4444;">✕</span> <strong>dq02</strong> expect_or_drop — __is_quarantined = false</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--green);">✓</span> <strong>dq03</strong> expect — __source_table IS NOT NULL</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--green);">✓</span> <strong>dq04</strong> expect — bronze freshness (&lt;7 days)</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--green);">✓</span> <strong>dq05</strong> expect — source table name not empty</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--blue);">●</span> <strong>Dedup</strong> — dropDuplicates() on all columns</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--blue);">●</span> <strong>Trim</strong> — whitespace normalization on strings</div>
+                  <div style="display:flex;align-items:center;gap:4px;"><span style="color:var(--blue);">●</span> <strong>Metrics</strong> — auto-tracked in DLT event log</div>
+                </div>
+              </div>
+            </div>
+            <div style="padding:8px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-xs);font-size:10px;color:var(--t2);display:flex;flex-wrap:wrap;gap:12px;">
+              <span><span style="color:#ef4444;">✕</span> = <strong>expect_or_drop</strong> — invalid rows auto-dropped</span>
+              <span><span style="color:var(--green);">✓</span> = <strong>expect</strong> — tracked but rows kept (visible in DLT UI)</span>
+              <span><span style="color:var(--blue);">●</span> = Built-in DLT capability (no custom code needed)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════ AI WORKFLOW MANAGER — PIPELINE STUDIO ═══════════ -->
+    <div id="pane-wf-pipelines" class="tab-pane">
+
+        <!-- Page Header -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+          <button class="btn btn-ghost btn-xs" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'))" style="padding:4px 8px;">
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <div style="font-size:11px;color:var(--t4);">
+            <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">AI Workflow Manager</a>
+            <span style="margin:0 4px;">/</span>
+            <span style="color:var(--t1);font-weight:600;">Pipeline Studio</span>
+          </div>
+          <button class="btn btn-ghost btn-xs" onclick="wfRefreshAll()" style="margin-left:auto;">
+            <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+            Refresh All
+          </button>
+        </div>
+
+        <!-- Dynamic Interactive Medallion Diagram -->
+        <div class="card">
+          <div class="card-hd">
+            <div class="card-ico" style="color:var(--blue);"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></div>
+            <div class="card-title">Dynamic Medallion Architecture — Live Data Flow</div>
+            <button class="btn btn-ghost btn-xs" onclick="wfRefreshAll()" style="margin-left:auto;">
+              <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+              Refresh
+            </button>
+          </div>
+          <!-- Architecture Pipeline -->
+          <div id="wfMedallionDiagram" style="display:flex;align-items:center;justify-content:center;gap:0;overflow-x:auto;padding:20px 8px;">
+            <!-- SOURCE LAYER -->
+            <div class="mdl-layer" onclick="wfToggleLayerDetail('source')" id="mdlLayerSource">
+              <div class="mdl-layer-inner" style="background:linear-gradient(135deg,#1e40af,#3b82f6);box-shadow:0 4px 16px rgba(59,130,246,.3);">
+                <div style="font-size:24px;margin-bottom:6px;">🗄️</div>
+                <div style="font-weight:700;font-size:13px;">SQL Source</div>
+                <div style="font-size:10px;opacity:.8;margin-top:2px;">SQL Server / Azure SQL</div>
+                <div class="mdl-count" id="mdlSrcCount">0 tables</div>
+              </div>
+            </div>
+
+            <!-- Arrow: Source → Landing -->
+            <div class="mdl-arrow" id="mdlArrow1">
+              <div class="mdl-arrow-label">EXTRACT</div>
+              <div class="mdl-arrow-line" style="background:linear-gradient(90deg,#3b82f6,#f97316);">
+                <div class="mdl-arrow-tip" style="color:#f97316;"></div>
+              </div>
+              <div class="mdl-arrow-job">SqlExtract_*</div>
+              <div style="font-size:8px;color:var(--t4);margin-top:1px;" id="mdlArrow1Count">0 jobs</div>
+            </div>
+
+            <!-- LANDING LAYER -->
+            <div class="mdl-layer" onclick="wfToggleLayerDetail('landing')" id="mdlLayerLanding">
+              <div class="mdl-layer-inner" style="background:linear-gradient(135deg,#c2410c,#f97316);box-shadow:0 4px 16px rgba(249,115,22,.3);">
+                <div style="font-size:24px;margin-bottom:6px;">📥</div>
+                <div style="font-weight:700;font-size:13px;">Landing Zone</div>
+                <div style="font-size:10px;opacity:.8;margin-top:2px;">Raw Parquet / CSV</div>
+                <div class="mdl-count" id="mdlLandingCount">0 tables</div>
+              </div>
+            </div>
+
+            <!-- Arrow: Landing → Bronze -->
+            <div class="mdl-arrow" id="mdlArrow2">
+              <div class="mdl-arrow-label">INGEST</div>
+              <div class="mdl-arrow-line" style="background:linear-gradient(90deg,#f97316,#a16207);">
+                <div class="mdl-arrow-tip" style="color:#a16207;"></div>
+              </div>
+              <div class="mdl-arrow-job">LandingToBronze_*</div>
+              <div style="font-size:8px;color:var(--t4);margin-top:1px;" id="mdlArrow2Count">0 jobs</div>
+            </div>
+
+            <!-- BRONZE LAYER -->
+            <div class="mdl-layer" onclick="wfToggleLayerDetail('bronze')" id="mdlLayerBronze">
+              <div class="mdl-layer-inner" style="background:linear-gradient(135deg,#92400e,#a16207);box-shadow:0 4px 16px rgba(161,98,7,.3);">
+                <div style="font-size:24px;margin-bottom:6px;">🥉</div>
+                <div style="font-weight:700;font-size:13px;">Bronze Layer</div>
+                <div style="font-size:10px;opacity:.8;margin-top:2px;">Delta — Schema Enforced</div>
+                <div class="mdl-count" id="mdlBronzeCount">0 tables</div>
+              </div>
+            </div>
+
+            <!-- Arrow: Bronze → Silver -->
+            <div class="mdl-arrow" id="mdlArrow3">
+              <div class="mdl-arrow-label">CLEANSE</div>
+              <div class="mdl-arrow-line" style="background:linear-gradient(90deg,#a16207,#6b7280);">
+                <div class="mdl-arrow-tip" style="color:#6b7280;"></div>
+              </div>
+              <div class="mdl-arrow-job">BronzeToSilver_*</div>
+              <div style="font-size:8px;color:var(--t4);margin-top:1px;" id="mdlArrow3Count">0 jobs</div>
+            </div>
+
+            <!-- SILVER LAYER -->
+            <div class="mdl-layer" onclick="wfToggleLayerDetail('silver')" id="mdlLayerSilver">
+              <div class="mdl-layer-inner" style="background:linear-gradient(135deg,#374151,#6b7280);box-shadow:0 4px 16px rgba(107,114,128,.3);">
+                <div style="font-size:24px;margin-bottom:6px;">🥈</div>
+                <div style="font-weight:700;font-size:13px;">Silver Layer</div>
+                <div style="font-size:10px;opacity:.8;margin-top:2px;">Delta — Cleansed & Conformed</div>
+                <div class="mdl-count" id="mdlSilverCount">0 tables</div>
+              </div>
+            </div>
+
+            <!-- Arrow: → Databricks -->
+            <div class="mdl-arrow" id="mdlArrow4">
+              <div class="mdl-arrow-label">SERVE</div>
+              <div class="mdl-arrow-line" style="background:linear-gradient(90deg,#6b7280,#FF3621);">
+                <div class="mdl-arrow-tip" style="color:#FF3621;"></div>
+              </div>
+              <div class="mdl-arrow-job">Unity Catalog</div>
+            </div>
+
+            <!-- DATABRICKS TARGET -->
+            <div class="mdl-layer" id="mdlLayerTarget">
+              <div class="mdl-layer-inner" style="background:var(--accent-gradient);box-shadow:0 4px 16px rgba(255,54,33,.3);">
+                <div style="font-size:24px;margin-bottom:6px;">⚡</div>
+                <div style="font-weight:700;font-size:13px;">Databricks</div>
+                <div style="font-size:10px;opacity:.8;margin-top:2px;">Unity Catalog / Delta Lake</div>
+                <div class="mdl-count">Production Ready</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Layer Detail Panel (hidden, shows on click) -->
+          <div id="mdlDetailPanel" class="mdl-detail">
+            <div class="mdl-detail-hd">
+              <div class="mdl-detail-title" id="mdlDetailTitle">Layer Details</div>
+              <button class="mdl-detail-close" onclick="wfCloseLayerDetail()">&times;</button>
+            </div>
+            <div id="mdlDetailContent" class="mdl-detail-jobs">
+              <div style="color:var(--t4);text-align:center;padding:12px;">Click a layer above to see pipeline details</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Data Source Connection -->
+        <div class="card">
+          <div class="card-hd">
+            <div class="card-ico" style="color:var(--blue);"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+            <div class="card-title">Connect Data Source</div>
+            <div id="wfSrcStatus" style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--t4);">⚫ Not Connected</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;">
+            <div>
+              <label class="lbl">Source Type</label>
+              <select class="inp" id="wfSrcType" style="font-size:12px;">
+                <option value="sqlserver">🗄️ SQL Server</option>
+                <option value="azuresql">☁️ Azure SQL</option>
+                <option value="synapse">⚡ Synapse SQL</option>
+                <option value="sqlmi">🔒 SQL MI</option>
+              </select>
+            </div>
+            <div>
+              <label class="lbl">Server</label>
+              <input class="inp" id="wfSrcServer" placeholder="server.database.windows.net" style="font-size:12px;">
+            </div>
+            <div>
+              <label class="lbl">Database</label>
+              <input class="inp" id="wfSrcDb" placeholder="my_database" style="font-size:12px;">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+              <div>
+                <label class="lbl">Username</label>
+                <input class="inp" id="wfSrcUser" placeholder="sa" style="font-size:12px;">
+              </div>
+              <div>
+                <label class="lbl">SQL Password <span style="font-weight:400;color:var(--t4);">(Azure SQL auth — NOT the PAT token)</span></label>
+                <input class="inp" id="wfSrcPass" type="password" placeholder="········" style="font-size:12px;">
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <button class="btn btn-ghost btn-xs" onclick="wfTestConnection()" id="btnWfTest">
+              <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              Test Connectivity
+            </button>
+            <button class="btn btn-primary btn-xs" onclick="wfFetchTables()" id="btnWfFetch">
+              <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+              Discover Tables
+            </button>
+            <div id="wfSrcMsg" style="flex:1;display:flex;align-items:center;font-size:11px;color:var(--t4);"></div>
+          </div>
+        </div>
+
+        <!-- Quick Create + Pipeline Groups side by side -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <!-- Quick-Create Pipeline (Multi-Table) -->
+          <div class="card" style="display:flex;flex-direction:column;">
+            <div class="card-hd">
+              <div class="card-ico" style="color:var(--blue);"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
+              <div class="card-title">Quick Create Pipeline</div>
+              <span id="wfQSelCount" style="margin-left:auto;font-size:10px;padding:2px 8px;border-radius:8px;background:var(--blue);color:#fff;font-weight:700;display:none;">0 selected</span>
+            </div>
+            <div style="font-size:11px;color:var(--t3);margin-bottom:10px;">Select one or more tables from your connected source. Each table gets a full Extract → Bronze → Silver pipeline.</div>
+
+            <!-- Search + Dropdown -->
+            <div style="position:relative;">
+              <input class="inp" id="wfQTableSearch" placeholder="🔍 Search tables… (connect data source first)" style="font-size:12px;" oninput="wfFilterQTables(this.value)" onfocus="wfShowQDropdown()" autocomplete="off">
+              <div id="wfQTableDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);box-shadow:var(--shadow-md);max-height:220px;overflow-y:auto;margin-top:2px;"></div>
+            </div>
+
+            <!-- Select All / Clear All -->
+            <div style="display:flex;gap:8px;margin-top:6px;">
+              <button class="btn btn-ghost btn-xs" onclick="wfQSelectAll()" style="font-size:10px;padding:2px 8px;">Select All</button>
+              <button class="btn btn-ghost btn-xs" onclick="wfQClearAll()" style="font-size:10px;padding:2px 8px;">Clear All</button>
+            </div>
+
+            <!-- Selected Tables List -->
+            <div id="wfQSelectedList" style="flex:1;margin-top:8px;min-height:60px;max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface-2);">
+              <div style="padding:16px;text-align:center;color:var(--t4);font-size:11px;">No tables selected — use the search above to add tables</div>
+            </div>
+
+            <!-- Global Load Type (default) -->
+            <div style="display:flex;align-items:center;gap:10px;margin-top:10px;">
+              <label class="lbl" style="margin:0;white-space:nowrap;font-size:11px;">Default Load Type</label>
+              <select class="inp" id="wfQLoadType" style="font-size:11px;max-width:150px;padding:4px 8px;">
+                <option value="full">Full Load</option>
+                <option value="incremental">Incremental</option>
+              </select>
+            </div>
+
+            <!-- Pipeline Preview -->
+            <div style="margin-top:10px;padding:8px 10px;background:var(--surface-2);border-radius:var(--r-xs);border:1px solid var(--border);font-family:var(--font-mono);font-size:10px;line-height:1.6;">
+              <div style="color:var(--t4);font-weight:600;margin-bottom:2px;">Per table creates:</div>
+              <div><span style="color:var(--t4);">1.</span> <span style="color:#2563eb;">SqlExtract_</span><span style="color:var(--amber);font-weight:600;">TableName</span></div>
+              <div><span style="color:var(--t4);">2.</span> <span style="color:#d97706;">LandingToBronze_</span><span style="color:var(--amber);font-weight:600;">TableName</span></div>
+              <div><span style="color:var(--t4);">3.</span> <span style="color:#059669;">BronzeToSilver_</span><span style="color:var(--amber);font-weight:600;">TableName</span></div>
+            </div>
+
+            <button class="btn btn-primary btn-full" style="margin-top:10px;" onclick="wfQuickCreate()" id="btnWfQuick">
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+              Create 3-Stage Medallion Pipeline
+            </button>
+          </div>
+
+          <!-- Cluster Selector -->
+          <div class="card" id="wfClusterCard" style="margin-bottom:12px;border:1px solid var(--border);">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <svg viewBox="0 0 24 24" style="width:16px;height:16px;color:var(--amber);"><rect x="2" y="3" width="20" height="6" rx="1"/><rect x="2" y="13" width="20" height="6" rx="1"/><circle cx="17" cy="6" r="1.5" fill="currentColor"/><circle cx="17" cy="16" r="1.5" fill="currentColor"/></svg>
+                <span style="font-size:12px;font-weight:700;color:var(--t1);">Cluster</span>
+              </div>
+              <select class="inp" id="wfClusterSelect" style="font-size:11px;min-width:280px;max-width:400px;padding:5px 8px;">
+                <option value="">— Select a cluster —</option>
+              </select>
+              <button class="btn btn-ghost btn-xs" onclick="wfFetchClusters()" title="Refresh cluster list" style="padding:4px 8px;">
+                <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+                Refresh
+              </button>
+              <button class="btn btn-xs" id="btnStartCluster" onclick="wfStartCluster()" title="Start the selected cluster" style="padding:4px 10px;background:var(--green);color:#fff;border:none;border-radius:var(--r-xs);font-weight:600;">
+                <svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:currentColor;"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Start Cluster
+              </button>
+              <span id="wfClusterStatus" style="font-size:10px;color:var(--t4);"></span>
+              <div id="wfClusterInfo" style="margin-left:auto;font-size:10px;color:var(--t4);display:none;"></div>
+            </div>
+          </div>
+
+          <!-- Active Pipeline Groups -->
+          <div class="card" style="min-height:200px;">
+            <div class="card-hd">
+              <div class="card-ico" style="color:var(--green);"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+              <div class="card-title">Active Pipeline Groups</div>
+              <span id="wfPipelineModeTag" style="font-size:10px;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:8px;background:#3b82f6;color:#fff;">🔥 Apache Spark</span>
+              <button class="btn btn-ghost btn-xs" onclick="wfRefreshPipelines()" style="margin-left:auto;">
+                <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+                Refresh
+              </button>
+            </div>
+            <!-- Multi-select toolbar -->
+            <div id="wfGroupToolbar" style="display:none;padding:8px 12px;background:var(--surface-2);border-bottom:1px solid var(--border);align-items:center;gap:8px;flex-wrap:wrap;">
+              <label style="font-size:11px;font-weight:600;color:var(--t2);display:flex;align-items:center;gap:4px;cursor:pointer;">
+                <input type="checkbox" id="wfGroupSelectAll" onchange="wfToggleSelectAllGroups(this.checked)" style="accent-color:var(--blue);">
+                Select All
+              </label>
+              <span id="wfGroupSelCount" style="font-size:10px;color:var(--t4);margin-left:4px;">0 selected</span>
+              <button id="btnRunSelectedDbr" class="btn btn-primary btn-xs" onclick="wfRunSelectedOnDatabricks()" style="margin-left:auto;background:var(--accent-gradient);display:none;">
+                ⚡ Run Selected on Databricks
+              </button>
+            </div>
+            <div id="wfPipelineList" style="overflow-y:auto;max-height:350px;">
+              <div class="empty" style="padding:24px;"><div class="empty-ico">🔗</div><div class="empty-t">No pipelines yet — use Quick Create to get started</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pipeline Execution Logs -->
+        <div class="card" id="wfPipelineLogCard" style="display:none;">
+          <div class="card-hd">
+            <div class="card-ico" style="color:var(--green);"><svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></div>
+            <div class="card-title">Pipeline Logs</div>
+            <span id="wfPipelineLogName" style="margin-left:8px;font-size:11px;font-weight:600;color:var(--blue);"></span>
+            <div style="margin-left:auto;display:flex;gap:6px;">
+              <button class="btn btn-ghost btn-xs" onclick="wfRefreshPipelineLogs()" title="Refresh logs">
+                <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+                Refresh
+              </button>
+              <button class="btn btn-ghost btn-xs" onclick="wfClosePipelineLogs()" title="Close">&times;</button>
+            </div>
+          </div>
+          <div id="wfPipelineLogs" style="overflow-y:auto;background:#1e1e2e;border-radius:var(--r-sm);padding:12px;font-family:var(--font-mono);font-size:11px;color:#cdd6f4;min-height:200px;max-height:400px;">
+            <div style="color:#6c7086;">// Select a pipeline to view execution logs…</div>
+          </div>
+        </div>
+      </div>
+
+    <!-- ═══════════ AI WORKFLOW MANAGER — JOB MANAGER ═══════════ -->
+    <div id="pane-wf-jobs" class="tab-pane">
+        <!-- Page Header + Left Column -->
+        <div class="l-col">
+          <!-- Breadcrumb -->
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+            <button class="btn btn-ghost btn-xs" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'))" style="padding:4px 8px;">
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <div style="font-size:11px;color:var(--t4);">
+              <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">AI Workflow Manager</a>
+              <span style="margin:0 4px;">/</span>
+              <span style="color:var(--t1);font-weight:600;">Job Manager</span>
+            </div>
+          </div>
+          <!-- Create Pipeline Card -->
+          <div class="card" style="flex-shrink:0;">
+            <div class="card-hd">
+              <div class="card-ico" style="color:var(--blue);"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
+              <div class="card-title">Create Workflow Pipeline</div>
+            </div>
+            <!-- Table chosen from live source -->
+            <div>
+              <label class="lbl">Source Table <span style="font-weight:400;color:var(--t4);">(from connected data source)</span></label>
+              <div style="position:relative;">
+                <input class="inp" id="wfTableSearch" placeholder="🔍 Search tables… (connect data source in Medallion tab first)" style="font-size:12px;" oninput="wfFilterJobTables(this.value)" onfocus="wfShowJobDropdown()" autocomplete="off">
+                <div id="wfTableDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);box-shadow:var(--shadow-md);max-height:200px;overflow-y:auto;margin-top:2px;"></div>
+              </div>
+              <div id="wfSelectedTable" style="display:none;margin-top:6px;padding:6px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-xs);font-size:12px;">
+                <span style="font-weight:600;color:var(--t1);" id="wfSelName"></span>
+                <span style="color:var(--t4);margin-left:8px;" id="wfSelMeta"></span>
+                <button onclick="wfClearJobSelection()" style="float:right;background:none;border:none;color:var(--t4);cursor:pointer;font-size:14px;padding:0 4px;" title="Clear">&times;</button>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;">
+              <div>
+                <label class="lbl">Load Type</label>
+                <select class="inp" id="wfLoadType" onchange="wfToggleWatermark()">
+                  <option value="full">Full Load</option>
+                  <option value="incremental">Incremental Load</option>
+                </select>
+              </div>
+              <div id="wfWatermarkWrap" style="display:none;">
+                <label class="lbl">Watermark Column</label>
+                <input class="inp" id="wfWatermarkCol" placeholder="e.g. ModifiedDate">
+              </div>
+            </div>
+            <div style="margin-top:12px;padding:10px;background:var(--surface-2);border-radius:var(--r-sm);border:1px solid var(--border);">
+              <div style="font-size:11px;font-weight:600;color:var(--t3);margin-bottom:6px;">Jobs that will be created:</div>
+              <div id="wfJobPreview" style="font-family:var(--font-mono);font-size:11px;color:var(--t2);">
+                <div>1. <span style="color:var(--blue);">SqlExtract_</span><span id="wfPreviewName" style="color:var(--amber);">TableName</span></div>
+                <div>2. <span style="color:var(--amber);">LandingToBronze_</span><span class="wfPrevTbl" style="color:var(--amber);">TableName</span></div>
+                <div>3. <span style="color:var(--green);">BronzeToSilver_</span><span class="wfPrevTbl" style="color:var(--amber);">TableName</span></div>
+              </div>
+            </div>
+            <button class="btn btn-primary btn-full" style="margin-top:12px;" onclick="wfCreatePipeline()" id="btnWfCreate">
+              <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Create 3-Stage Pipeline
+            </button>
+          </div>
+
+          <!-- Job Registry -->
+          <div class="card" style="flex:1;min-height:300px;">
+            <div class="card-hd">
+              <div class="card-ico" style="color:var(--amber);"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+              <div class="card-title">Job Registry</div>
+              <div style="margin-left:auto;display:flex;gap:6px;">
+                <select class="inp" id="wfFilterStage" style="width:150px;font-size:11px;" onchange="wfRefreshJobs()">
+                  <option value="">All Stages</option>
+                  <option value="extract">Extract</option>
+                  <option value="landing_to_bronze">Landing → Bronze</option>
+                  <option value="bronze_to_silver">Bronze → Silver</option>
+                </select>
+                <select class="inp" id="wfFilterStatus" style="width:120px;font-size:11px;" onchange="wfRefreshJobs()">
+                  <option value="">All Statuses</option>
+                  <option value="created">Created</option>
+                  <option value="running">Running</option>
+                  <option value="success">Success</option>
+                  <option value="failed">Failed</option>
+                </select>
+                <button class="btn btn-ghost btn-xs" onclick="wfRefreshJobs()">
+                  <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+                </button>
+              </div>
+            </div>
+            <div style="overflow-x:auto;">
+              <table style="width:100%;border-collapse:collapse;font-size:12px;" id="wfJobTable">
+                <thead>
+                  <tr style="background:var(--surface-2);border-bottom:2px solid var(--border);">
+                    <th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Job Name</th>
+                    <th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Stage</th>
+                    <th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Table</th>
+                    <th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Load</th>
+                    <th style="padding:8px 10px;text-align:center;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Status</th>
+                    <th style="padding:8px 10px;text-align:center;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Runs</th>
+                    <th style="padding:8px 10px;text-align:center;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="wfJobTbody">
+                  <tr><td colspan="7" style="padding:32px;text-align:center;color:var(--t4);">No jobs created yet</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="r-col">
+          <!-- Job Run Logs -->
+          <div class="card" style="flex:1;">
+            <div class="card-hd">
+              <div class="card-ico" style="color:var(--green);"><svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></div>
+              <div class="card-title">Run Logs</div>
+              <button class="btn btn-ghost btn-xs" onclick="wfRefreshRuns()" style="margin-left:auto;">Refresh</button>
+            </div>
+            <div id="wfRunLogs" style="flex:1;overflow-y:auto;background:#1e1e2e;border-radius:var(--r-sm);padding:12px;font-family:var(--font-mono);font-size:11px;color:#cdd6f4;min-height:300px;max-height:500px;">
+              <div style="color:#6c7086;">// Execution logs will appear here when you run a job…</div>
+            </div>
+          </div>
+          <!-- Watermark Info -->
+          <div class="card">
+            <div class="card-hd">
+              <div class="card-ico" style="color:var(--amber);"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+              <div class="card-title">Watermark Tracker</div>
+              <button class="btn btn-ghost btn-xs" onclick="wfRefreshWatermarks()" style="margin-left:auto;">Refresh</button>
+            </div>
+            <div id="wfWatermarks" style="font-size:12px;">
+              <div style="color:var(--t4);text-align:center;padding:12px;">No watermarks — use incremental loads to track</div>
+            </div>
+          </div>
+        </div>
+    </div>
+
   </div>
 </div>
 </div>
@@ -1914,22 +3040,30 @@ function toast(msg,type='tinfo',dur=3200){
 
 const TAB_META={
   convert:{title:'Convert SQL Objects to PySpark',sub:'One .py per SP/View · All UDFs bundled into HelperFunction.py',step:1},
-  connect:{title:'Databricks Connection',sub:'Test and verify your Databricks workspace connection',step:2},
-  deploy:{title:'Deploy Notebooks',sub:'Upload individual notebooks to your Databricks workspace',step:3},
-  uc:{title:'Unity Catalog Execute',sub:'Execute pipelines and query tables in Unity Catalog',step:4},
-  migrate:{title:'Data Migration',sub:'Bulk-migrate source tables → Databricks Unity Catalog Delta tables',step:5},
-  medallion:{title:'Medallion Architecture',sub:'Landing → Bronze → Silver pipeline with DLT, quality checks & restore points',step:6},
-  healer:{title:'Self-Healing Bot',sub:'Intelligent failure detection, auto-recovery, and system health monitoring',step:7},
+  deploy:{title:'Deploy Notebooks',sub:'Connect to Databricks & upload notebooks to your workspace',step:2},
+  uc:{title:'Unity Catalog Execute',sub:'Execute pipelines and query tables in Unity Catalog',step:3},
+  migrate:{title:'Data Migration',sub:'Bulk-migrate source tables → Databricks Unity Catalog Delta tables',step:4},
+  medallion:{title:'Medallion Architecture',sub:'Landing → Bronze → Silver pipeline with DLT, quality checks & restore points',step:5},
+  healer:{title:'Self-Healing Bot',sub:'Intelligent failure detection, auto-recovery, and system health monitoring',step:6},
+  'wf-dashboard':{title:'AI Workflow Manager',sub:'Dashboard — metadata-driven pipeline orchestration overview',step:7},
+  'wf-metadata':{title:'MetadataFlow',sub:'Configure Databricks connection & provision Delta metadata tables',step:7},
+  'wf-pipelines':{title:'Pipeline Studio',sub:'Connect data sources, create & manage medallion pipelines',step:7},
+  'wf-jobs':{title:'Job Manager',sub:'Create workflow jobs, monitor runs & track watermarks',step:7},
+  'wf-settings':{title:'Settings',sub:'Configure Azure infrastructure, storage, connectors & Unity Catalog deployment',step:7},
 };
-const WF_LBL=['Convert SQL Objects','Test Connection','Deploy Notebooks','Unity Catalog','Data Migration','Medallion Architecture','Self-Healing Bot'];
+const WF_LBL=['Convert SQL Objects','Deploy Notebooks','Unity Catalog','Data Migration','Medallion Architecture','Self-Healing Bot','AI Workflow Manager'];
 const TAB_ICONS={
   convert:'<polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/>',
-  connect:'<path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>',
   deploy:'<polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/>',
   uc:'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
   migrate:'<polyline points="5 9 2 12 5 15"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/>',
   medallion:'<circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/><path d="M2 12h20"/>',
   healer:'<path d="M19.69 14a6.9 6.9 0 00.31-2 6.9 6.9 0 00-.31-2l2.15-1.68a.51.51 0 00.12-.64l-2.04-3.53a.51.51 0 00-.61-.22l-2.54 1.02a6.76 6.76 0 00-3.46-2l-.39-2.7a.5.5 0 00-.49-.42h-4.08a.5.5 0 00-.49.42l-.39 2.7a6.76 6.76 0 00-3.46 2L1.73 3.93a.5.5 0 00-.61.22L.09 7.68a.5.5 0 00.12.64L2.36 10a6.9 6.9 0 000 4L.21 15.68a.51.51 0 00-.12.64l2.04 3.53c.12.22.39.3.61.22l2.54-1.02a6.76 6.76 0 003.46 2l.39 2.7c.04.24.25.42.49.42h4.08c.24 0 .45-.18.49-.42l.39-2.7a6.76 6.76 0 003.46-2l2.54 1.02c.22.08.49 0 .61-.22l2.04-3.53a.51.51 0 00-.12-.64L19.69 14zM12 15.5A3.5 3.5 0 1115.5 12 3.5 3.5 0 0112 15.5z"/>',
+  'wf-dashboard':'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+  'wf-metadata':'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
+  'wf-pipelines':'<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>',
+  'wf-settings':'<path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/>',
+  'wf-jobs':'<rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
 };
 
 function switchTab(id,btn){
@@ -1938,11 +3072,9 @@ function switchTab(id,btn){
   G('pane-'+id).classList.add('active');
   G('nav-'+id).classList.add('active');
 
-  if(id==='deploy'){
-    const h=G('dbHost'),t=G('dbToken'),dh=G('depHost'),dt=G('depToken');
-    if(dh&&h&&h.value&&!dh.value)dh.value=h.value;
-    if(dt&&t&&t.value&&!dt.value)dt.value=t.value;
-  }
+  // Persist current tab in URL hash for page refresh
+  if(id!=='aiworkflow') history.replaceState(null,'','#'+id);
+
   if(id==='migrate'){
     const h=G('dbHost'),t=G('dbToken'),mh=G('migHost'),mt=G('migToken');
     if(mh&&h&&h.value&&!mh.value)mh.value=h.value;
@@ -1957,6 +3089,18 @@ function switchTab(id,btn){
     const h=G('dbHost'),t=G('dbToken'),hh=G('hlHost'),ht=G('hlToken');
     if(hh&&h&&h.value&&!hh.value)hh.value=h.value;
     if(ht&&t&&t.value&&!ht.value)ht.value=t.value;
+  }
+  if(id==='aiworkflow'){
+    switchTab('wf-dashboard',G('nav-wf-dashboard'));return;
+  }
+  const _wfIds=['wf-dashboard','wf-metadata','wf-pipelines','wf-jobs','wf-settings'];
+  if(_wfIds.includes(id)){
+    const h=G('dbHost'),t=G('dbToken'),wh=G('wfDbrHost'),wt=G('wfDbrToken');
+    if(wh&&h&&h.value&&!wh.value)wh.value=h.value;
+    if(wt&&t&&t.value&&!wt.value)wt.value=t.value;
+    if(id==='wf-dashboard'||id==='wf-pipelines') wfRefreshAll();
+    if(id==='wf-jobs') wfRefreshJobs();
+    if(id==='wf-settings') loadDeployConfig();
   }
   const m=TAB_META[id];
   if(m){
@@ -2294,8 +3438,8 @@ function updDeployList(){
 }
 
 async function deployAll(){
-  const host=G('depHost').value.trim(),token=G('depToken').value.trim(),path=G('depPath').value.trim()||'/Shared/Migrations';
-  if(!host||!token){toast('Enter Workspace Host and Access Token.','terr');syncDepCreds();return;}
+  const host=G('dbHost').value.trim(),token=G('dbToken').value.trim(),path=G('depPath').value.trim()||'/Shared/Migrations';
+  if(!host||!token){toast('Enter Workspace Host and Access Token.','terr');return;}
   if(!HELPER_RESULT){toast('Convert objects in Step 1 first.','tinfo');return;}
   const btn=G('btnDeployAll'),lbl=G('depBtnTxt'),prog=G('depProg');
   btn.disabled=true;lbl.textContent='Deploying…';
@@ -2309,7 +3453,7 @@ async function deployAll(){
     if(d.results&&d.results.length){
       let logHtml='';
       d.results.forEach(res=>{const ok=res.success;logHtml+=`<div class="dep-row ${ok?'ok':'err'}"><div class="blt ${ok?'blt-ok':'blt-err'}"></div><span class="dep-name">${res.name}.py</span><span class="dep-path">${res.path||res.error||''}</span></div>`;});
-      if(d.uploaded===notebooks.length){logHtml+=`<div class="alert a-ok" style="margin-top:10px;"><span class="a-ico">✓</span> All ${d.uploaded} notebooks deployed to <strong>${path}</strong></div>`;G('wf3').className='wf-step done';lbl.textContent='✓ Deployed!';toast('All '+d.uploaded+' notebooks deployed!','tok');}
+      if(d.uploaded===notebooks.length){logHtml+=`<div class="alert a-ok" style="margin-top:10px;"><span class="a-ico">✓</span> All ${d.uploaded} notebooks deployed to <strong>${path}</strong></div>`;G('wf2').className='wf-step done';lbl.textContent='✓ Deployed!';toast('All '+d.uploaded+' notebooks deployed!','tok');}
       else{logHtml+=`<div class="alert a-warn" style="margin-top:10px;"><span class="a-ico">⚠</span> ${d.uploaded} of ${d.total} notebooks uploaded.</div>`;lbl.textContent='Deploy All to Databricks';toast(d.uploaded+'/'+d.total+' deployed.','tinfo');}
       G('deployLog').innerHTML=logHtml;
     }else{G('deployLog').innerHTML=`<div class="alert a-err"><span class="a-ico">✕</span>${d.error||'Upload failed'}</div>`;lbl.textContent='Deploy All to Databricks';toast('Deploy failed.','terr');}
@@ -2319,13 +3463,6 @@ async function deployAll(){
   }finally{btn.disabled=false;}
 }
 
-function syncDepCreds(){
-  const h=G('dbHost'),t=G('dbToken');
-  if(h&&h.value){G('depHost').value=h.value;}
-  if(t&&t.value){G('depToken').value=t.value;}
-  if((h&&h.value)||(t&&t.value))toast('Credentials synced from Connect tab.','tok',2000);
-  else toast('No credentials saved yet — fill in the Connect tab first.','tinfo');
-}
 
 async function testConn(){
   const host=G('dbHost').value.trim(),token=G('dbToken').value.trim();
@@ -2418,6 +3555,11 @@ function runCustomSQL(){const sql=G('ucSQL').value.trim(),wh=G('ucWarehouse').va
 // DATA MIGRATION
 // ═══════════════════════════════════════════════════════
 let MIG_TABLES=[], MIG_JOB_ID=null, MIG_POLL_IV=null;
+
+function updateMigModeHint(){
+  const mode=G('migLoadMode').value;
+  G('migModeHint').style.display=mode==='incremental'?'':'none';
+}
 
 function _migCreds(){
   return {
@@ -2553,6 +3695,7 @@ async function startMigration(){
   if(!wh){toast('Select a SQL Warehouse.','tinfo');return;}
   if(!c.server||!c.database){toast('Configure source database.','tinfo');return;}
   const workers=parseInt(G('migWorkers').value)||3;
+  const loadMode=G('migLoadMode').value||'full';
 
   stopMigPoll();
   G('migProgList').innerHTML='';
@@ -2563,8 +3706,9 @@ async function startMigration(){
   G('btnStartMig').disabled=true;
   G('btnStopMig').style.display='';
 
-  const payload={...c, warehouse_id:wh, tables:sel, max_workers:workers};
-  _appendMigLog(`Starting migration of ${sel.length} table(s) with ${workers} workers…`);
+  const modeLabel=loadMode==='incremental'?'incremental (hash-key)':'full';
+  const payload={...c, warehouse_id:wh, tables:sel, max_workers:workers, load_mode:loadMode};
+  _appendMigLog(`Starting ${modeLabel} migration of ${sel.length} table(s) with ${workers} workers…`);
 
   try{
     const r=await fetch('/api/migrate/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -2617,10 +3761,12 @@ function renderMigProgress(job){
     const badge=info.status==='done'?'var(--green-fg)':info.status==='failed'?'var(--red-fg)':info.status==='running'?'var(--blue-fg)':'var(--t3)';
     const badgeBg=info.status==='done'?'var(--green-light)':info.status==='failed'?'var(--red-light)':info.status==='running'?'var(--blue-light)':'var(--surface-2)';
     const cnt=(info.rows_copied&&info.rows_copied>0)?info.rows_copied:(info.rows&&info.rows>0)?info.rows:0;
+    const skipped=info.rows_skipped||0;
     const rows_txt=cnt>0?` · ${Number(cnt).toLocaleString()} rows`:'';
+    const skip_txt=skipped>0?` · ${Number(skipped).toLocaleString()} unchanged`:'';
     const errTip=info.status==='failed'&&info.error?` title="${(info.error||'').replace(/"/g,"'")}"`:' ';
     const icon=info.status==='done'?'✓':info.status==='failed'?'✕':info.status==='running'?'▶':'…';
-    const label=`${icon} ${info.status||'queued'}${rows_txt}`;
+    const label=`${icon} ${info.status||'queued'}${rows_txt}${skip_txt}`;
     return `<div class="mig-prog-row">
       <div class="mig-prog-name" title="${tbl}">${tbl.split('.').pop()}</div>
       <div class="mig-prog-bar-wrap"><div class="mig-prog-bar ${cls}" style="width:${pct}%"></div></div>
@@ -2634,7 +3780,7 @@ function renderMigProgress(job){
   const newLogs=logs.slice(existingCount);
   newLogs.forEach(l=>{
     const isErr=l.includes('ERROR')||l.includes('FAIL')||l.includes('failed')||l.includes('Traceback')||l.includes('Exception');
-    const isOk=l.includes('Done —')||l.includes('COPY INTO: ')||l.includes('rows loaded')||l.includes('rows via batch');
+    const isOk=l.includes('Done —')||l.includes('Done \u2014')||l.includes('COPY INTO: ')||l.includes('rows loaded')||l.includes('rows via batch')||l.includes('unchanged');
     _appendMigLog(l,isErr?'err':isOk?'ok':'');
   });
 }
@@ -2663,6 +3809,10 @@ function _mdlCreds(){
     schema:      G('mdlSchema').value.trim()||'default',
     landing_path: G('mdlLandingPath').value.trim()||'/mnt/landing',
     workspace_path: G('mdlWsPath').value.trim()||'/Shared/Medallion',
+    volumes_catalog: G('mdlVolCatalog').value.trim(),
+    bronze_catalog:  G('mdlBrzCatalog').value.trim(),
+    silver_catalog:  G('mdlSlvCatalog').value.trim(),
+    target_schema:   G('mdlTargetSchema').value.trim(),
   };
 }
 
@@ -2771,6 +3921,8 @@ async function mdlGenerate(){
         source_type:c.source_type, server:c.server, database:c.database,
         username:c.username, tables:tables, catalog:c.catalog, schema:c.schema,
         landing_path:c.landing_path, workspace_path:c.workspace_path,
+        volumes_catalog:c.volumes_catalog, bronze_catalog:c.bronze_catalog,
+        silver_catalog:c.silver_catalog, target_schema:c.target_schema,
       })
     });
     const d=await r.json();
@@ -3208,6 +4360,1425 @@ async function hlRefreshStats(){
   };
 })();
 
+// ═════════════════════════════════════════════════════════════════════════════
+// AI WORKFLOW MANAGER — JAVASCRIPT
+// ═════════════════════════════════════════════════════════════════════════════
+
+/* ─── MetadataFlow — Databricks Persistence ─── */
+let _wfMetaReady=false;
+let _wfSelectedGroups=new Set(); // multi-select for batch Databricks run
+
+function _wfDbrCreds(){
+  return {
+    host:    G('wfDbrHost').value.trim(),
+    token:   G('wfDbrToken').value.trim(),
+    catalog: G('wfDbrCatalog').value.trim()||'main',
+    schema:  G('wfDbrSchema').value.trim()||'default',
+  };
+}
+function _wfSourceConfig(){
+  return {
+    source_type: G('wfSrcType')?.value||'sqlserver',
+    server:      G('wfSrcServer')?.value?.trim()||'',
+    database:    G('wfSrcDb')?.value?.trim()||'',
+    username:    G('wfSrcUser')?.value?.trim()||'',
+  };
+}
+function _wfTargetConfig(){
+  const c=_wfDbrCreds();
+  const cfg = {
+    host:           c.host,
+    catalog:        c.catalog,
+    schema:         c.schema,
+    workspace_path: G('wfNbWsPath')?.value?.trim()||'/Shared/MetadataPipeline',
+    landing_path:   G('wfNbLandingPath')?.value?.trim()||'/mnt/landing',
+  };
+  // Multi-catalog: add if fields are populated
+  const vc=G('wfVolCatalog')?.value?.trim()||'';
+  const bc=G('wfBrzCatalog')?.value?.trim()||'';
+  const sc=G('wfSlvCatalog')?.value?.trim()||'';
+  const ts=G('wfTgtSchema')?.value?.trim()||'';
+  if(vc) cfg.volumes_catalog=vc;
+  if(bc) cfg.bronze_catalog=bc;
+  if(sc) cfg.silver_catalog=sc;
+  if(ts) cfg.target_schema=ts;
+  return cfg;
+}
+
+async function wfCreateMetadataFlow(){
+  const c=_wfDbrCreds();
+  if(!c.host||!c.token){toast('Enter Databricks host and token','terr');return;}
+  const btn=G('btnWfMeta');btn.disabled=true;btn.textContent='Provisioning tables…';
+  const dot=G('wfMetaDot'),lbl=G('wfMetaLabel'),msg=G('wfMetaMsg');
+  dot.style.background='#f59e0b';lbl.textContent='Provisioning…';
+  msg.innerHTML='<span style="color:var(--amber);">Creating 5 Delta tables in '+c.catalog+'.'+c.schema+'…</span>';
+  try{
+    const r=await fetch('/api/workflow/metadata/init',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(c)});
+    const d=await r.json();
+    if(!d.success)throw new Error(d.error||'Failed');
+    dot.style.background='#10b981';lbl.textContent='Initialized — '+c.catalog+'.'+c.schema;
+    msg.innerHTML='<span style="color:var(--green);">✓ '+d.message+'</span>';
+    toast(d.message,'tok');
+    _wfMetaReady=true;
+    G('btnWfMetaLoad').style.display='';
+    G('btnWfMetaSync').style.display='';
+    G('wfMetaTablesInfo').style.display='block';
+    if(G('wfNotebookCard'))G('wfNotebookCard').style.display='';
+    wfCheckMetaStatus();
+  }catch(e){
+    dot.style.background='#ef4444';lbl.textContent='Failed';
+    msg.innerHTML='<span style="color:var(--red);">'+e.message+'</span>';
+    toast(e.message,'terr');
+  }
+  btn.disabled=false;
+  btn.innerHTML='<svg viewBox="0 0 24 24" style="width:14px;height:14px;"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg> Create MetadataFlow';
+}
+
+async function wfCheckMetaStatus(){
+  try{
+    const r=await fetch('/api/workflow/metadata/status');
+    const d=await r.json();
+    if(!d.success)return;
+    const dot=G('wfMetaDot'),lbl=G('wfMetaLabel');
+    if(d.initialized){
+      dot.style.background='#10b981';lbl.textContent='Active — '+(d.catalog||'main')+'.'+(d.schema||'default');
+      _wfMetaReady=true;
+      G('btnWfMetaLoad').style.display='';
+      G('btnWfMetaSync').style.display='';
+      G('wfMetaTablesInfo').style.display='block';
+      if(G('wfNotebookCard'))G('wfNotebookCard').style.display='';
+      // Update table counts
+      const tbls=d.tables||{};
+      const m={wf_pipeline_metadata:'wfMetaTblPipelines',wf_job_metadata:'wfMetaTblJobs',wf_run_history:'wfMetaTblRuns',wf_watermark_metadata:'wfMetaTblWm',wf_source_tables:'wfMetaTblSrc'};
+      for(const[t,info]of Object.entries(tbls)){
+        const el=G(m[t]);
+        if(el){
+          if(info.exists) el.textContent=info.rows;
+          else el.textContent='✕';
+        }
+      }
+    }else{
+      dot.style.background='#6b7280';lbl.textContent='Not Configured';
+    }
+  }catch(e){console.error('wfCheckMetaStatus',e);}
+}
+
+async function wfLoadMetadata(){
+  const btn=G('btnWfMetaLoad');btn.disabled=true;btn.textContent='Loading…';
+  try{
+    const r=await fetch('/api/workflow/metadata/load',{method:'POST'});
+    const d=await r.json();
+    if(!d.success)throw new Error(d.error||'Failed');
+    const l=d.loaded;
+    toast('Loaded '+l.pipelines+' pipelines, '+l.jobs+' jobs, '+l.watermarks+' watermarks from Databricks','tok');
+    G('wfMetaMsg').innerHTML='<span style="color:var(--green);">✓ Loaded: '+l.pipelines+' pipelines, '+l.jobs+' jobs, '+l.watermarks+' watermarks</span>';
+    wfRefreshAll();
+  }catch(e){
+    toast(e.message,'terr');
+    G('wfMetaMsg').innerHTML='<span style="color:var(--red);">'+e.message+'</span>';
+  }
+  btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> Load Existing Metadata';
+}
+
+async function wfSyncMetadata(){
+  const btn=G('btnWfMetaSync');btn.disabled=true;btn.textContent='Syncing…';
+  try{
+    const r=await fetch('/api/workflow/metadata/sync',{method:'POST'});
+    const d=await r.json();
+    if(!d.success)throw new Error(d.error||'Failed');
+    const s=d.synced;
+    toast('Synced '+s.pipelines+' pipelines, '+s.jobs+' jobs, '+s.runs+' runs to Databricks','tok');
+    G('wfMetaMsg').innerHTML='<span style="color:var(--green);">✓ Synced: '+s.pipelines+' pipelines, '+s.jobs+' jobs, '+s.runs+' runs</span>';
+    wfCheckMetaStatus();
+  }catch(e){
+    toast(e.message,'terr');
+    G('wfMetaMsg').innerHTML='<span style="color:var(--red);">'+e.message+'</span>';
+  }
+  btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg> Sync to Databricks';
+}
+
+/* Save discovered source tables to Databricks when Discover is clicked */
+async function _wfSaveSourcesToDatabricks(){
+  if(!_wfMetaReady||!WF_SRC_TABLES.length)return;
+  try{
+    const c=_wfSrcCreds();
+    await fetch('/api/workflow/metadata/save-sources',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({tables:WF_SRC_TABLES,source_config:c})
+    });
+  }catch(e){console.error('_wfSaveSourcesToDatabricks',e);}
+}
+
+/* ─── Deploy Metadata Notebooks ─── */
+let _wfNbDeployed=false;
+
+// Pipeline mode hint + DQ panel toggle
+(function(){
+  const sel=document.getElementById('wfNbPipelineMode');
+  if(sel)sel.addEventListener('change',function(){
+    const h=document.getElementById('wfNbModeHint');
+    const dqStd=document.getElementById('wfDqStandard');
+    const dqDlt=document.getElementById('wfDqDlt');
+    const dqTag=document.getElementById('wfDqModeTag');
+    const isDlt=this.value==='dlt';
+    if(h)h.textContent=isDlt
+      ?'DLT: 3 notebooks (Extract, DLT Pipeline, DLT Orchestrator) — Auto Loader + Expectations'
+      :'Standard: 4 notebooks (Extract, Bronze, Silver, Orchestrator)';
+    if(dqStd)dqStd.style.display=isDlt?'none':'block';
+    if(dqDlt)dqDlt.style.display=isDlt?'block':'none';
+    if(dqTag){dqTag.textContent=isDlt?'DLT':'STANDARD';dqTag.style.background=isDlt?'#f59e0b':'var(--blue)';}
+    // Update pipeline mode tag in Active Pipeline Groups
+    const pTag=document.getElementById('wfPipelineModeTag');
+    if(pTag){
+      pTag.textContent=isDlt?'⚡ Delta Live Tables (DLT)':'🔥 Apache Spark';
+      pTag.style.background=isDlt?'#f59e0b':'#3b82f6';
+    }
+    // Re-render pipelines to update per-group badges
+    if(typeof wfRefreshPipelines==='function')wfRefreshPipelines();
+  });
+})();
+
+async function wfDeployNotebooks(){
+  const c=_wfDbrCreds();
+  if(!c.host||!c.token){toast('Initialize MetadataFlow first','terr');return;}
+  const btn=G('btnWfDeployNb');btn.disabled=true;btn.textContent='Deploying…';
+  const dot=G('wfNbDot'),lbl=G('wfNbLabel'),msg=G('wfNbMsg');
+  const pipelineMode=(G('wfNbPipelineMode')||{}).value||'standard';
+  dot.style.background='#f59e0b';lbl.textContent='Deploying…';
+  try{
+    const r=await fetch('/api/workflow/notebooks/deploy',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        host:c.host,token:c.token,catalog:c.catalog,schema:c.schema,
+        workspace_path:G('wfNbWsPath').value.trim()||'/Shared/MetadataPipeline',
+        landing_path:G('wfNbLandingPath').value.trim()||'/mnt/landing',
+        pipeline_mode:pipelineMode
+      })
+    });
+    const d=await r.json();
+    if(!d.success)throw new Error(d.error||'Deploy failed');
+    dot.style.background='#10b981';lbl.textContent='Deployed — '+d.workspace_path;
+    msg.innerHTML='<span style="color:var(--green);">✓ '+d.message+'</span>';
+    toast(d.message,'tok');
+    _wfNbDeployed=true;
+    // Show results grid
+    const grid=G('wfNbResultGrid');
+    G('wfNbResults').style.display='block';
+    grid.innerHTML=(d.results||[]).map(nb=>{
+      const ok=nb.success;
+      return `<div style="padding:8px;background:${ok?'var(--green)':'var(--red)'}11;border:1px solid ${ok?'var(--green)':'var(--red)'}33;border-radius:var(--r-xs);text-align:center;">
+        <div style="font-size:10px;font-weight:600;color:${ok?'var(--green)':'var(--red)'};">${ok?'✅':'❌'} ${nb.name}</div>
+        <div style="font-size:9px;color:var(--t4);margin-top:2px;">${nb.layer} · ${nb.lines} lines</div>
+        ${nb.path?'<div style="font-size:8px;color:var(--t4);margin-top:1px;">'+nb.path+'</div>':''}
+      </div>`;
+    }).join('');
+  }catch(e){
+    dot.style.background='#ef4444';lbl.textContent='Failed';
+    msg.innerHTML='<span style="color:var(--red);">'+e.message+'</span>';
+    toast(e.message,'terr');
+  }
+  btn.disabled=false;
+  btn.innerHTML='<svg viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg> Deploy Notebooks';
+}
+
+async function wfCheckNbStatus(){
+  try{
+    const r=await fetch('/api/workflow/notebooks/status');const d=await r.json();
+    const dot=G('wfNbDot'),lbl=G('wfNbLabel');
+    if(d.deployed){
+      dot.style.background='#10b981';lbl.textContent='Deployed — '+d.workspace_path;
+      _wfNbDeployed=true;
+    }else{
+      dot.style.background='#6b7280';lbl.textContent='Not Deployed';
+    }
+  }catch(e){console.error('wfCheckNbStatus',e);}
+}
+
+async function wfRunOnDatabricks(groupId, pwd){
+  if(!_wfNbDeployed||!_wfMetaReady){
+    toast('Deploy metadata notebooks & metadata first','terr');return false;
+  }
+  const c=_wfDbrCreds();
+  if(!c.host||!c.token){toast('MetadataFlow not initialized','terr');return false;}
+  const clusterId=(G('wfClusterSelect')||{}).value||'';
+  if(!clusterId){toast('Please select a Databricks cluster first','terr');return false;}
+  if(pwd===undefined){
+    pwd=prompt('Enter Azure SQL source database password:\n(This is your SQL Server password, NOT the Databricks PAT token)\n\nLeave blank if using Databricks Secrets.','');
+    if(pwd===null)return false;  // cancelled
+  }
+  toast('Submitting pipeline to Databricks…','tinfo');
+  try{
+    const r=await fetch('/api/workflow/pipelines/'+groupId+'/run-databricks',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        host:c.host,token:c.token,catalog:c.catalog,schema:c.schema,
+        cluster_id:clusterId,
+        password:pwd,
+        workspace_path:G('wfNbWsPath')?.value?.trim()||'/Shared/MetadataPipeline',
+        landing_path:G('wfNbLandingPath')?.value?.trim()||'/mnt/landing',
+      })
+    });
+    const d=await r.json();
+    if(!d.success)throw new Error(d.error||d.message||'Failed to submit');
+    toast('Pipeline submitted to Databricks! Run ID: '+d.run_id,'tok');
+    if(d.run_url){
+      G('wfNbMsg').innerHTML='<span style="color:var(--green);">✓ Running → <a href="'+d.run_url+'" target="_blank" style="color:var(--blue);">View Run</a></span>';
+    }
+    // Auto-open pipeline logs panel
+    wfShowPipelineLogs(groupId, '');
+    setTimeout(()=>wfRefreshAll(),2000);
+    return true;
+  }catch(e){
+    console.error('wfRunOnDatabricks error:',e);
+    toast(e.message,'terr');
+    wfShowPipelineLogs(groupId, '');
+    return false;
+  }
+}
+
+/* ─── Multi-Select Pipeline Group Helpers ─── */
+function wfToggleGroupSelect(groupId, checked){
+  if(checked) _wfSelectedGroups.add(groupId);
+  else _wfSelectedGroups.delete(groupId);
+  const total=document.querySelectorAll('.wfGrpChk').length;
+  _wfUpdateGroupToolbar(total);
+}
+function wfToggleSelectAllGroups(checked){
+  document.querySelectorAll('.wfGrpChk').forEach(cb=>{
+    cb.checked=checked;
+    const gid=cb.dataset.gid;
+    if(checked) _wfSelectedGroups.add(gid);
+    else _wfSelectedGroups.delete(gid);
+  });
+  const total=document.querySelectorAll('.wfGrpChk').length;
+  _wfUpdateGroupToolbar(total);
+}
+function _wfUpdateGroupToolbar(total){
+  const n=_wfSelectedGroups.size;
+  const lbl=G('wfGroupSelCount');
+  if(lbl) lbl.textContent=n+' selected';
+  const btn=G('btnRunSelectedDbr');
+  if(btn) btn.style.display=n>0?'inline-flex':'none';
+  const allCb=G('wfGroupSelectAll');
+  if(allCb) allCb.checked=(total>0&&n===total);
+}
+async function wfRunSelectedOnDatabricks(){
+  const ids=[..._wfSelectedGroups];
+  if(!ids.length){toast('Select at least one pipeline group','terr');return;}
+  if(!_wfNbDeployed||!_wfMetaReady){
+    toast('Deploy metadata notebooks & metadata first','terr');return;
+  }
+  const clusterId=(G('wfClusterSelect')||{}).value||'';
+  if(!clusterId){toast('Please select a Databricks cluster first','terr');return;}
+  const clSel=G('wfClusterSelect');
+  const clOpt=clSel?clSel.options[clSel.selectedIndex]:null;
+  if(!clOpt||clOpt.dataset.state!=='RUNNING'){
+    toast('Selected cluster is not running — start it first','terr');return;
+  }
+  const pwd=prompt('Enter Azure SQL source database password:\n(This password will be used for all '+ids.length+' selected pipeline(s))\n\nLeave blank if using Databricks Secrets.','');
+  if(pwd===null)return;
+  toast('Submitting '+ids.length+' pipeline(s) to Databricks…','tinfo');
+  let ok=0,fail=0;
+  for(const gid of ids){
+    const success=await wfRunOnDatabricks(gid, pwd);
+    if(success) ok++; else fail++;
+  }
+  _wfSelectedGroups.clear();
+  wfRefreshPipelines();
+  const msg=ok+' submitted'+(fail?' · '+fail+' failed':'');
+  toast(msg, fail?'terr':'tok');
+}
+
+function switchAiSubTab(tab,btn){
+  // Legacy redirect — sub-tabs replaced by separate pages
+  if(tab==='jobs') switchTab('wf-jobs',G('nav-wf-jobs'));
+  else switchTab('wf-pipelines',G('nav-wf-pipelines'));
+}
+
+function wfToggleWatermark(){
+  const v=G('wfLoadType').value;
+  G('wfWatermarkWrap').style.display=v==='incremental'?'block':'none';
+}
+
+/* ─── Data Source Connection & Table Discovery ─── */
+let WF_SRC_TABLES=[];
+let _wfSelectedQ=null; // legacy compat — multi-select uses _wfQSelected[]
+let _wfSelectedJ=null; // selected table for Job Workflow
+
+function _wfSrcCreds(){
+  return {
+    source_type: G('wfSrcType').value,
+    server:      G('wfSrcServer').value.trim(),
+    database:    G('wfSrcDb').value.trim(),
+    username:    G('wfSrcUser').value.trim(),
+    password:    G('wfSrcPass').value,
+  };
+}
+
+async function wfTestConnection(){
+  const c=_wfSrcCreds();
+  if(!c.server||!c.database||!c.username){toast('Enter server, database and username','terr');return;}
+  const btn=G('btnWfTest');btn.disabled=true;btn.textContent='Testing…';
+  const st=G('wfSrcStatus');
+  st.innerHTML='<span style="color:var(--amber);">⏳ Testing…</span>';
+  try{
+    const r=await fetch('/api/migrate/list-tables',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(c)});
+    const d=await r.json();
+    if(!r.ok||d.error)throw new Error(d.error||'Connection failed');
+    st.innerHTML='<span style="color:var(--green);">🟢 Connected — '+d.total+' tables found</span>';
+    toast('Connection successful! '+d.total+' tables available.','tok');
+    // Auto-populate tables
+    WF_SRC_TABLES=d.tables||[];
+    G('wfSrcMsg').innerHTML='<span style="color:var(--green);">✓ '+WF_SRC_TABLES.length+' tables loaded</span>';
+  }catch(e){
+    st.innerHTML='<span style="color:var(--red);">🔴 Failed</span>';
+    G('wfSrcMsg').innerHTML='<span style="color:var(--red);">'+e.message+'</span>';
+    toast(e.message,'terr');
+  }
+  btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" style="width:12px;height:12px;"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Test Connectivity';
+}
+
+async function wfFetchTables(){
+  const c=_wfSrcCreds();
+  if(!c.server||!c.database||!c.username){toast('Enter server, database and username','terr');return;}
+  const btn=G('btnWfFetch');btn.disabled=true;btn.textContent='Discovering…';
+  const st=G('wfSrcStatus');
+  try{
+    const r=await fetch('/api/migrate/list-tables',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(c)});
+    const d=await r.json();
+    if(!r.ok||d.error)throw new Error(d.error||'Failed');
+    WF_SRC_TABLES=d.tables||[];
+    st.innerHTML='<span style="color:var(--green);">🟢 Connected — '+WF_SRC_TABLES.length+' tables</span>';
+    G('wfSrcMsg').innerHTML='<span style="color:var(--green);">✓ '+WF_SRC_TABLES.length+' tables ready for pipeline creation</span>';
+    toast('Discovered '+WF_SRC_TABLES.length+' tables from source.','tok');
+    _wfSaveSourcesToDatabricks();
+  }catch(e){
+    st.innerHTML='<span style="color:var(--red);">🔴 Failed</span>';
+    G('wfSrcMsg').innerHTML='<span style="color:var(--red);">'+e.message+'</span>';
+    toast(e.message,'terr');
+  }
+  btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> Discover Tables';
+}
+
+/* ─── Quick Create Table Picker (Multi-Table) ─── */
+let _wfQSelected = [];  // array of selected table objects
+
+function _renderTableItems(container, tables, onSelectFn){
+  if(!tables.length){container.innerHTML='<div style="padding:12px;text-align:center;color:var(--t4);font-size:11px;">No tables found</div>';return;}
+  const selNames = new Set(_wfQSelected.map(t=>t.full_name));
+  container.innerHTML=tables.slice(0,50).map((t,i)=>{
+    const isSel = selNames.has(t.full_name);
+    return `<div class="wf-tbl-item" style="padding:7px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--border);transition:background .15s;display:flex;align-items:center;gap:8px;${isSel?'background:var(--surface-2);opacity:.6;':''}" onmouseover="if(!${isSel})this.style.background='var(--surface-2)'" onmouseout="if(!${isSel})this.style.background=''" onclick="${onSelectFn}(${i})">
+      <span style="width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;border-radius:3px;border:1.5px solid ${isSel?'var(--green)':'var(--border)'};background:${isSel?'var(--green)':'transparent'};color:#fff;font-size:10px;flex-shrink:0;">${isSel?'✓':''}</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.full_name}</div>
+        <div style="font-size:10px;color:var(--t4);">~${Number(t.row_estimate||0).toLocaleString()} rows · ${t.col_count||'?'} cols</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function _wfQRenderSelected(){
+  const el=G('wfQSelectedList');
+  const badge=G('wfQSelCount');
+  if(!_wfQSelected.length){
+    el.innerHTML='<div style="padding:16px;text-align:center;color:var(--t4);font-size:11px;">No tables selected — use the search above to add tables</div>';
+    badge.style.display='none';
+    return;
+  }
+  badge.style.display='';
+  badge.textContent=_wfQSelected.length+' selected';
+  el.innerHTML=_wfQSelected.map((t,i)=>{
+    const tbl=t.table||t.full_name.split('.').pop();
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border);font-size:11px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.full_name}</div>
+        <div style="font-size:9px;color:var(--t4);">~${Number(t.row_estimate||0).toLocaleString()} rows · ${t.col_count||'?'} cols</div>
+      </div>
+      <select class="inp wfQItemLoad" data-idx="${i}" style="font-size:10px;padding:2px 6px;max-width:110px;border-radius:4px;" onchange="wfQUpdateItemLoad(${i},this.value)">
+        <option value="full"${(t._loadType||'full')==='full'?' selected':''}>Full Load</option>
+        <option value="incremental"${t._loadType==='incremental'?' selected':''}>Incremental</option>
+      </select>
+      <input class="inp wfQItemWm" data-idx="${i}" placeholder="WM col" style="font-size:10px;padding:2px 6px;width:80px;border-radius:4px;display:${t._loadType==='incremental'?'block':'none'};" value="${t._wmCol||''}" oninput="wfQUpdateItemWm(${i},this.value)">
+      <button onclick="wfQRemoveItem(${i})" style="background:none;border:none;color:var(--t4);cursor:pointer;font-size:14px;padding:0 2px;flex-shrink:0;" title="Remove">&times;</button>
+    </div>`;
+  }).join('');
+}
+
+function wfQUpdateItemLoad(idx,val){
+  if(_wfQSelected[idx]){
+    _wfQSelected[idx]._loadType=val;
+    _wfQRenderSelected();
+  }
+}
+function wfQUpdateItemWm(idx,val){
+  if(_wfQSelected[idx]) _wfQSelected[idx]._wmCol=val;
+}
+function wfQRemoveItem(idx){
+  _wfQSelected.splice(idx,1);
+  _wfQRenderSelected();
+  // Re-render dropdown to update checkmarks
+  const dd=G('wfQTableDropdown');
+  if(dd.style.display!=='none'){
+    _renderTableItems(dd,_wfQFiltered,'wfSelectQTable');
+  }
+}
+function wfQSelectAll(){
+  if(!WF_SRC_TABLES.length){toast('Discover tables first','terr');return;}
+  const selNames=new Set(_wfQSelected.map(t=>t.full_name));
+  const defaultLoad=G('wfQLoadType').value;
+  WF_SRC_TABLES.forEach(t=>{
+    if(!selNames.has(t.full_name)){
+      _wfQSelected.push({...t, _loadType:defaultLoad, _wmCol:''});
+    }
+  });
+  _wfQRenderSelected();
+  const dd=G('wfQTableDropdown');
+  if(dd.style.display!=='none') _renderTableItems(dd,_wfQFiltered,'wfSelectQTable');
+}
+function wfQClearAll(){
+  _wfQSelected=[];
+  _wfQRenderSelected();
+  const dd=G('wfQTableDropdown');
+  if(dd.style.display!=='none') _renderTableItems(dd,_wfQFiltered,'wfSelectQTable');
+}
+
+let _wfQFiltered=[];
+function wfShowQDropdown(){
+  if(!WF_SRC_TABLES.length){
+    const dd=G('wfQTableDropdown');
+    dd.innerHTML='<div style="padding:12px;text-align:center;color:var(--t4);font-size:11px;">⚠ Connect data source first and click "Discover Tables"</div>';
+    dd.style.display='block';
+    return;
+  }
+  _wfQFiltered=[...WF_SRC_TABLES];
+  const dd=G('wfQTableDropdown');
+  _renderTableItems(dd,_wfQFiltered,'wfSelectQTable');
+  dd.style.display='block';
+}
+function wfFilterQTables(val){
+  if(!WF_SRC_TABLES.length)return;
+  const q=val.toLowerCase();
+  _wfQFiltered=q?WF_SRC_TABLES.filter(t=>t.full_name.toLowerCase().includes(q)):WF_SRC_TABLES;
+  const dd=G('wfQTableDropdown');
+  _renderTableItems(dd,_wfQFiltered,'wfSelectQTable');
+  dd.style.display='block';
+}
+function wfSelectQTable(idx){
+  const t=_wfQFiltered[idx];if(!t)return;
+  // Toggle selection
+  const existIdx=_wfQSelected.findIndex(s=>s.full_name===t.full_name);
+  if(existIdx>=0){
+    _wfQSelected.splice(existIdx,1);
+  }else{
+    const defaultLoad=G('wfQLoadType').value;
+    _wfQSelected.push({...t, _loadType:defaultLoad, _wmCol:''});
+  }
+  _wfQRenderSelected();
+  // Re-render dropdown to update checkmarks
+  const dd=G('wfQTableDropdown');
+  _renderTableItems(dd,_wfQFiltered,'wfSelectQTable');
+  // Keep dropdown open for multi-select
+}
+function wfClearQSelection(){
+  wfQClearAll();
+}
+
+/* ─── Job Workflow Table Picker (Sub-tab 2) ─── */
+let _wfJFiltered=[];
+function wfShowJobDropdown(){
+  if(!WF_SRC_TABLES.length){
+    const dd=G('wfTableDropdown');
+    dd.innerHTML='<div style="padding:12px;text-align:center;color:var(--t4);font-size:11px;">⚠ Connect data source in Medallion Architecture tab first</div>';
+    dd.style.display='block';
+    return;
+  }
+  _wfJFiltered=[...WF_SRC_TABLES];
+  const dd=G('wfTableDropdown');
+  _renderTableItems(dd,_wfJFiltered,'wfSelectJobTable');
+  dd.style.display='block';
+}
+function wfFilterJobTables(val){
+  if(!WF_SRC_TABLES.length)return;
+  const q=val.toLowerCase();
+  _wfJFiltered=q?WF_SRC_TABLES.filter(t=>t.full_name.toLowerCase().includes(q)):WF_SRC_TABLES;
+  const dd=G('wfTableDropdown');
+  _renderTableItems(dd,_wfJFiltered,'wfSelectJobTable');
+  dd.style.display='block';
+}
+function wfSelectJobTable(idx){
+  const t=_wfJFiltered[idx];if(!t)return;
+  _wfSelectedJ=t;
+  G('wfTableSearch').value='';
+  G('wfTableDropdown').style.display='none';
+  G('wfSelectedTable').style.display='block';
+  G('wfSelName').textContent=t.full_name;
+  G('wfSelMeta').textContent='~'+Number(t.row_estimate||0).toLocaleString()+' rows · '+(t.col_count||'?')+' cols';
+  // Update preview
+  const n=t.table||t.full_name.split('.').pop();
+  const prev=document.getElementById('wfPreviewName');
+  if(prev)prev.textContent=n;
+  document.querySelectorAll('.wfPrevTbl').forEach(e=>e.textContent=n);
+}
+function wfClearJobSelection(){
+  _wfSelectedJ=null;
+  G('wfSelectedTable').style.display='none';
+  G('wfTableSearch').value='';
+  const prev=document.getElementById('wfPreviewName');
+  if(prev)prev.textContent='TableName';
+  document.querySelectorAll('.wfPrevTbl').forEach(e=>e.textContent='TableName');
+}
+
+// Close dropdowns when clicking outside
+document.addEventListener('click',function(e){
+  if(!e.target.closest('#wfQTableSearch')&&!e.target.closest('#wfQTableDropdown')){
+    const dd=G('wfQTableDropdown');if(dd)dd.style.display='none';
+  }
+  if(!e.target.closest('#wfTableSearch')&&!e.target.closest('#wfTableDropdown')){
+    const dd=G('wfTableDropdown');if(dd)dd.style.display='none';
+  }
+});
+
+async function wfCreatePipeline(){
+  if(!_wfSelectedJ){toast('Select a table from the dropdown — connect data source first','terr');return;}
+  /* ── Cluster gate ── */
+  const _sel=G('wfClusterSelect');
+  if(!_sel||!_sel.value){toast('Please select a Databricks cluster first','terr');return;}
+  const _cOpt=_sel.options[_sel.selectedIndex];
+  if(_cOpt&&_cOpt.dataset.state!=='RUNNING'){
+    toast('Cluster is '+(_cOpt.dataset.state||'not running')+' — please start the cluster before creating a pipeline','terr');return;
+  }
+  const schema=_wfSelectedJ.schema||'dbo';
+  const table=_wfSelectedJ.table||_wfSelectedJ.full_name.split('.').pop();
+  const loadType=G('wfLoadType').value;
+  const wmCol=loadType==='incremental'?G('wfWatermarkCol').value.trim():'';
+  if(loadType==='incremental'&&!wmCol){toast('Enter watermark column for incremental load','terr');return;}
+  const btn=G('btnWfCreate');btn.disabled=true;btn.textContent='Creating…';
+  try{
+    const r=await fetch('/api/workflow/create-pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({table_schema:schema,table_name:table,load_type:loadType,watermark_column:wmCol,source_config:_wfSourceConfig(),target_config:_wfTargetConfig()})});
+    const d=await r.json();
+    if(!d.success)throw new Error(d.error||'Failed');
+    toast('Pipeline created: '+d.jobs.length+' jobs for '+table,'tok');
+    wfClearJobSelection();
+    G('wfLoadType').value='full';wfToggleWatermark();
+    wfRefreshAll();
+  }catch(e){toast(e.message,'terr');}
+  btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Create 3-Stage Pipeline';
+}
+
+/* ─── Quick Create from Medallion Tab ─── */
+function wfUpdateQuickPreview(){
+  // no-op — multi-table mode handles preview via _wfQRenderSelected()
+}
+function wfQToggleWm(){
+  // no-op — per-table load type is now inline in the selected list
+}
+async function wfQuickCreate(){
+  if(!_wfQSelected.length){toast('Select one or more tables from the dropdown','terr');return;}
+  /* ── Cluster gate ── */
+  const _sel=G('wfClusterSelect');
+  if(!_sel||!_sel.value){toast('Please select a Databricks cluster first','terr');return;}
+  const _cOpt=_sel.options[_sel.selectedIndex];
+  if(_cOpt&&_cOpt.dataset.state!=='RUNNING'){
+    toast('Cluster is '+(_cOpt.dataset.state||'not running')+' — please start the cluster before creating a pipeline','terr');return;
+  }
+  // Validate incremental tables have watermark columns
+  for(const t of _wfQSelected){
+    if(t._loadType==='incremental'&&!(t._wmCol||'').trim()){
+      toast('Enter watermark column for '+t.full_name+' (incremental)','terr');return;
+    }
+  }
+  const btn=G('btnWfQuick');btn.disabled=true;btn.textContent='Creating '+_wfQSelected.length+' pipeline(s)…';
+  try{
+    const tables=_wfQSelected.map(t=>({
+      schema: t.schema||'dbo',
+      table: t.table||t.full_name.split('.').pop(),
+      load_type: t._loadType||G('wfQLoadType').value,
+      watermark_column: t._wmCol||'',
+    }));
+    const r=await fetch('/api/workflow/create-pipelines-bulk',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({tables:tables,source_config:_wfSourceConfig(),target_config:_wfTargetConfig()})});
+    const d=await r.json();
+    if(!d.success)throw new Error(d.error||'Failed');
+    toast('Created '+d.created+' pipeline(s) with '+d.total_jobs+' jobs','tok');
+    wfQClearAll();
+    G('wfQLoadType').value='full';
+    wfRefreshAll();
+  }catch(e){toast(e.message,'terr');}
+  btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" style="width:14px;height:14px;"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> Create 3-Stage Medallion Pipeline';
+}
+
+/* ─── Layer Detail Panel ─── */
+let _openLayer=null;
+function wfToggleLayerDetail(layer){
+  const panel=G('mdlDetailPanel');
+  if(_openLayer===layer){wfCloseLayerDetail();return;}
+  _openLayer=layer;
+  const titles={source:'SQL Source — Extract Jobs',landing:'Landing Zone — Ingested Data',bronze:'Bronze Layer — Raw Delta Tables',silver:'Silver Layer — Cleansed Tables'};
+  const stages={source:'extract',landing:'landing_to_bronze',bronze:'landing_to_bronze',silver:'bronze_to_silver'};
+  G('mdlDetailTitle').textContent=titles[layer]||'Layer Details';
+  // Highlight selected layer
+  document.querySelectorAll('.mdl-layer').forEach(el=>el.style.outline='none');
+  const layerEl=G('mdlLayer'+layer.charAt(0).toUpperCase()+layer.slice(1));
+  if(layerEl)layerEl.style.outline='2px solid rgba(255,255,255,.5)';
+  // Load jobs for this stage
+  wfLoadLayerJobs(layer,stages[layer]);
+  panel.classList.add('open');
+}
+function wfCloseLayerDetail(){
+  _openLayer=null;
+  G('mdlDetailPanel').classList.remove('open');
+  document.querySelectorAll('.mdl-layer').forEach(el=>el.style.outline='none');
+}
+async function wfLoadLayerJobs(layer,stage){
+  const content=G('mdlDetailContent');
+  content.innerHTML='<div style="text-align:center;color:var(--t4);padding:12px;">Loading jobs…</div>';
+  try{
+    const r=await fetch('/api/workflow/jobs?stage='+encodeURIComponent(stage));
+    const d=await r.json();
+    if(!d.success||!d.jobs.length){
+      content.innerHTML='<div style="text-align:center;color:var(--t4);padding:12px;">No jobs at this stage yet. Create a pipeline using Quick Create.</div>';
+      return;
+    }
+    const jc={created:'#94a3b8',running:'#3b82f6',success:'#10b981',failed:'#ef4444'};
+    const ji={created:'⏸',running:'🔄',success:'✅',failed:'❌'};
+    content.innerHTML=d.jobs.map(j=>
+      `<div class="mdl-detail-job">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:12px;">${ji[j.status]||'⏸'}</span>
+          <div>
+            <div style="font-weight:600;color:var(--t1);">${j.job_name}</div>
+            <div style="font-size:10px;color:var(--t4);">${j.load_type.toUpperCase()} · ${j.run_count||0} runs</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-size:10px;font-weight:600;color:${jc[j.status]||'#94a3b8'};">${j.status.toUpperCase()}</span>
+          <button class="btn btn-primary btn-xs" onclick="wfRunSingleJob('${j.job_id}')" title="Run">▶</button>
+        </div>
+      </div>`
+    ).join('');
+  }catch(e){
+    content.innerHTML='<div style="text-align:center;color:var(--red);padding:12px;">Error: '+e.message+'</div>';
+  }
+}
+
+async function wfRefreshAll(){
+  wfRefreshStats();
+  wfRefreshPipelines();
+  wfRefreshJobs();
+  wfRefreshWatermarks();
+  if(!_wfClustersLoaded)wfFetchClusters();
+  // Re-render open layer detail if any
+  if(_openLayer){
+    const stages={source:'extract',landing:'landing_to_bronze',bronze:'landing_to_bronze',silver:'bronze_to_silver'};
+    wfLoadLayerJobs(_openLayer,stages[_openLayer]);
+  }
+}
+
+async function wfRefreshStats(){
+  try{
+    const r=await fetch('/api/workflow/stats');const d=await r.json();
+    if(!d.success)return;
+    const s=d.stats;
+    G('wfStatPipelines').textContent=s.total_pipelines;
+    G('wfStatJobs').textContent=s.total_jobs;
+    G('wfStatSuccess').textContent=s.success_jobs;
+    G('wfStatFailed').textContent=s.failed_jobs;
+    const rowsEl=G('wfStatRows');if(rowsEl)rowsEl.textContent=s.total_rows_processed||0;
+    const b=G('navBadgeWf');if(b)b.textContent=s.total_jobs;
+    // Update medallion layer counts
+    const sc=G('mdlSrcCount');if(sc)sc.textContent=s.total_pipelines+' tables';
+    const lc=G('mdlLandingCount');if(lc)lc.textContent=s.total_pipelines+' tables';
+    const bc=G('mdlBronzeCount');if(bc)bc.textContent=s.total_pipelines+' tables';
+    const slc=G('mdlSilverCount');if(slc)slc.textContent=s.total_pipelines+' tables';
+    // Toggle has-data class on layers
+    ['Source','Landing','Bronze','Silver'].forEach(layer=>{
+      const el=G('mdlLayer'+layer);
+      if(el){ if(s.total_pipelines>0) el.classList.add('has-data'); else el.classList.remove('has-data'); }
+    });
+    // Update arrow job counts
+    const a1=G('mdlArrow1Count');if(a1)a1.textContent=(s.extract_jobs||s.total_pipelines)+' jobs';
+    const a2=G('mdlArrow2Count');if(a2)a2.textContent=(s.ingest_jobs||s.total_pipelines)+' jobs';
+    const a3=G('mdlArrow3Count');if(a3)a3.textContent=(s.cleanse_jobs||s.total_pipelines)+' jobs';
+    // Animate arrows when there are running jobs
+    ['mdlArrow1','mdlArrow2','mdlArrow3','mdlArrow4'].forEach(id=>{
+      const el=G(id);
+      if(el){ if(s.running_jobs>0) el.classList.add('active'); else el.classList.remove('active'); }
+    });
+  }catch(e){console.error('wfRefreshStats',e);}
+}
+
+/* ─── Fetch Databricks Clusters ─── */
+let _wfClustersLoaded=false;
+async function wfFetchClusters(){
+  const c=_wfDbrCreds();
+  if(!c.host||!c.token){toast('Initialize MetadataFlow first','terr');return;}
+  const sel=G('wfClusterSelect'), stat=G('wfClusterStatus'), info=G('wfClusterInfo');
+  stat.textContent='Loading…';stat.style.color='var(--t4)';
+  try{
+    const r=await fetch(`/api/workflow/clusters?host=${encodeURIComponent(c.host)}&token=${encodeURIComponent(c.token)}`);
+    const d=await r.json();
+    if(!d.success)throw new Error(d.error||'Failed to list clusters');
+    const clusters=d.clusters||[];
+    // Keep current selection if possible
+    const prev=sel.value;
+    sel.innerHTML='<option value="">— Select a cluster —</option>';
+    let runCount=0;
+    clusters.forEach(cl=>{
+      const st=cl.state||'UNKNOWN';
+      const isRun=st==='RUNNING';
+      if(isRun)runCount++;
+      const icon=isRun?'🟢':st==='TERMINATED'?'🔴':st==='PENDING'?'🟡':'⚪';
+      const opt=document.createElement('option');
+      opt.value=cl.cluster_id;
+      opt.textContent=`${icon} ${cl.cluster_name}  (${st} · DBR ${cl.spark_version||'N/A'})`;
+      opt.dataset.state=st;
+      sel.appendChild(opt);
+    });
+    // Restore previous selection if still present
+    if(prev){sel.value=prev;}
+    stat.textContent=`${clusters.length} cluster${clusters.length!==1?'s':''} found (${runCount} running)`;
+    stat.style.color='var(--green)';
+    _wfClustersLoaded=true;
+    _updateClusterInfo();
+  }catch(e){
+    stat.textContent=e.message;stat.style.color='var(--red)';
+    console.error('wfFetchClusters',e);
+  }
+}
+function _updateClusterInfo(){
+  const sel=G('wfClusterSelect'),info=G('wfClusterInfo');
+  const opt=sel.options[sel.selectedIndex];
+  if(opt&&opt.value){
+    info.style.display='block';
+    info.innerHTML=`<span style="font-weight:600;">ID:</span> <code style="font-size:9px;">${opt.value}</code>`;
+  }else{info.style.display='none';}
+  // Show/hide Start Cluster button based on cluster state
+  const btn=G('btnStartCluster');
+  if(btn){
+    if(opt&&opt.value&&opt.dataset.state&&opt.dataset.state!=='RUNNING'){
+      btn.style.display='';
+    }else{
+      btn.style.display='none';
+    }
+  }
+}
+
+async function wfStartCluster(){
+  const sel=G('wfClusterSelect');
+  if(!sel||!sel.value){toast('Select a cluster first','terr');return;}
+  const opt=sel.options[sel.selectedIndex];
+  if(opt&&opt.dataset.state==='RUNNING'){toast('Cluster is already running','tinfo');return;}
+  const c=_wfDbrCreds();
+  if(!c.host||!c.token){toast('Initialize MetadataFlow first','terr');return;}
+  const btn=G('btnStartCluster');
+  btn.disabled=true;btn.textContent='Starting…';
+  try{
+    const r=await fetch('/api/workflow/clusters/start',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({host:c.host,token:c.token,cluster_id:sel.value})
+    });
+    const d=await r.json();
+    if(!d.success)throw new Error(d.error||d.message||'Failed');
+    toast('Cluster start initiated — may take 2–5 minutes','tok');
+    // Poll for cluster status update
+    let polls=0;
+    const poller=setInterval(async()=>{
+      polls++;
+      await wfFetchClusters();
+      const updated=sel.options[sel.selectedIndex];
+      if(updated&&updated.dataset.state==='RUNNING'){
+        clearInterval(poller);
+        toast('Cluster is now RUNNING ✔','tok');
+        btn.style.display='none';
+      }
+      if(polls>=40)clearInterval(poller); // stop after ~5 min
+    },8000);
+  }catch(e){toast(e.message,'terr');}
+  btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:currentColor;"><polygon points="5 3 19 12 5 21 5 3"/></svg> Start Cluster';
+}
+(function(){
+  const sel=document.getElementById('wfClusterSelect');
+  if(sel)sel.addEventListener('change',_updateClusterInfo);
+})();
+
+async function wfRefreshPipelines(){
+  try{
+    const r=await fetch('/api/workflow/pipelines');const d=await r.json();
+    if(!d.success)return;
+    const el=G('wfPipelineList');
+    if(!d.groups.length){el.innerHTML='<div class="empty" style="padding:24px;"><div class="empty-ico">🔗</div><div class="empty-t">No pipelines yet — use Quick Create to get started</div></div>';return;}
+    // Show / hide toolbar depending on group count
+    const _toolbar=G('wfGroupToolbar');
+    if(_toolbar)_toolbar.style.display=d.groups.length?'flex':'none';
+    // Prune stale selections
+    const _gids=new Set(d.groups.map(g=>g.group_id));
+    _wfSelectedGroups.forEach(id=>{if(!_gids.has(id))_wfSelectedGroups.delete(id);});
+    _wfUpdateGroupToolbar(d.groups.length);
+    el.innerHTML=d.groups.map(g=>{
+      const statusColors={created:'var(--t4)',running:'var(--blue)',success:'var(--green)',failed:'var(--red)'};
+      const statusIcons={created:'⏸',running:'🔄',success:'✅',failed:'❌'};
+      const _pm=(G('wfNbPipelineMode')||{}).value||'standard';
+      const _pmIsDlt=_pm==='dlt';
+      const _pmBadge=_pmIsDlt
+        ?'<span style="font-size:9px;padding:2px 7px;border-radius:8px;background:#f59e0b;color:#fff;font-weight:700;margin-left:6px;">⚡ DLT</span>'
+        :'<span style="font-size:9px;padding:2px 7px;border-radius:8px;background:#3b82f6;color:#fff;font-weight:700;margin-left:6px;">🔥 Spark</span>';
+      const _chk=_wfSelectedGroups.has(g.group_id)?'checked':'';
+      return `<div style="padding:12px;border:1px solid var(--border);border-radius:var(--r-sm);margin-bottom:8px;background:var(--surface);">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="checkbox" class="wfGrpChk" data-gid="${g.group_id}" ${_chk} onchange="wfToggleGroupSelect('${g.group_id}',this.checked)" style="accent-color:var(--blue);width:15px;height:15px;cursor:pointer;flex-shrink:0;">
+            <div>
+            <div style="font-weight:700;font-size:13px;color:var(--t1);">${g.full_table}${_pmBadge}</div>
+            <div style="font-size:11px;color:var(--t3);margin-top:2px;">
+              ${g.load_type.toUpperCase()} · ${g.job_ids.length} jobs · ${g.watermark_column?'WM: '+g.watermark_column:'No watermark'}
+            </div>
+          </div></div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:${statusColors[g.status]};">${statusIcons[g.status]||'⏸'} ${g.status.toUpperCase()}</span>
+            <button class="btn btn-primary btn-xs" onclick="wfRunPipelineGroup('${g.group_id}')" title="Run (simulated)">▶ Run</button>
+            <button class="btn btn-primary btn-xs" onclick="wfRunOnDatabricks('${g.group_id}')" title="Run on Databricks" style="background:var(--accent-gradient);">⚡ Databricks</button>
+            <button class="btn btn-ghost btn-xs" onclick="wfRerunPipeline('${g.group_id}')" title="Rerun from failure">🔄 Rerun</button>
+            <button class="btn btn-ghost btn-xs" onclick="wfShowPipelineLogs('${g.group_id}','${g.full_table}')" title="Show logs">📋 Logs</button>
+            <button class="btn btn-ghost btn-xs" onclick="wfDeletePipeline('${g.group_id}')" title="Delete" style="color:var(--red);">✕</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          ${(g.jobs||[]).map(j=>{
+            const jc={created:'#94a3b8',running:'#3b82f6',success:'#10b981',failed:'#ef4444'};
+            return '<div style="flex:1;background:'+(jc[j.status]||'#94a3b8')+'22;border:1px solid '+(jc[j.status]||'#94a3b8')+'44;border-radius:4px;padding:6px 8px;font-size:10px;">'+
+              '<div style="font-weight:600;color:'+(jc[j.status]||'#94a3b8')+';">'+j.job_name+'</div>'+
+              '<div style="color:var(--t4);margin-top:2px;">'+j.status+(j.run_count?' · '+j.run_count+' runs':'')+'</div></div>';
+          }).join('')}
+        </div>
+      </div>`;
+    }).join('');
+  }catch(e){console.error('wfRefreshPipelines',e);}
+}
+
+const WF_STAGE_LABELS={extract:'Extract',landing_to_bronze:'Landing→Bronze',bronze_to_silver:'Bronze→Silver'};
+const WF_STATUS_BADGES={
+  created:'<span style="display:inline-block;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;background:#f1f5f9;color:#64748b;">CREATED</span>',
+  running:'<span style="display:inline-block;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;background:#dbeafe;color:#2563eb;">RUNNING</span>',
+  success:'<span style="display:inline-block;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;background:#d1fae5;color:#059669;">SUCCESS</span>',
+  failed:'<span style="display:inline-block;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;background:#fee2e2;color:#dc2626;">FAILED</span>',
+};
+
+async function wfRefreshJobs(){
+  try{
+    const stage=G('wfFilterStage')?G('wfFilterStage').value:'';
+    const status=G('wfFilterStatus')?G('wfFilterStatus').value:'';
+    let url='/api/workflow/jobs?';
+    if(stage)url+='stage='+stage+'&';
+    if(status)url+='status='+status+'&';
+    const r=await fetch(url);const d=await r.json();
+    if(!d.success)return;
+    const tb=G('wfJobTbody');
+    if(!d.jobs.length){tb.innerHTML='<tr><td colspan="7" style="padding:32px;text-align:center;color:var(--t4);">No jobs found</td></tr>';return;}
+    tb.innerHTML=d.jobs.map(j=>`<tr style="border-bottom:1px solid var(--border);transition:background .15s;" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">
+      <td style="padding:8px 10px;font-weight:600;font-family:var(--font-mono);font-size:11px;">${j.job_name}</td>
+      <td style="padding:8px 10px;">${WF_STAGE_LABELS[j.stage]||j.stage}</td>
+      <td style="padding:8px 10px;font-size:11px;">${j.full_table}</td>
+      <td style="padding:8px 10px;"><span style="font-size:10px;font-weight:600;text-transform:uppercase;color:${j.load_type==='incremental'?'var(--amber)':'var(--blue)'};">${j.load_type}</span></td>
+      <td style="padding:8px 10px;text-align:center;">${WF_STATUS_BADGES[j.status]||j.status}</td>
+      <td style="padding:8px 10px;text-align:center;font-size:11px;">${j.run_count}${j.fail_count?' <span style="color:var(--red);">('+j.fail_count+' fail)</span>':''}</td>
+      <td style="padding:8px 10px;text-align:center;white-space:nowrap;">
+        <button class="btn btn-primary btn-xs" onclick="wfRunSingleJob('${j.job_id}')" title="Run" style="padding:3px 8px;">▶</button>
+        <button class="btn btn-ghost btn-xs" onclick="wfViewJobLogs('${j.job_id}')" title="Logs" style="padding:3px 8px;">📋</button>
+        <button class="btn btn-ghost btn-xs" onclick="wfDeleteJob('${j.job_id}')" title="Delete" style="padding:3px 8px;color:var(--red);">✕</button>
+      </td>
+    </tr>`).join('');
+  }catch(e){console.error('wfRefreshJobs',e);}
+}
+
+async function wfRunSingleJob(jobId){
+  try{
+    toast('Starting job…','tinfo');
+    const r=await fetch('/api/workflow/jobs/'+jobId+'/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+    const d=await r.json();
+    if(!d.success)throw new Error(d.error||'Failed');
+    toast('Job started: '+d.run.job_name,'tok');
+    wfPollRun(d.run_id);
+    setTimeout(()=>wfRefreshJobs(),500);
+  }catch(e){toast(e.message,'terr');}
+}
+
+async function wfRunPipelineGroup(groupId){
+  try{
+    toast('Starting pipeline…','tinfo');
+    const r=await fetch('/api/workflow/pipelines/'+groupId+'/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+    const d=await r.json();
+    if(!d.success)throw new Error(d.error||'Failed');
+    toast('Pipeline started: '+d.total_jobs+' jobs queued','tok');
+    (d.runs||[]).forEach(run=>{if(run.run_id)wfPollRun(run.run_id);});
+    // Auto-open logs for this pipeline
+    wfShowPipelineLogs(groupId, d.runs?.[0]?.full_table||groupId);
+    setTimeout(()=>{wfRefreshAll();},1000);
+  }catch(e){toast(e.message,'terr');
+}
+}
+
+async function wfRerunPipeline(groupId){
+  try{
+    toast('Rerunning from failure…','tinfo');
+    const r=await fetch('/api/workflow/pipelines/'+groupId+'/rerun',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+    const d=await r.json();
+    if(!d.success)throw new Error(d.error||'No failed jobs found');
+    toast('Rerun started from stage '+d.rerun_from+': '+d.total_reran+' jobs','tok');
+    // Auto-open logs for this pipeline
+    wfShowPipelineLogs(groupId, '');
+    setTimeout(()=>wfRefreshAll(),1000);
+  }catch(e){toast(e.message,'terr');}
+}
+
+async function wfDeleteJob(jobId){
+  if(!confirm('Delete this job?'))return;
+  try{
+    const r=await fetch('/api/workflow/jobs/'+jobId,{method:'DELETE'});
+    const d=await r.json();
+    if(!d.success)throw new Error(d.error||'Failed');
+    toast('Deleted: '+d.job_name,'tok');
+    wfRefreshAll();
+  }catch(e){toast(e.message,'terr');}
+}
+
+async function wfDeletePipeline(groupId){
+  if(!confirm('Delete this entire pipeline group and all its jobs?'))return;
+  try{
+    const r=await fetch('/api/workflow/pipelines/'+groupId,{method:'DELETE'});
+    const d=await r.json();
+    if(!d.success)throw new Error(d.error||'Failed');
+    toast('Pipeline deleted ('+d.deleted_jobs.length+' jobs)','tok');
+    wfClosePipelineLogs();
+    wfRefreshAll();
+  }catch(e){toast(e.message,'terr');}
+}
+
+/* ─── Pipeline Studio: Show Logs ─── */
+let _wfLogGroupId='';
+let _wfLogPollTimer=null;
+
+async function wfShowPipelineLogs(groupId, tableName){
+  _wfLogGroupId=groupId;
+  const card=G('wfPipelineLogCard');
+  const nameEl=G('wfPipelineLogName');
+  card.style.display='';
+  nameEl.textContent=tableName||groupId;
+  card.scrollIntoView({behavior:'smooth',block:'nearest'});
+  await _wfFetchPipelineLogs(groupId);
+  // Auto-poll if any run is still running
+  _wfStartLogPoll();
+}
+
+function wfClosePipelineLogs(){
+  _wfLogGroupId='';
+  G('wfPipelineLogCard').style.display='none';
+  G('wfPipelineLogs').innerHTML='<div style="color:#6c7086;">// Select a pipeline to view execution logs…</div>';
+  _wfStopLogPoll();
+}
+
+function wfRefreshPipelineLogs(){
+  if(_wfLogGroupId) _wfFetchPipelineLogs(_wfLogGroupId);
+}
+
+async function _wfFetchPipelineLogs(groupId){
+  try{
+    const r=await fetch('/api/workflow/runs?group_id='+encodeURIComponent(groupId)+'&limit=30');
+    const d=await r.json();
+    if(!d.success)return;
+    const logEl=G('wfPipelineLogs');
+    const runs=d.runs||[];
+    if(!runs.length){
+      logEl.innerHTML='<div style="color:#6c7086;">// No runs recorded yet for this pipeline — click ▶ Run or ⚡ Databricks to start</div>';
+      return;
+    }
+    let html='<div style="color:#89dceb;margin-bottom:10px;font-weight:600;">// Pipeline Execution Logs — '+runs.length+' run'+(runs.length>1?'s':'')+'</div>';
+    let hasRunning=false;
+    runs.forEach(run=>{
+      const sc={success:'#a6e3a1',failed:'#f38ba8',running:'#89b4fa',created:'#6c7086'};
+      const icon={success:'✅',failed:'❌',running:'🔄',created:'⏸'};
+      if(run.status==='running') hasRunning=true;
+      html+='<div style="margin-bottom:12px;padding:8px 10px;border:1px solid #313244;border-radius:6px;background:#181825;">';
+      html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">';
+      html+='<span style="color:'+(sc[run.status]||'#cdd6f4')+';font-weight:700;">'+(icon[run.status]||'•')+' '+run.job_name+' — '+run.status.toUpperCase()+'</span>';
+      html+='<span style="color:#585b70;font-size:10px;">'+run.run_id+'</span>';
+      html+='</div>';
+      // Timing info
+      if(run.started_at){
+        html+='<div style="color:#585b70;font-size:10px;margin-bottom:4px;">⏱ Started: '+run.started_at;
+        if(run.duration_sec!=null) html+=' · Duration: '+run.duration_sec+'s';
+        if(run.rows_processed) html+=' · Rows: '+Number(run.rows_processed).toLocaleString();
+        html+='</div>';
+      }
+      // Logs
+      const logs=run.logs||[];
+      if(logs.length){
+        logs.forEach(l=>{
+          let color='#cdd6f4';
+          if(l.includes('✅')||l.includes('complete')||l.includes('SUCCESS')) color='#a6e3a1';
+          else if(l.includes('❌')||l.includes('FAIL')||l.includes('ERROR')) color='#f38ba8';
+          else if(l.includes('🔄')||l.includes('Running')||l.includes('🚀')) color='#89b4fa';
+          else if(l.includes('⚠️')) color='#fab387';
+          html+='<div style="color:'+color+';line-height:1.6;">'+l+'</div>';
+        });
+      }
+      // Error message
+      if(run.error){
+        html+='<div style="color:#f38ba8;margin-top:4px;padding:4px 8px;background:#f38ba822;border-radius:4px;font-size:10px;">ERROR: '+run.error+'</div>';
+      }
+      // Fetch Databricks Output button (for terminal runs with dbr_run_id)
+      if(run.dbr_run_id && (run.status==='success'||run.status==='failed')){
+        html+='<button onclick="wfFetchDbrOutput(\''+run.run_id+'\')" style="margin-top:6px;padding:2px 10px;font-size:10px;background:#45475a;color:#cdd6f4;border:1px solid #585b70;border-radius:4px;cursor:pointer;" title="Fetch notebook output from Databricks">📋 Fetch Databricks Output</button>';
+      }
+      html+='</div>';
+    });
+    logEl.innerHTML=html;
+    logEl.scrollTop=logEl.scrollHeight;
+    // Store running state for poll decision
+    logEl.dataset.hasRunning=hasRunning?'1':'0';
+  }catch(e){console.error('_wfFetchPipelineLogs',e);}
+}
+
+function _wfStartLogPoll(){
+  _wfStopLogPoll();
+  _wfLogPollTimer=setInterval(()=>{
+    if(!_wfLogGroupId){_wfStopLogPoll();return;}
+    const logEl=G('wfPipelineLogs');
+    if(logEl&&logEl.dataset.hasRunning==='1'){
+      _wfFetchPipelineLogs(_wfLogGroupId);
+      wfRefreshPipelines();
+    }else{
+      _wfStopLogPoll();
+    }
+  },2000);
+}
+function _wfStopLogPoll(){
+  if(_wfLogPollTimer){clearInterval(_wfLogPollTimer);_wfLogPollTimer=null;}
+}
+
+async function wfFetchDbrOutput(runId){
+  const host=(G('wfDbrHost')||{}).value||'';
+  const token=(G('wfDbrToken')||{}).value||'';
+  if(!host||!token){_toast('Enter Databricks host & token first','warn');return;}
+  try{
+    const r=await fetch('/api/workflow/runs/'+runId+'/databricks-output',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({host,token})});
+    const d=await r.json();
+    if(!d.success){_toast(d.message||'Failed to fetch output','error');return;}
+    let msg='';
+    if(d.notebook_result) msg+='📄 Result: '+d.notebook_result+'\n';
+    if(d.error) msg+='🔴 Error: '+d.error+'\n';
+    if(d.error_trace) msg+='📋 Trace:\n'+d.error_trace+'\n';
+    if(d.tasks&&d.tasks.length){
+      msg+='\n📌 Tasks:\n';
+      d.tasks.forEach(t=>{msg+='  '+t.task_key+': '+(t.result_state||t.life_cycle)+(t.state_message?' — '+t.state_message:'')+'\n';});
+    }
+    if(!msg) msg='No output available for this run.';
+    alert(msg);
+  }catch(e){_toast('Error fetching output: '+e.message,'error');}
+}
+/* ─── / Pipeline Studio Logs ─── */
+
+async function wfViewJobLogs(jobId){
+  try{
+    const r=await fetch('/api/workflow/jobs/'+jobId);const d=await r.json();
+    if(!d.success)return;
+    const logEl=G('wfRunLogs');
+    const job=d.job;
+    const runs=d.runs||[];
+    let html='<div style="color:#a6e3a1;margin-bottom:8px;">// === '+job.job_name+' — Run History ===</div>';
+    if(!runs.length)html+='<div style="color:#6c7086;">No runs yet</div>';
+    runs.forEach(run=>{
+      const sc={success:'#a6e3a1',failed:'#f38ba8',running:'#89b4fa'};
+      html+='<div style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #313244;">';
+      html+='<div style="color:'+(sc[run.status]||'#cdd6f4')+';font-weight:600;">Run '+run.run_id+' — '+run.status.toUpperCase()+'</div>';
+      (run.logs||[]).forEach(l=>html+='<div>'+l+'</div>');
+      if(run.error)html+='<div style="color:#f38ba8;">ERROR: '+run.error+'</div>';
+      html+='</div>';
+    });
+    logEl.innerHTML=html;
+    // Auto-scroll sub-tab to jobs and switch
+    switchAiSubTab('jobs',G('aiSubJobs'));
+  }catch(e){console.error('wfViewJobLogs',e);}
+}
+
+function wfPollRun(runId){
+  const poll=async()=>{
+    try{
+      const r=await fetch('/api/workflow/runs/'+runId);const d=await r.json();
+      if(!d.success)return;
+      const run=d.run;
+      // Update log panel live
+      const logEl=G('wfRunLogs');
+      let html='<div style="color:#89b4fa;font-weight:600;">▶ '+run.job_name+' — LIVE</div>';
+      (run.logs||[]).forEach(l=>html+='<div>'+l+'</div>');
+      logEl.innerHTML=html;
+      logEl.scrollTop=logEl.scrollHeight;
+      if(run.status==='running'){
+        setTimeout(poll,1500);
+      }else{
+        wfRefreshAll();
+      }
+    }catch(e){console.error('wfPollRun',e);}
+  };
+  setTimeout(poll,800);
+}
+
+async function wfRefreshRuns(){
+  try{
+    const r=await fetch('/api/workflow/runs?limit=20');const d=await r.json();
+    if(!d.success)return;
+    const logEl=G('wfRunLogs');
+    if(!d.runs.length){logEl.innerHTML='<div style="color:#6c7086;">// No runs yet</div>';return;}
+    let html='';
+    d.runs.forEach(run=>{
+      const sc={success:'#a6e3a1',failed:'#f38ba8',running:'#89b4fa'};
+      html+='<div style="margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #313244;">';
+      html+='<div style="color:'+(sc[run.status]||'#cdd6f4')+';font-weight:600;">'+run.job_name+' — '+run.status.toUpperCase()+'</div>';
+      const lastLog=(run.logs||[]).slice(-3);
+      lastLog.forEach(l=>html+='<div style="font-size:10px;">'+l+'</div>');
+      html+='</div>';
+    });
+    logEl.innerHTML=html;
+  }catch(e){console.error('wfRefreshRuns',e);}
+}
+
+async function wfRefreshWatermarks(){
+  try{
+    const r=await fetch('/api/workflow/watermarks');const d=await r.json();
+    if(!d.success)return;
+    const el=G('wfWatermarks');
+    const wms=d.watermarks;
+    const keys=Object.keys(wms);
+    if(!keys.length){el.innerHTML='<div style="color:var(--t4);text-align:center;padding:12px;">No watermarks — use incremental loads to track</div>';return;}
+    el.innerHTML=keys.map(k=>{
+      const w=wms[k];
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border:1px solid var(--border);border-radius:var(--r-sm);margin-bottom:6px;background:var(--surface-2);">
+        <div>
+          <div style="font-weight:600;font-size:12px;color:var(--t1);">${k}</div>
+          <div style="font-size:10px;color:var(--t3);">${w.column} = ${w.last_value||'<em>not set</em>'}</div>
+        </div>
+        <button class="btn btn-ghost btn-xs" onclick="wfResetWatermark('${k}')" title="Reset watermark" style="color:var(--amber);">↺ Reset</button>
+      </div>`;
+    }).join('');
+  }catch(e){console.error('wfRefreshWatermarks',e);}
+}
+
+async function wfResetWatermark(table){
+  if(!confirm('Reset watermark for '+table+'? Next run will do a full load.'))return;
+  try{
+    const r=await fetch('/api/workflow/watermarks/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({table:table})});
+    const d=await r.json();
+    if(!d.success)throw new Error(d.error||'Failed');
+    toast(d.message,'tok');
+    wfRefreshWatermarks();
+  }catch(e){toast(e.message,'terr');}
+}
+
+// ═══════════ SETTINGS / DEPLOY CONFIG ═══════════
+function _collectConfig(){
+  const extLocs={};
+  document.querySelectorAll('#cfgExtLocList [data-extloc]').forEach(row=>{
+    const n=row.querySelector('.cfg-extloc-name').value.trim();
+    const u=row.querySelector('.cfg-extloc-url').value.trim();
+    if(n&&u) extLocs[n]=u;
+  });
+  const catalogs={};
+  document.querySelectorAll('#cfgCatalogList [data-catalog]').forEach(row=>{
+    const n=row.querySelector('.cfg-cat-name').value.trim();
+    const l=row.querySelector('.cfg-cat-loc').value.trim();
+    const s=(row.querySelector('.cfg-cat-schemas')?row.querySelector('.cfg-cat-schemas').value.trim():'default')||'default';
+    if(n&&l) catalogs[n]={location:l, schemas:s.split(',').map(x=>x.trim()).filter(Boolean)};
+  });
+  const folders=(G('cfgFolders').value||'').split('\n').map(s=>s.trim()).filter(Boolean);
+  return {
+    subscription_id: G('cfgSubId').value.trim(),
+    resource_group:  G('cfgResourceGroup').value.trim(),
+    region:          G('cfgRegion').value,
+    databricks_host: G('cfgDbrHost').value.trim(),
+    databricks_token: G('cfgDbrToken').value.trim(),
+    storage_account: G('cfgStorageAcct').value.trim(),
+    container:       G('cfgContainer').value.trim(),
+    folders:         folders,
+    access_connector:G('cfgAccessConnector').value.trim(),
+    role_assignment: G('cfgRole').value,
+    external_locations: extLocs,
+    catalogs:        catalogs,
+    volume_name:     G('cfgVolName').value.trim(),
+    volume_catalog:  G('cfgVolCatalog').value.trim(),
+    volume_schema:   G('cfgVolSchema').value.trim()||'default',
+    volume_path:     G('cfgVolPath').value.trim(),
+  };
+}
+
+function _populateConfig(c){
+  if(!c) return;
+  G('cfgSubId').value=c.subscription_id||'';
+  G('cfgResourceGroup').value=c.resource_group||'';
+  G('cfgRegion').value=c.region||'centralindia';
+  G('cfgDbrHost').value=c.databricks_host||'';
+  G('cfgDbrToken').value=c.databricks_token||'';
+  G('cfgStorageAcct').value=c.storage_account||'';
+  G('cfgContainer').value=c.container||'';
+  G('cfgFolders').value=(c.folders||[]).join('\n');
+  G('cfgAccessConnector').value=c.access_connector||'';
+  G('cfgRole').value=c.role_assignment||'Storage Blob Data Contributor';
+  // External locations
+  const elList=G('cfgExtLocList'); elList.innerHTML='';
+  const elEntries=Object.entries(c.external_locations||{});
+  (elEntries.length?elEntries:[['','']]).forEach(([n,u])=>{
+    _addExtLocRow(n,u);
+  });
+  // Catalogs
+  const catList=G('cfgCatalogList'); catList.innerHTML='';
+  const catEntries=Object.entries(c.catalogs||{});
+  (catEntries.length?catEntries:[['',{location:'',schemas:['default']}]]).forEach(([n,v])=>{
+    if(typeof v==='string') _addCatalogRow(n,v,'default');
+    else _addCatalogRow(n,v.location||'',(v.schemas||['default']).join(','));
+  });
+  G('cfgVolName').value=c.volume_name||'';
+  G('cfgVolCatalog').value=c.volume_catalog||'';
+  G('cfgVolSchema').value=c.volume_schema||'default';
+  G('cfgVolPath').value=c.volume_path||'';
+}
+
+function _addExtLocRow(name,url){
+  const d=document.createElement('div');
+  d.className='cfg-grid'; d.style.marginBottom='8px'; d.setAttribute('data-extloc','');
+  d.innerHTML='<div><label class="lbl">Location Name</label><input class="inp cfg-extloc-name" placeholder="e.g. landing_loc_mig" value="'+(name||'')+'"></div>'+
+    '<div style="display:flex;gap:6px;align-items:flex-end;"><div style="flex:1;"><label class="lbl">ABFSS URL</label><input class="inp cfg-extloc-url" placeholder="abfss://..." value="'+(url||'')+'"></div>'+
+    '<button class="btn btn-ghost btn-xs" onclick="this.closest(\'.cfg-grid\').remove()" style="margin-bottom:2px;color:var(--red);" title="Remove">&times;</button></div>';
+  G('cfgExtLocList').appendChild(d);
+}
+function cfgAddExtLoc(){ _addExtLocRow('',''); }
+
+function _addCatalogRow(name,loc,schemas){
+  const d=document.createElement('div');
+  d.className='cfg-grid-3'; d.style.marginBottom='8px'; d.setAttribute('data-catalog','');
+  d.innerHTML='<div><label class="lbl">Catalog Name</label><input class="inp cfg-cat-name" placeholder="e.g. bronze" value="'+(name||'')+'"></div>'+
+    '<div><label class="lbl">Managed Location (ABFSS)</label><input class="inp cfg-cat-loc" placeholder="abfss://..." value="'+(loc||'')+'"></div>'+
+    '<div style="display:flex;gap:6px;align-items:flex-end;"><div style="flex:1;"><label class="lbl">Schemas</label><input class="inp cfg-cat-schemas" placeholder="default,hr,raw" value="'+(schemas||'default')+'"></div>'+
+    '<button class="btn btn-ghost btn-xs" onclick="this.closest(\'.cfg-grid-3\').remove()" style="margin-bottom:2px;color:var(--red);" title="Remove">&times;</button></div>';
+  G('cfgCatalogList').appendChild(d);
+}
+function cfgAddCatalog(){ _addCatalogRow('','','default'); }
+
+function cfgPreview(){
+  G('cfgJsonPreview').textContent=JSON.stringify(_collectConfig(),null,2);
+}
+
+async function saveDeployConfig(){
+  const cfg=_collectConfig();
+  if(!cfg.subscription_id){toast('Subscription ID is required','terr');return;}
+  try{
+    const r=await fetch('/api/deploy-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)});
+    const d=await r.json();
+    if(!d.success) throw new Error(d.error||'Save failed');
+    toast('Configuration saved to deployconfig.json','tok');
+    const banner=G('cfgSavedBanner'); banner.style.display='block';
+    setTimeout(()=>{banner.style.display='none';},4000);
+    cfgPreview();
+  }catch(e){toast(e.message,'terr');}
+}
+
+async function deployInfrastructure(){
+  const btn=G('btnDeployInfra');
+  const prog=G('cfgDeployProgress');
+  const stepsEl=G('cfgDeploySteps');
+  const logsEl=G('cfgDeployLogs');
+  const summaryEl=G('cfgDeploySummary');
+
+  // First save the config
+  const cfg=_collectConfig();
+  if(!cfg.subscription_id||!cfg.storage_account){
+    toast('Subscription ID and Storage Account are required','terr');return;
+  }
+  try{
+    const sr=await fetch('/api/deploy-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)});
+    const sd=await sr.json();
+    if(!sd.success) throw new Error(sd.error||'Save failed');
+  }catch(e){toast('Failed to save config: '+e.message,'terr');return;}
+
+  // Confirm
+  if(!confirm('This will create Azure infrastructure resources (Storage Account, Access Connector, External Locations, Catalogs, Volume).\n\nSubscription: '+cfg.subscription_id+'\nStorage: '+cfg.storage_account+'\nRegion: '+cfg.region+'\n\nProceed?')) return;
+
+  // Show progress panel
+  prog.style.display='block';
+  stepsEl.innerHTML='';
+  logsEl.textContent='Connecting to Azure…\n';
+  summaryEl.textContent='Running…';
+  summaryEl.style.color='var(--amber)';
+  btn.disabled=true; btn.textContent='Deploying…';
+
+  // SSE URL — all config (including creds) is read from deployconfig.json on the server
+  const sseUrl='/api/deploy-infra-stream';
+
+  const statusIcons={
+    running:'<span style="color:var(--amber);font-weight:700;" class="cfg-spin">&#9881;</span>',
+    success:'<span style="color:var(--green);font-weight:700;">&#10003;</span>',
+    error:'<span style="color:var(--red);font-weight:700;">&#10007;</span>',
+    skipped:'<span style="color:var(--t4);font-weight:700;">&#8722;</span>'
+  };
+
+  // Track rendered steps by step number
+  const stepMap={};
+
+  function renderStep(s){
+    const id='cfgStep_'+s.step;
+    const html='<div id="'+id+'" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--r-xs);border:1px solid var(--border);background:var(--surface-2);font-size:12px;margin-bottom:4px;">'+
+      (statusIcons[s.status]||'')+'<span style="font-weight:600;flex:1;">Step '+s.step+': '+s.name+'</span>'+
+      '<span style="font-size:11px;color:'+(s.status==='error'?'var(--red)':'var(--t3)')+';">'+s.message+'</span></div>';
+    if(stepMap[s.step]){
+      stepMap[s.step].outerHTML=html;
+      stepMap[s.step]=G(id);
+    } else {
+      stepsEl.insertAdjacentHTML('beforeend',html);
+      stepMap[s.step]=G(id);
+    }
+    // Append logs
+    if(s.logs) logsEl.textContent+=s.logs;
+  }
+
+  const evtSource=new EventSource(sseUrl);
+  evtSource.onmessage=function(e){
+    try{
+      const d=JSON.parse(e.data);
+      if(d.event==='step'){
+        renderStep(d);
+        logsEl.scrollTop=logsEl.scrollHeight;
+      } else if(d.event==='done'){
+        evtSource.close();
+        summaryEl.textContent=d.summary||'';
+        summaryEl.style.color=d.success?'var(--green)':'var(--red)';
+        if(d.success){
+          toast('Infrastructure deployed successfully!','tok',5000);
+        } else {
+          toast('Deployment completed with errors — check logs','terr',6000);
+        }
+        btn.disabled=false;
+        btn.innerHTML='<svg viewBox="0 0 24 24" style="width:14px;height:14px;"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Deploy Infrastructure';
+      }
+    }catch(ex){console.error('SSE parse error',ex);}
+  };
+  evtSource.onerror=function(){
+    evtSource.close();
+    summaryEl.textContent='Connection lost';
+    summaryEl.style.color='var(--red)';
+    toast('Deploy stream connection lost','terr');
+    btn.disabled=false;
+    btn.innerHTML='<svg viewBox="0 0 24 24" style="width:14px;height:14px;"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Deploy Infrastructure';
+  };
+}
+
+async function loadDeployConfig(){
+  try{
+    const r=await fetch('/api/deploy-config');
+    const d=await r.json();
+    if(d.success&&d.config){
+      _populateConfig(d.config);
+      cfgPreview();
+    }
+  }catch(e){ /* no saved config yet — ignore */ }
+}
+
 // ── Startup self-check ──
 (function(){
   const fns=['testSourceConn','loadFromSource','convertSelected','switchTab','toast','toggleSrcConn'];
@@ -3219,6 +5790,17 @@ async function hlRefreshStats(){
     document.body.appendChild(d);
   }else{
     console.log('[Migration Studio] All '+fns.length+' core functions loaded OK');
+  }
+})();
+
+// ── Restore last visited tab from URL hash ──
+(function(){
+  const hash=location.hash.replace('#','');
+  const validTabs=Object.keys(TAB_META);
+  if(hash&&validTabs.includes(hash)){
+    switchTab(hash,G('nav-'+hash));
+  }else{
+    switchTab('wf-dashboard',G('nav-wf-dashboard'));
   }
 })();
 
