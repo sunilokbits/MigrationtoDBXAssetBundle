@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CDC Implementation Guide — SQL Server to Databricks DLT</title>
+<style>
+  :root {
+    --bg: #f8fafc; --surface: #ffffff; --border: #e2e8f0;
+    --t1: #1e293b; --t2: #334155; --t3: #64748b; --t4: #94a3b8;
+    --blue: #2563eb; --green: #16a34a; --orange: #ea580c; --red: #dc2626;
+    --purple: #7c3aed; --teal: #0d9488; --amber: #d97706;
+    --blue-bg: #eff6ff; --green-bg: #f0fdf4; --orange-bg: #fff7ed;
+    --red-bg: #fef2f2; --purple-bg: #f5f3ff; --teal-bg: #f0fdfa; --amber-bg: #fffbeb;
+    --code-bg: #1e293b; --code-fg: #e2e8f0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--t1); line-height: 1.6; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 20px 24px; }
+
+  /* Header */
+  .header { background: linear-gradient(135deg, #1e40af 0%, #7c3aed 100%); color: #fff; padding: 40px 0; margin-bottom: 32px; border-radius: 0 0 16px 16px; }
+  .header .container { display: flex; flex-direction: column; gap: 8px; }
+  .header h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; }
+  .header .subtitle { font-size: 14px; opacity: 0.85; }
+  .header .badges { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .header .badge { background: rgba(255,255,255,0.2); padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; backdrop-filter: blur(4px); }
+
+  /* TOC */
+  .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; margin-bottom: 32px; }
+  .toc h2 { font-size: 16px; font-weight: 700; margin-bottom: 12px; color: var(--blue); }
+  .toc ol { padding-left: 20px; }
+  .toc li { margin-bottom: 6px; }
+  .toc a { color: var(--blue); text-decoration: none; font-size: 13px; font-weight: 500; }
+  .toc a:hover { text-decoration: underline; }
+
+  /* Sections */
+  .section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 24px; }
+  .section h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 2px solid var(--border); display: flex; align-items: center; gap: 10px; }
+  .section h3 { font-size: 15px; font-weight: 700; margin: 20px 0 10px; color: var(--t2); }
+  .section h4 { font-size: 13px; font-weight: 700; margin: 16px 0 8px; color: var(--t2); }
+  .section p { font-size: 13px; color: var(--t2); margin-bottom: 10px; }
+
+  /* Number badge for h2 */
+  .num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; font-size: 13px; font-weight: 800; color: #fff; flex-shrink: 0; }
+  .num-blue { background: var(--blue); }
+  .num-green { background: var(--green); }
+  .num-orange { background: var(--orange); }
+  .num-purple { background: var(--purple); }
+  .num-teal { background: var(--teal); }
+  .num-red { background: var(--red); }
+  .num-amber { background: var(--amber); }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 16px; font-size: 12px; }
+  th { background: #f1f5f9; text-align: left; padding: 10px 12px; font-weight: 700; color: var(--t2); border-bottom: 2px solid var(--border); white-space: nowrap; }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--t2); vertical-align: top; }
+  tr:hover td { background: #f8fafc; }
+  .tbl-note { font-size: 11px; color: var(--t3); margin-top: -8px; margin-bottom: 12px; font-style: italic; }
+
+  /* Code blocks */
+  pre { background: var(--code-bg); color: var(--code-fg); border-radius: 10px; padding: 16px 20px; overflow-x: auto; margin: 12px 0 16px; font-size: 12px; line-height: 1.7; font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace; position: relative; }
+  pre .lang-tag { position: absolute; top: 8px; right: 12px; background: rgba(255,255,255,0.1); color: var(--t4); padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+  code { font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace; }
+  .inline-code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 12px; color: var(--red); }
+
+  /* Callouts */
+  .callout { border-radius: 10px; padding: 14px 18px; margin: 12px 0 16px; font-size: 12px; border-left: 4px solid; }
+  .callout-blue { background: var(--blue-bg); border-color: var(--blue); }
+  .callout-green { background: var(--green-bg); border-color: var(--green); }
+  .callout-orange { background: var(--orange-bg); border-color: var(--orange); }
+  .callout-red { background: var(--red-bg); border-color: var(--red); }
+  .callout-purple { background: var(--purple-bg); border-color: var(--purple); }
+  .callout-teal { background: var(--teal-bg); border-color: var(--teal); }
+  .callout strong { display: block; margin-bottom: 4px; font-size: 13px; }
+
+  /* Architecture diagrams (ASCII-style) */
+  .arch-flow { background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin: 12px 0 16px; font-family: 'Cascadia Code', monospace; font-size: 12px; line-height: 1.8; white-space: pre; overflow-x: auto; color: var(--t2); }
+  .arch-flow .highlight { color: var(--blue); font-weight: 700; }
+  .arch-flow .arrow { color: var(--green); font-weight: 700; }
+
+  /* Lists */
+  ul, ol { padding-left: 20px; margin: 8px 0 12px; }
+  li { font-size: 13px; margin-bottom: 4px; color: var(--t2); }
+  li strong { color: var(--t1); }
+
+  /* Cards grid */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin: 12px 0 16px; }
+  .card { border: 1px solid var(--border); border-radius: 10px; padding: 16px; background: var(--surface); }
+  .card-title { font-size: 13px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .card-body { font-size: 12px; color: var(--t3); }
+  .card-body ul { padding-left: 16px; margin: 0; }
+  .card-body li { font-size: 12px; margin-bottom: 2px; }
+
+  /* Status pills */
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; }
+  .pill-green { background: var(--green-bg); color: var(--green); }
+  .pill-blue { background: var(--blue-bg); color: var(--blue); }
+  .pill-orange { background: var(--orange-bg); color: var(--orange); }
+  .pill-red { background: var(--red-bg); color: var(--red); }
+  .pill-purple { background: var(--purple-bg); color: var(--purple); }
+
+  /* Comparison highlight */
+  .vs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 12px 0; }
+  .vs-col { border-radius: 10px; padding: 16px; }
+  .vs-before { background: var(--red-bg); border: 1px solid #fecaca; }
+  .vs-after { background: var(--green-bg); border: 1px solid #bbf7d0; }
+  .vs-col h4 { margin: 0 0 8px; font-size: 13px; }
+
+  /* Footer */
+  .footer { text-align: center; padding: 24px; color: var(--t4); font-size: 11px; border-top: 1px solid var(--border); margin-top: 32px; }
+
+  /* Print */
+  @media print {
+    .header { border-radius: 0; }
+    .section, .toc { break-inside: avoid; }
+    pre { white-space: pre-wrap; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════ HEADER ═══════════════════════════ -->
+<div class="header">
+  <div class="container">
+    <h1>CDC Implementation Guide</h1>
+    <div class="subtitle">Change Data Capture from SQL Server to Databricks using Delta Live Tables (DLT)</div>
+    <div class="badges">
+      <span class="badge">SQL Server CDC</span>
+      <span class="badge">Delta Live Tables</span>
+      <span class="badge">Auto Loader</span>
+      <span class="badge">APPLY CHANGES INTO</span>
+      <span class="badge">SCD Type 1 &amp; 2</span>
+      <span class="badge">On-Premises &amp; Azure SQL</span>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- ═══════════════════════════ TABLE OF CONTENTS ═══════════════════════════ -->
+<div class="toc">
+  <h2>📋 Table of Contents</h2>
+  <ol>
+    <li><a href="#sec1">CDC Source Options (SQL Server Side)</a></li>
+    <li><a href="#sec2">Architecture Options (End-to-End)</a></li>
+    <li><a href="#sec3">SQL Server Side Setup</a></li>
+    <li><a href="#sec4">Databricks DLT Pipeline for CDC</a></li>
+    <li><a href="#sec5">CDC Extract Job (JDBC — Scheduled)</a></li>
+    <li><a href="#sec6">DLT Pipeline Configuration</a></li>
+    <li><a href="#sec7">Infrastructure Requirements</a></li>
+    <li><a href="#sec8">Best Practices</a></li>
+    <li><a href="#sec9">Monitoring &amp; Alerting</a></li>
+    <li><a href="#sec10">Comparison: Which Approach to Choose</a></li>
+    <li><a href="#sec11">Recommendation for Your Project</a></li>
+  </ol>
+</div>
+
+<!-- ═══════════════════════════ SECTION 1 ═══════════════════════════ -->
+<div class="section" id="sec1">
+  <h2><span class="num num-blue">1</span> CDC Source Options (SQL Server Side)</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Approach</th>
+        <th>How It Works</th>
+        <th>Latency</th>
+        <th>Overhead</th>
+        <th>Best For</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>SQL Server CDC</strong></td>
+        <td>Built-in <code class="inline-code">sys.fn_cdc_get_net_changes_*</code> — reads from transaction log</td>
+        <td><span class="pill pill-green">Minutes</span></td>
+        <td>Low-medium</td>
+        <td>Azure SQL, on-prem SQL 2016+</td>
+      </tr>
+      <tr>
+        <td><strong>Change Tracking (CT)</strong></td>
+        <td>Lightweight row-version tracking (<code class="inline-code">CHANGETABLE()</code>)</td>
+        <td><span class="pill pill-green">Minutes</span></td>
+        <td>Very low</td>
+        <td>Simple insert/update tracking</td>
+      </tr>
+      <tr>
+        <td><strong>Temporal Tables</strong></td>
+        <td>System-versioned tables with history</td>
+        <td><span class="pill pill-green">Minutes</span></td>
+        <td>Medium</td>
+        <td>Full history + point-in-time queries</td>
+      </tr>
+      <tr>
+        <td><strong>Trigger-based CDC</strong></td>
+        <td>Custom triggers write to a staging table</td>
+        <td><span class="pill pill-blue">Real-time</span></td>
+        <td>High</td>
+        <td>Legacy SQL Server (2008/2012)</td>
+      </tr>
+      <tr>
+        <td><strong>Timestamp/Watermark</strong></td>
+        <td><code class="inline-code">WHERE ModifiedDate > @lastWatermark</code></td>
+        <td><span class="pill pill-green">Minutes</span></td>
+        <td>Lowest</td>
+        <td>Tables with reliable timestamp columns</td>
+      </tr>
+      <tr>
+        <td><strong>Debezium (Kafka Connect)</strong></td>
+        <td>Reads SQL Server transaction log via CDC</td>
+        <td><span class="pill pill-purple">Seconds</span></td>
+        <td>Medium</td>
+        <td>Near real-time streaming</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════════════ SECTION 2 ═══════════════════════════ -->
+<div class="section" id="sec2">
+  <h2><span class="num num-green">2</span> Architecture Options (End-to-End)</h2>
+
+  <h3>Option A: Batch CDC with DLT <span class="pill pill-green">Recommended</span></h3>
+  <div class="arch-flow"><span class="highlight">SQL Server</span> (CDC enabled)
+    <span class="arrow">↓</span> JDBC (incremental query — every 5-15 min)
+<span class="highlight">Databricks Job</span> (Scheduled Extract)
+    <span class="arrow">↓</span> Writes CDC changes to Landing Zone (Delta/Parquet)
+<span class="highlight">DLT Pipeline</span> (Triggered mode)
+    <span class="arrow">↓</span> Auto Loader reads new files
+    <span class="arrow">↓</span> <span class="highlight">Bronze</span> (raw CDC events)
+    <span class="arrow">↓</span> <span class="highlight">Silver</span> (APPLY CHANGES INTO — SCD Type 1/2)
+    <span class="arrow">↓</span> <span class="highlight">Gold</span> (aggregated views)</div>
+
+  <h3>Option B: Streaming CDC with Kafka + DLT <span class="pill pill-purple">Near Real-Time</span></h3>
+  <div class="arch-flow"><span class="highlight">SQL Server</span> (CDC enabled)
+    <span class="arrow">↓</span> Debezium CDC Connector
+<span class="highlight">Apache Kafka / Azure Event Hubs</span>
+    <span class="arrow">↓</span> Kafka Source in DLT
+<span class="highlight">DLT Pipeline</span> (Continuous mode)
+    <span class="arrow">↓</span> Bronze (raw CDC stream)
+    <span class="arrow">↓</span> Silver (APPLY CHANGES INTO)
+    <span class="arrow">↓</span> Gold (materialized views)</div>
+
+  <h3>Option C: Direct JDBC CDC with DLT <span class="pill pill-blue">Simplest</span></h3>
+  <div class="arch-flow"><span class="highlight">SQL Server</span> (CDC / CT / Watermark)
+    <span class="arrow">↓</span> DLT Pipeline with dlt.read_stream() or scheduled JDBC
+    <span class="arrow">↓</span> Bronze <span class="arrow">→</span> Silver <span class="arrow">→</span> Gold
+    <span class="arrow">↓</span> Watermark stored in Delta table</div>
+</div>
+
+<!-- ═══════════════════════════ SECTION 3 ═══════════════════════════ -->
+<div class="section" id="sec3">
+  <h2><span class="num num-orange">3</span> SQL Server Side Setup</h2>
+
+  <h3>3a. Enable CDC on SQL Server</h3>
+  <pre><span class="lang-tag">SQL</span>
+-- Enable CDC on the database
+USE HRDatabase;
+EXEC sys.sp_cdc_enable_db;
+
+-- Enable CDC on each table
+EXEC sys.sp_cdc_enable_table
+    @source_schema = N'dbo',
+    @source_name   = N'DimEmployee',
+    @role_name     = NULL,           -- NULL = no role restriction
+    @supports_net_changes = 1;       -- enable net changes (deduplicated)
+
+-- Verify CDC is enabled
+SELECT name, is_cdc_enabled FROM sys.databases WHERE name = 'HRDatabase';
+SELECT * FROM cdc.change_tables;</pre>
+
+  <h3>3b. CDC Query to Extract Changes</h3>
+  <pre><span class="lang-tag">SQL</span>
+-- Get all changes since last LSN (Log Sequence Number)
+DECLARE @from_lsn binary(10) = sys.fn_cdc_get_min_lsn('dbo_DimEmployee');
+DECLARE @to_lsn   binary(10) = sys.fn_cdc_get_max_lsn();
+
+SELECT
+    __$operation,        -- 1=delete, 2=insert, 3=before-update, 4=after-update
+    __$start_lsn,
+    __$update_mask,
+    *
+FROM cdc.fn_cdc_get_all_changes_dbo_DimEmployee(
+    @from_lsn, @to_lsn, N'all update old'
+);
+
+-- Or net changes (only final state per key — better for MERGE)
+SELECT *
+FROM cdc.fn_cdc_get_net_changes_dbo_DimEmployee(
+    @from_lsn, @to_lsn, N'all'
+);</pre>
+
+  <div class="callout callout-blue">
+    <strong>💡 __$operation Values</strong>
+    1 = DELETE &nbsp;|&nbsp; 2 = INSERT &nbsp;|&nbsp; 3 = Before UPDATE (old values) &nbsp;|&nbsp; 4 = After UPDATE (new values)
+  </div>
+
+  <h3>3c. Change Tracking (Alternative — Simpler)</h3>
+  <pre><span class="lang-tag">SQL</span>
+-- Enable Change Tracking on database
+ALTER DATABASE HRDatabase
+SET CHANGE_TRACKING = ON (CHANGE_RETENTION = 7 DAYS, AUTO_CLEANUP = ON);
+
+-- Enable on table
+ALTER TABLE dbo.DimEmployee
+ENABLE CHANGE_TRACKING WITH (TRACK_COLUMNS_UPDATED = ON);
+
+-- Query changes since last sync version
+DECLARE @last_version BIGINT = 0;  -- stored from previous run
+SELECT ct.SYS_CHANGE_OPERATION, ct.SYS_CHANGE_VERSION, t.*
+FROM dbo.DimEmployee t
+RIGHT JOIN CHANGETABLE(CHANGES dbo.DimEmployee, @last_version) ct
+    ON t.EmployeeID = ct.EmployeeID;</pre>
+</div>
+
+<!-- ═══════════════════════════ SECTION 4 ═══════════════════════════ -->
+<div class="section" id="sec4">
+  <h2><span class="num num-purple">4</span> Databricks DLT Pipeline for CDC</h2>
+
+  <h3>4a. Bronze Layer — Ingest Raw CDC Events</h3>
+  <pre><span class="lang-tag">Python — DLT</span>
+# DLT notebook: 01_CDC_Bronze.py
+import dlt
+from pyspark.sql.functions import *
+
+# Option 1: Auto Loader from Landing Zone (files written by Extract job)
+@dlt.table(
+    name="bronze_employee_cdc",
+    comment="Raw CDC events from SQL Server",
+    table_properties={
+        "quality": "bronze",
+        "pipelines.autoOptimize.managed": "true",
+    }
+)
+def bronze_employee_cdc():
+    return (
+        spark.readStream
+            .format("cloudFiles")
+            .option("cloudFiles.format", "parquet")
+            .option("cloudFiles.inferColumnTypes", "true")
+            .option("cloudFiles.schemaLocation",
+                    "/mnt/checkpoints/employee_cdc_schema")
+            .load("/Volumes/dev_volumes/hr/landing/cdc/DimEmployee/")
+            .withColumn("_ingest_ts", current_timestamp())
+            .withColumn("_source_file", input_file_name())
+    )</pre>
+
+  <pre><span class="lang-tag">Python — DLT (Kafka / Event Hubs)</span>
+# Option 2: Kafka / Event Hubs source (for Debezium CDC)
+@dlt.table(name="bronze_employee_kafka")
+def bronze_employee_kafka():
+    return (
+        spark.readStream
+            .format("kafka")
+            .option("kafka.bootstrap.servers",
+                    "your-eventhub.servicebus.windows.net:9093")
+            .option("subscribe", "sqlserver.dbo.DimEmployee")
+            .option("kafka.security.protocol", "SASL_SSL")
+            .option("kafka.sasl.mechanism", "PLAIN")
+            .option("kafka.sasl.jaas.config",
+                'org.apache.kafka.common.security.plain.'
+                'PlainLoginModule required '
+                'username="$ConnectionString" '
+                'password="Endpoint=sb://...";')
+            .option("startingOffsets", "earliest")
+            .option("maxOffsetsPerTrigger", "100000")
+            .load()
+            .select(
+                col("key").cast("string").alias("_key"),
+                from_json(col("value").cast("string"),
+                          cdc_schema).alias("data"),
+                col("timestamp").alias("_kafka_ts"),
+                col("offset").alias("_kafka_offset"),
+            )
+            .select("_key", "_kafka_ts", "_kafka_offset", "data.*")
+    )</pre>
+
+  <h3>4b. Silver Layer — APPLY CHANGES INTO (SCD Type 1 / Type 2)</h3>
+
+  <div class="vs-grid">
+    <div class="vs-col" style="background: var(--blue-bg); border: 1px solid #bfdbfe;">
+      <h4>🔄 SCD Type 1 — Overwrite with Latest</h4>
+      <p style="font-size:12px;color:var(--t3);">Keeps only the current version of each row. Previous values are lost.</p>
+    </div>
+    <div class="vs-col" style="background: var(--purple-bg); border: 1px solid #c4b5fd;">
+      <h4>📚 SCD Type 2 — Full History</h4>
+      <p style="font-size:12px;color:var(--t3);">Keeps all historical versions with __START_AT, __END_AT, __IS_CURRENT columns.</p>
+    </div>
+  </div>
+
+  <pre><span class="lang-tag">Python — DLT Silver</span>
+# DLT notebook: 02_CDC_Silver.py
+import dlt
+from pyspark.sql.functions import *
+
+# ── SCD Type 1 (overwrite with latest) ──
+dlt.create_streaming_table(
+    name="silver_employee",
+    comment="Cleansed employee dimension — SCD Type 1",
+    table_properties={"quality": "silver"},
+)
+
+dlt.apply_changes(
+    target="silver_employee",
+    source="bronze_employee_cdc",
+    keys=["EmployeeID"],                      # primary key(s)
+    sequence_by=col("__$start_lsn"),          # CDC ordering column
+    apply_as_deletes=expr("__$operation = 1"),# operation 1 = DELETE
+    except_column_list=[                      # exclude CDC metadata
+        "__$operation", "__$start_lsn",
+        "__$update_mask", "_ingest_ts", "_source_file"
+    ],
+    stored_as_scd_type=1,                     # Type 1: overwrite
+)
+
+# ── SCD Type 2 (keep full history) ──
+dlt.create_streaming_table(
+    name="silver_employee_history",
+    comment="Employee dimension — SCD Type 2 (full history)",
+    table_properties={"quality": "silver"},
+)
+
+dlt.apply_changes(
+    target="silver_employee_history",
+    source="bronze_employee_cdc",
+    keys=["EmployeeID"],
+    sequence_by=col("__$start_lsn"),
+    apply_as_deletes=expr("__$operation = 1"),
+    except_column_list=[
+        "__$operation", "__$start_lsn",
+        "__$update_mask", "_ingest_ts", "_source_file"
+    ],
+    stored_as_scd_type=2,  # adds __START_AT, __END_AT, __IS_CURRENT
+)</pre>
+
+  <h3>4c. Data Quality Expectations in DLT</h3>
+  <pre><span class="lang-tag">Python — DLT DQ</span>
+@dlt.table(name="silver_employee_validated")
+@dlt.expect_or_drop("valid_employee_id", "EmployeeID IS NOT NULL")
+@dlt.expect_or_warn("valid_name", "LENGTH(FirstName) > 0")
+@dlt.expect_or_fail("valid_hire_date", "HireDate &lt;= current_date()")
+def silver_employee_validated():
+    return dlt.read_stream("bronze_employee_cdc").select(
+        "EmployeeID", "FirstName", "LastName", "Email",
+        "DepartmentID", "HireDate", "Salary",
+        current_timestamp().alias("_processed_ts"),
+    )</pre>
+
+  <div class="callout callout-purple">
+    <strong>DLT Expectation Actions</strong>
+    <code class="inline-code">@dlt.expect</code> — log warning, keep row &nbsp;|&nbsp;
+    <code class="inline-code">@dlt.expect_or_warn</code> — log metric, keep row &nbsp;|&nbsp;
+    <code class="inline-code">@dlt.expect_or_drop</code> — drop failing rows &nbsp;|&nbsp;
+    <code class="inline-code">@dlt.expect_or_fail</code> — fail pipeline on violation
+  </div>
+</div>
+
+<!-- ═══════════════════════════ SECTION 5 ═══════════════════════════ -->
+<div class="section" id="sec5">
+  <h2><span class="num num-teal">5</span> CDC Extract Job (JDBC — Scheduled Every 5-15 min)</h2>
+
+  <pre><span class="lang-tag">Python — Databricks Notebook</span>
+# Databricks notebook: CDC_Extract.py
+# Runs on a schedule (Databricks Job or Workflow)
+
+import json
+from pyspark.sql import functions as F
+from datetime import datetime
+
+# Read last LSN/watermark from Delta table
+watermark_table = "`admin_source`.`Configtables`.wf_watermark_metadata"
+table_name = "dbo.DimEmployee"
+
+try:
+    wm = spark.sql(f"""
+        SELECT last_value FROM {watermark_table}
+        WHERE table_name = '{table_name}'
+    """).collect()[0]["last_value"]
+except:
+    wm = None  # First run — full extract
+
+# JDBC connection
+jdbc_url = ("jdbc:sqlserver://your-server:1433;"
+            "databaseName=HRDatabase;encrypt=true")
+jdbc_props = {
+    "user": dbutils.secrets.get("sql-scope", "username"),
+    "password": dbutils.secrets.get("sql-scope", "password"),
+    "driver": "com.microsoft.sqlserver.jdbc.SQLServerDriver",
+}
+
+# Build CDC query
+if wm:
+    # Incremental: get changes since last LSN
+    query = f"""(
+        SELECT __$operation, __$start_lsn, __$update_mask, *
+        FROM cdc.fn_cdc_get_all_changes_dbo_DimEmployee(
+            0x{wm}, sys.fn_cdc_get_max_lsn(), N'all update old'
+        )
+    ) AS cdc_data"""
+else:
+    # Initial full load
+    query = "dbo.DimEmployee"
+
+df = spark.read.jdbc(jdbc_url, query, properties=jdbc_props)
+df = df.withColumn("_extract_ts", F.current_timestamp())
+
+# Write to landing zone as Parquet (Auto Loader will pick up)
+batch_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+output_path = (f"/Volumes/dev_volumes/hr/landing/"
+               f"cdc/DimEmployee/{batch_id}")
+df.write.mode("overwrite").parquet(output_path)
+
+# Update watermark
+new_lsn = (df.agg(F.max("__$start_lsn").cast("string"))
+             .collect()[0][0])
+if new_lsn:
+    spark.sql(f"""
+        MERGE INTO {watermark_table} AS t
+        USING (SELECT '{table_name}' AS table_name,
+                      '{new_lsn}' AS last_value) AS s
+        ON t.table_name = s.table_name
+        WHEN MATCHED THEN UPDATE SET
+            t.last_value = s.last_value,
+            t.updated_at = current_timestamp()
+        WHEN NOT MATCHED THEN INSERT
+            (table_name, last_value, watermark_column, updated_at)
+            VALUES (s.table_name, s.last_value,
+                    '__$start_lsn', current_timestamp())
+    """)</pre>
+</div>
+
+<!-- ═══════════════════════════ SECTION 6 ═══════════════════════════ -->
+<div class="section" id="sec6">
+  <h2><span class="num num-amber">6</span> DLT Pipeline Configuration</h2>
+
+  <pre><span class="lang-tag">JSON</span>
+{
+    "name": "CDC_Employee_Pipeline",
+    "clusters": [
+        {
+            "label": "default",
+            "autoscale": { "min_workers": 1, "max_workers": 4 }
+        }
+    ],
+    "development": false,
+    "continuous": true,
+    "channel": "PREVIEW",
+    "photon": true,
+    "libraries": [
+        { "notebook": { "path": "/Shared/CDC/01_CDC_Bronze" } },
+        { "notebook": { "path": "/Shared/CDC/02_CDC_Silver" } }
+    ],
+    "target": "silver",
+    "catalog": "silver"
+}</pre>
+
+  <table>
+    <thead>
+      <tr><th>Setting</th><th>Batch CDC</th><th>Streaming CDC</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>continuous</strong></td>
+        <td><code class="inline-code">false</code> (triggered)</td>
+        <td><code class="inline-code">true</code> (always running)</td>
+      </tr>
+      <tr>
+        <td><strong>Trigger interval</strong></td>
+        <td>Cron schedule (*/5 * * * *)</td>
+        <td>N/A (processes as data arrives)</td>
+      </tr>
+      <tr>
+        <td><strong>Cost</strong></td>
+        <td><span class="pill pill-green">Lower</span> (runs only when needed)</td>
+        <td><span class="pill pill-orange">Higher</span> (cluster always on)</td>
+      </tr>
+      <tr>
+        <td><strong>Latency</strong></td>
+        <td>5-15 minutes</td>
+        <td>Seconds to minutes</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════════════ SECTION 7 ═══════════════════════════ -->
+<div class="section" id="sec7">
+  <h2><span class="num num-red">7</span> Infrastructure Requirements</h2>
+
+  <h3>On-Premises SQL Server → Databricks</h3>
+  <table>
+    <thead>
+      <tr><th>Component</th><th>Purpose</th><th>Required?</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Self-Hosted IR / VPN / ExpressRoute</strong></td><td>Network connectivity from Databricks to on-prem SQL Server</td><td><span class="pill pill-red">Yes</span></td></tr>
+      <tr><td><strong>SQL Server CDC enabled</strong></td><td>Transaction log capture</td><td><span class="pill pill-red">Yes</span> (for CDC approach)</td></tr>
+      <tr><td><strong>SQL Server Agent</strong></td><td>CDC cleanup job runs automatically</td><td><span class="pill pill-red">Yes</span></td></tr>
+      <tr><td><strong>Firewall rules</strong></td><td>Allow Databricks cluster IPs → SQL Server port 1433</td><td><span class="pill pill-red">Yes</span></td></tr>
+      <tr><td><strong>Databricks JDBC driver</strong></td><td><code class="inline-code">com.microsoft.sqlserver.jdbc.SQLServerDriver</code></td><td><span class="pill pill-green">Included</span></td></tr>
+      <tr><td><strong>Databricks Secrets</strong></td><td>Store SQL credentials securely</td><td><span class="pill pill-blue">Best Practice</span></td></tr>
+      <tr><td><strong>Kafka / Event Hubs</strong></td><td>For Debezium streaming approach</td><td><span class="pill pill-orange">Option B only</span></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Azure SQL → Databricks</h3>
+  <table>
+    <thead>
+      <tr><th>Component</th><th>Purpose</th><th>Required?</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Azure SQL CDC</strong></td><td>Built-in CDC support</td><td><span class="pill pill-red">Yes</span></td></tr>
+      <tr><td><strong>Private Endpoint / Service Endpoint</strong></td><td>Secure network connectivity</td><td><span class="pill pill-blue">Recommended</span></td></tr>
+      <tr><td><strong>Azure Key Vault</strong></td><td>Store connection strings</td><td><span class="pill pill-blue">Best Practice</span></td></tr>
+      <tr><td><strong>Databricks Secrets linked to Key Vault</strong></td><td>Auto-sync secrets</td><td><span class="pill pill-blue">Best Practice</span></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════════════ SECTION 8 ═══════════════════════════ -->
+<div class="section" id="sec8">
+  <h2><span class="num num-green">8</span> Best Practices</h2>
+
+  <div class="cards">
+    <div class="card" style="border-left: 3px solid var(--blue);">
+      <div class="card-title" style="color: var(--blue);">📊 Data Pipeline</div>
+      <div class="card-body">
+        <ul>
+          <li><strong>Use APPLY CHANGES INTO</strong> — DLT's built-in CDC handler for automatic MERGE/SCD logic</li>
+          <li><strong>Sequence by LSN or timestamp</strong> — ensures correct ordering of changes</li>
+          <li><strong>Use Auto Loader</strong> (<code class="inline-code">cloudFiles</code>) — exactly-once, schema evolution, efficient file discovery</li>
+          <li><strong>Separate CDC from full loads</strong> — different pipelines for initial bulk vs incremental CDC</li>
+          <li><strong>Store CDC operation type</strong> — keep <code class="inline-code">__$operation</code> in Bronze for audit, strip in Silver</li>
+          <li><strong>Handle late-arriving data</strong> — use <code class="inline-code">sequence_by</code> to resolve out-of-order events</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card" style="border-left: 3px solid var(--green);">
+      <div class="card-title" style="color: var(--green);">⚡ Performance</div>
+      <div class="card-body">
+        <ul>
+          <li><strong>Batch CDC every 5-15 min</strong> — balance between freshness and cost</li>
+          <li><strong>Use Photon</strong> — accelerates DLT processing 2-5x</li>
+          <li><strong>Partition landing by date</strong> — <code class="inline-code">landing/cdc/Table/2026/03/19/</code> for efficient Auto Loader</li>
+          <li><strong>Set maxOffsetsPerTrigger</strong> for Kafka — prevents large spike processing</li>
+          <li><strong>Use Z-ORDER</strong> on frequently queried columns in Silver/Gold tables</li>
+          <li><strong>Enable auto-compaction</strong> — <code class="inline-code">pipelines.autoOptimize.managed = true</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card" style="border-left: 3px solid var(--purple);">
+      <div class="card-title" style="color: var(--purple);">🛡️ Reliability</div>
+      <div class="card-body">
+        <ul>
+          <li><strong>Idempotent writes</strong> — Auto Loader tracks processed files; DLT handles checkpointing</li>
+          <li><strong>Dead-letter handling</strong> — use <code class="inline-code">@dlt.expect_or_quarantine</code> for bad records</li>
+          <li><strong>Monitor CDC lag</strong> — alert if <code class="inline-code">sys.fn_cdc_get_max_lsn()</code> gap grows</li>
+          <li><strong>CDC cleanup retention</strong> — set <code class="inline-code">@retention</code> period &gt; your max pipeline delay</li>
+          <li><strong>Watermark persistence</strong> — store in Delta table, not in-memory</li>
+          <li><strong>Schema evolution</strong> — <code class="inline-code">cloudFiles.schemaEvolutionMode = "addNewColumns"</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card" style="border-left: 3px solid var(--red);">
+      <div class="card-title" style="color: var(--red);">🔒 Security</div>
+      <div class="card-body">
+        <ul>
+          <li><strong>Never hardcode passwords</strong> — use Databricks Secrets (<code class="inline-code">dbutils.secrets.get()</code>)</li>
+          <li><strong>Encrypt JDBC</strong> — always <code class="inline-code">encrypt=true;trustServerCertificate=false</code> for Azure SQL</li>
+          <li><strong>UC RBAC</strong> — grant minimal permissions per catalog/schema</li>
+          <li><strong>Private networking</strong> — use Private Link for Azure SQL ↔ Databricks</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card" style="border-left: 3px solid var(--teal);">
+      <div class="card-title" style="color: var(--teal);">💰 Cost Optimization</div>
+      <div class="card-body">
+        <ul>
+          <li><strong>Triggered mode</strong> for batch CDC (cluster only runs when scheduled)</li>
+          <li><strong>Continuous mode</strong> only when sub-minute latency is required</li>
+          <li><strong>Serverless DLT</strong> — auto-scales to zero when idle (if available)</li>
+          <li><strong>Spot instances</strong> for non-critical CDC processing</li>
+          <li><strong>Delta sharing</strong> — share Silver/Gold tables without copying data</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ SECTION 9 ═══════════════════════════ -->
+<div class="section" id="sec9">
+  <h2><span class="num num-amber">9</span> Monitoring &amp; Alerting</h2>
+
+  <h3>DLT Event Log Monitoring</h3>
+  <pre><span class="lang-tag">SQL — Databricks</span>
+-- DLT event log monitoring
+SELECT
+    timestamp,
+    details:flow_name,
+    details:status,
+    details:metrics.num_output_rows
+FROM event_log(TABLE(silver.cdc_pipeline))
+WHERE event_type = 'flow_progress'
+ORDER BY timestamp DESC;</pre>
+
+  <h3>CDC Lag Monitoring (Run on SQL Server)</h3>
+  <pre><span class="lang-tag">SQL — SQL Server</span>
+-- CDC lag monitoring
+SELECT
+    capture_instance,
+    DATEDIFF(MINUTE,
+        sys.fn_cdc_map_lsn_to_time(
+            sys.fn_cdc_get_min_lsn(capture_instance)
+        ),
+        GETDATE()
+    ) AS lag_minutes
+FROM cdc.change_tables;</pre>
+
+  <div class="callout callout-orange">
+    <strong>⚠️ Key Alerts to Set Up</strong>
+    <ul style="margin:4px 0 0 16px;">
+      <li>CDC lag exceeds 30 minutes → investigate SQL Server Agent job</li>
+      <li>DLT pipeline failure → check event log for error details</li>
+      <li>Row count anomaly (&gt;50% change) → potential data quality issue</li>
+      <li>Watermark not advancing → extract job may be failing silently</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ SECTION 10 ═══════════════════════════ -->
+<div class="section" id="sec10">
+  <h2><span class="num num-blue">10</span> Comparison: Which Approach to Choose</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Criteria</th>
+        <th>Watermark<br><span class="pill pill-blue">Current</span></th>
+        <th>SQL Server CDC<br><span class="pill pill-green">Recommended</span></th>
+        <th>Change Tracking</th>
+        <th>Debezium + Kafka</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Setup Complexity</strong></td>
+        <td>Lowest</td>
+        <td>Medium</td>
+        <td>Low</td>
+        <td>High</td>
+      </tr>
+      <tr>
+        <td><strong>Captures Deletes</strong></td>
+        <td>❌ No</td>
+        <td>✅ Yes</td>
+        <td>✅ Yes</td>
+        <td>✅ Yes</td>
+      </tr>
+      <tr>
+        <td><strong>Captures Updates</strong></td>
+        <td>Only if timestamp col exists</td>
+        <td>✅ Yes (all columns)</td>
+        <td>✅ Yes (changed columns)</td>
+        <td>✅ Yes</td>
+      </tr>
+      <tr>
+        <td><strong>Latency</strong></td>
+        <td>Minutes</td>
+        <td>Minutes</td>
+        <td>Minutes</td>
+        <td>Seconds</td>
+      </tr>
+      <tr>
+        <td><strong>SQL Server Version</strong></td>
+        <td>Any</td>
+        <td>2016+ / Azure SQL</td>
+        <td>2008+</td>
+        <td>Any with CDC</td>
+      </tr>
+      <tr>
+        <td><strong>DLT Integration</strong></td>
+        <td>Manual MERGE</td>
+        <td><code class="inline-code">APPLY CHANGES INTO</code></td>
+        <td>Manual MERGE</td>
+        <td><code class="inline-code">APPLY CHANGES INTO</code></td>
+      </tr>
+      <tr>
+        <td><strong>Infrastructure</strong></td>
+        <td>JDBC only</td>
+        <td>JDBC only</td>
+        <td>JDBC only</td>
+        <td>Kafka + Debezium + Connectors</td>
+      </tr>
+      <tr>
+        <td><strong>Cost</strong></td>
+        <td><span class="pill pill-green">Lowest</span></td>
+        <td><span class="pill pill-green">Low</span></td>
+        <td><span class="pill pill-green">Low</span></td>
+        <td><span class="pill pill-orange">Medium-High</span></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════════════ SECTION 11 ═══════════════════════════ -->
+<div class="section" id="sec11">
+  <h2><span class="num num-green">11</span> Recommendation for Your Project</h2>
+
+  <div class="callout callout-green">
+    <strong>✅ Recommended Approach: SQL Server CDC + DLT (Batch Triggered)</strong>
+    Given your current architecture (SQL Server HR database → Databricks Unity Catalog with MetadataFlow + AutoInfraCreation), here is the recommended implementation path:
+  </div>
+
+  <div class="cards" style="grid-template-columns: 1fr;">
+    <div class="card" style="border: 2px solid var(--green); background: var(--green-bg);">
+      <div class="card-body">
+        <ol style="padding-left: 20px;">
+          <li style="margin-bottom: 10px;">
+            <strong>Enable SQL Server CDC</strong> on your HR tables (DimEmployee, DimDepartment, DimJobRole, DimLocation, DimDate) using <code class="inline-code">sys.sp_cdc_enable_table</code>
+          </li>
+          <li style="margin-bottom: 10px;">
+            <strong>Add a CDC Extract notebook</strong> (scheduled every 5-15 min) that reads <code class="inline-code">cdc.fn_cdc_get_net_changes_*</code> via JDBC and writes Parquet to UC Volumes landing zone
+          </li>
+          <li style="margin-bottom: 10px;">
+            <strong>Create a DLT pipeline</strong> with Auto Loader (Bronze) + <code class="inline-code">APPLY CHANGES INTO</code> (Silver) for automatic SCD handling
+          </li>
+          <li style="margin-bottom: 10px;">
+            <strong>Use triggered mode</strong> (not continuous) to keep costs low — 5-15 min latency is sufficient for HR dimension tables
+          </li>
+          <li style="margin-bottom: 10px;">
+            <strong>Store LSN watermarks</strong> in your existing <code class="inline-code">wf_watermark_metadata</code> Delta table
+          </li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <p style="margin-top: 16px; font-size: 13px; color: var(--t3);">
+    This integrates cleanly with your existing MetadataFlow + AutoInfraCreation infrastructure. The watermark table, pipeline groups, and job metadata all remain compatible — only the extract query changes from full-table JDBC to CDC function calls.
+  </p>
+
+  <div class="vs-grid" style="margin-top: 20px;">
+    <div class="vs-col vs-before">
+      <h4>❌ Current (Watermark-based)</h4>
+      <ul style="font-size:12px;">
+        <li>Cannot capture DELETEs</li>
+        <li>Requires reliable timestamp column</li>
+        <li>Full table scan if no watermark</li>
+        <li>Manual MERGE logic in notebooks</li>
+      </ul>
+    </div>
+    <div class="vs-col vs-after">
+      <h4>✅ With CDC + DLT</h4>
+      <ul style="font-size:12px;">
+        <li>Captures INSERT, UPDATE, DELETE</li>
+        <li>Uses LSN — works on any table</li>
+        <li>Only reads changed rows from log</li>
+        <li>APPLY CHANGES INTO handles SCD automatically</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ FOOTER ═══════════════════════════ -->
+<div class="footer">
+  SQL to Databricks Migration &nbsp;|&nbsp; CDC Implementation Guide &nbsp;|&nbsp; Generated March 2026 &nbsp;|&nbsp; AI Workflow Manager
+</div>
+
+</div><!-- /container -->
+</body>
+</html>

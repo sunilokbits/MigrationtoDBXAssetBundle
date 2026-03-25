@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CDC &amp; DLT Pipeline — How It Works</title>
+<style>
+  :root {
+    --bg: #0f172a; --surface: #1e293b; --surface-2: #334155; --border: #475569;
+    --t1: #f1f5f9; --t2: #cbd5e1; --t3: #94a3b8; --t4: #64748b;
+    --blue: #3b82f6; --green: #10b981; --amber: #f59e0b; --red: #ef4444;
+    --purple: #8b5cf6; --cyan: #06b6d4; --pink: #ec4899;
+    --r: 12px; --r-sm: 8px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--t1); line-height: 1.6; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 40px 24px; }
+
+  /* Header */
+  .hero { text-align: center; padding: 60px 20px 40px; position: relative; overflow: hidden; }
+  .hero::before { content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+    background: radial-gradient(ellipse at center, rgba(59,130,246,.08) 0%, transparent 70%); pointer-events: none; }
+  .hero h1 { font-size: 2.5rem; font-weight: 800; letter-spacing: -1px;
+    background: linear-gradient(135deg, var(--blue), var(--cyan), var(--purple));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 12px; }
+  .hero .subtitle { font-size: 1.1rem; color: var(--t3); max-width: 700px; margin: 0 auto; }
+  .badge { display: inline-block; padding: 4px 14px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin: 16px 4px 0; }
+  .badge-blue { background: rgba(59,130,246,.15); color: var(--blue); border: 1px solid rgba(59,130,246,.3); }
+  .badge-green { background: rgba(16,185,129,.15); color: var(--green); border: 1px solid rgba(16,185,129,.3); }
+  .badge-amber { background: rgba(245,158,11,.15); color: var(--amber); border: 1px solid rgba(245,158,11,.3); }
+
+  /* Cards */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 28px; margin-bottom: 24px; }
+  .card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .card-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+  .card-title { font-size: 1.25rem; font-weight: 700; color: var(--t1); }
+  .card-subtitle { font-size: 12px; color: var(--t3); margin-top: 2px; }
+
+  /* Stage pipeline */
+  .pipeline { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 32px 0; position: relative; }
+  .pipeline::before { content: ''; position: absolute; top: 50%; left: 10%; right: 10%; height: 3px;
+    background: linear-gradient(90deg, var(--blue), var(--green), var(--amber), var(--purple)); border-radius: 2px; z-index: 0; }
+  .stage { background: var(--surface); border: 2px solid var(--border); border-radius: var(--r); padding: 20px 16px;
+    text-align: center; position: relative; z-index: 1; transition: all .2s; }
+  .stage:hover { border-color: var(--blue); transform: translateY(-4px); box-shadow: 0 8px 32px rgba(59,130,246,.15); }
+  .stage-num { width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 14px; margin-bottom: 10px; }
+  .stage-title { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+  .stage-desc { font-size: 11px; color: var(--t3); }
+
+  /* Flow diagram */
+  .flow { display: flex; align-items: center; gap: 0; margin: 28px 0; flex-wrap: wrap; justify-content: center; }
+  .flow-box { padding: 12px 20px; border-radius: var(--r-sm); font-size: 13px; font-weight: 600; text-align: center; min-width: 140px; }
+  .flow-arrow { font-size: 22px; color: var(--t4); padding: 0 6px; }
+
+  /* Code blocks */
+  pre { background: #0d1117; border: 1px solid var(--border); border-radius: var(--r-sm); padding: 18px 20px;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace; font-size: 13px; color: #e6edf3;
+    overflow-x: auto; margin: 12px 0; line-height: 1.7; }
+  code { font-family: inherit; }
+  .kw { color: #ff7b72; } .fn { color: #d2a8ff; } .str { color: #a5d6ff; } .cm { color: #8b949e; }
+  .col { color: #79c0ff; } .op { color: #ff7b72; } .num { color: #79c0ff; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+  th { background: var(--surface-2); color: var(--t2); font-weight: 700; text-align: left; padding: 10px 14px; border: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+  td { padding: 10px 14px; border: 1px solid var(--border); color: var(--t2); }
+  tr:hover td { background: rgba(59,130,246,.05); }
+
+  /* Section divider */
+  .divider { display: flex; align-items: center; gap: 16px; margin: 40px 0 24px; }
+  .divider-line { flex: 1; height: 1px; background: var(--border); }
+  .divider-text { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: var(--t4); white-space: nowrap; }
+
+  /* Info boxes */
+  .info-box { border-radius: var(--r-sm); padding: 14px 18px; margin: 12px 0; font-size: 13px; display: flex; gap: 10px; align-items: flex-start; }
+  .info-box.tip  { background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.2); }
+  .info-box.warn { background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.2); }
+  .info-box.note { background: rgba(59,130,246,.08); border: 1px solid rgba(59,130,246,.2); }
+  .info-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+
+  /* Grid layout */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  /* Step indicators */
+  .step-label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--t3);
+    padding: 4px 10px; border-radius: 6px; background: var(--surface-2); margin-bottom: 12px; }
+
+  /* Timeline */
+  .timeline { position: relative; padding-left: 32px; }
+  .timeline::before { content: ''; position: absolute; left: 12px; top: 0; bottom: 0; width: 2px; background: var(--border); }
+  .tl-item { position: relative; margin-bottom: 24px; }
+  .tl-item::before { content: ''; position: absolute; left: -26px; top: 4px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--blue); background: var(--bg); }
+  .tl-title { font-weight: 700; font-size: 14px; color: var(--t1); margin-bottom: 4px; }
+  .tl-desc { font-size: 13px; color: var(--t3); }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .pipeline { grid-template-columns: 1fr 1fr; }
+    .pipeline::before { display: none; }
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .flow { flex-direction: column; }
+    .flow-arrow { transform: rotate(90deg); }
+    .hero h1 { font-size: 1.8rem; }
+  }
+
+  /* Print */
+  @media print {
+    body { background: #fff; color: #1a1a1a; }
+    .card { border: 1px solid #ddd; break-inside: avoid; }
+    pre { background: #f6f8fa; color: #24292f; border-color: #d0d7de; }
+    .stage { border-color: #d0d7de; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════ HERO ═══════════ -->
+<div class="hero">
+  <h1>CDC &amp; Delta Live Tables Pipeline</h1>
+  <p class="subtitle">Complete technical reference for Change Data Capture from Azure SQL Server to Databricks using SQL Server Change Tracking, Delta Live Tables, and SCD Type 1 Merge.</p>
+  <span class="badge badge-blue">SQL Server Change Tracking</span>
+  <span class="badge badge-green">Delta Live Tables</span>
+  <span class="badge badge-amber">SCD Type 1</span>
+</div>
+
+<div class="container">
+
+<!-- ═══════════ PIPELINE OVERVIEW ═══════════ -->
+<div class="card">
+  <div class="card-header">
+    <div class="card-icon" style="background:rgba(59,130,246,.15);color:var(--blue);">🔄</div>
+    <div>
+      <div class="card-title">Pipeline Overview — 4 Stage Data Flow</div>
+      <div class="card-subtitle">Azure SQL → Landing Zone → Bronze (DLT) → Silver (apply_changes)</div>
+    </div>
+  </div>
+
+  <div class="pipeline">
+    <div class="stage">
+      <div class="stage-num" style="background:rgba(59,130,246,.2);color:var(--blue);">1</div>
+      <div class="stage-title">Azure SQL Server</div>
+      <div class="stage-desc">Source database with<br>Change Tracking enabled</div>
+    </div>
+    <div class="stage">
+      <div class="stage-num" style="background:rgba(245,158,11,.2);color:var(--amber);">2</div>
+      <div class="stage-title">Landing Zone</div>
+      <div class="stage-desc">Raw Parquet with<br>CDC audit columns</div>
+    </div>
+    <div class="stage">
+      <div class="stage-num" style="background:rgba(16,185,129,.2);color:var(--green);">3</div>
+      <div class="stage-title">Bronze Layer</div>
+      <div class="stage-desc">@dlt.table + CDF<br>Quality expectations</div>
+    </div>
+    <div class="stage">
+      <div class="stage-num" style="background:rgba(139,92,246,.2);color:var(--purple);">4</div>
+      <div class="stage-title">Silver Layer</div>
+      <div class="stage-desc">dlt.apply_changes()<br>SCD Type 1 MERGE</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ PREREQUISITES ═══════════ -->
+<div class="divider"><div class="divider-line"></div><div class="divider-text">Prerequisites</div><div class="divider-line"></div></div>
+
+<div class="card">
+  <div class="card-header">
+    <div class="card-icon" style="background:rgba(245,158,11,.15);color:var(--amber);">⚡</div>
+    <div>
+      <div class="card-title">Step 0 — Enable Change Tracking on Azure SQL</div>
+      <div class="card-subtitle">One-time manual setup on your source database</div>
+    </div>
+  </div>
+
+  <div class="info-box warn">
+    <span class="info-icon">⚠️</span>
+    <div><strong>Manual Step:</strong> Change Tracking must be enabled on the database and each table before the CDC pipeline can pull incremental changes.</div>
+  </div>
+
+  <p style="font-size:13px;color:var(--t3);margin:12px 0 8px;font-weight:600;">1. Enable Change Tracking on the Database:</p>
+  <pre><span class="kw">ALTER DATABASE</span> [YourDatabase]
+<span class="kw">SET</span> CHANGE_TRACKING = <span class="kw">ON</span>
+(
+    CHANGE_RETENTION = <span class="num">3</span> <span class="kw">DAYS</span>,      <span class="cm">-- How long CT data is kept</span>
+    AUTO_CLEANUP = <span class="kw">ON</span>               <span class="cm">-- Automatically purge old CT records</span>
+);</pre>
+
+  <p style="font-size:13px;color:var(--t3);margin:12px 0 8px;font-weight:600;">2. Enable Change Tracking on Each Table:</p>
+  <pre><span class="kw">ALTER TABLE</span> [dbo].[Employees]
+<span class="kw">ENABLE</span> CHANGE_TRACKING
+<span class="kw">WITH</span> (TRACK_COLUMNS_UPDATED = <span class="kw">ON</span>);  <span class="cm">-- Tracks which columns changed</span>
+
+<span class="kw">ALTER TABLE</span> [dbo].[Departments]
+<span class="kw">ENABLE</span> CHANGE_TRACKING
+<span class="kw">WITH</span> (TRACK_COLUMNS_UPDATED = <span class="kw">ON</span>);</pre>
+
+  <p style="font-size:13px;color:var(--t3);margin:12px 0 8px;font-weight:600;">3. Verify Change Tracking is Active:</p>
+  <pre><span class="cm">-- Check database-level CT</span>
+<span class="kw">SELECT</span> DB_NAME(database_id) <span class="kw">AS</span> db_name, is_auto_cleanup_on, retention_period
+<span class="kw">FROM</span> sys.change_tracking_databases;
+
+<span class="cm">-- Check table-level CT</span>
+<span class="kw">SELECT</span> OBJECT_NAME(object_id) <span class="kw">AS</span> table_name, is_track_columns_updated_on
+<span class="kw">FROM</span> sys.change_tracking_tables;
+
+<span class="cm">-- Get current CT version</span>
+<span class="kw">SELECT</span> CHANGE_TRACKING_CURRENT_VERSION() <span class="kw">AS</span> current_version;</pre>
+</div>
+
+<!-- ═══════════ STAGE 1 — EXTRACT ═══════════ -->
+<div class="divider"><div class="divider-line"></div><div class="divider-text">Stage 1 — Extract</div><div class="divider-line"></div></div>
+
+<div class="card">
+  <div class="card-header">
+    <div class="card-icon" style="background:rgba(59,130,246,.15);color:var(--blue);">📥</div>
+    <div>
+      <div class="card-title">01_Meta_Extract.py — JDBC Extraction with Change Tracking</div>
+      <div class="card-subtitle">Reads from Azure SQL using CHANGETABLE() and writes Parquet to Landing Zone</div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <!-- First Run -->
+    <div style="background:var(--surface-2);border-radius:var(--r-sm);padding:18px;">
+      <div class="step-label" style="background:rgba(59,130,246,.15);color:var(--blue);">🟢 First Run — Initial Full Load</div>
+      <p style="font-size:13px;color:var(--t3);margin-bottom:10px;">No CT version stored yet — extracts complete snapshot.</p>
+      <pre style="font-size:12px;margin:0;"><span class="cm">-- Query generated by notebook:</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> [dbo].[Employees]
+
+<span class="cm">-- After extraction, stores:</span>
+<span class="kw">SELECT</span> <span class="fn">CHANGE_TRACKING_CURRENT_VERSION</span>()
+<span class="cm">-- Returns: 42</span>
+<span class="cm">-- Saved to: wm_watermark_metadata</span></pre>
+      <div class="info-box tip" style="margin-top:10px;">
+        <span class="info-icon">✅</span>
+        <div>All rows get synthetic <code>__cdc_operation = 'I'</code> (Insert). CT version <strong>42</strong> is stored for next run.</div>
+      </div>
+    </div>
+
+    <!-- Subsequent Runs -->
+    <div style="background:var(--surface-2);border-radius:var(--r-sm);padding:18px;">
+      <div class="step-label" style="background:rgba(16,185,129,.15);color:var(--green);">🔁 Subsequent Runs — Incremental CT</div>
+      <p style="font-size:13px;color:var(--t3);margin-bottom:10px;">Reads stored version 42 → uses CHANGETABLE to get only changes.</p>
+      <pre style="font-size:12px;margin:0;"><span class="kw">SELECT</span> T.*, 
+  CT.<span class="col">SYS_CHANGE_OPERATION</span> <span class="kw">AS</span> __cdc_operation,
+  CT.<span class="col">SYS_CHANGE_VERSION</span>   <span class="kw">AS</span> __cdc_version
+<span class="kw">FROM</span> <span class="fn">CHANGETABLE</span>(
+    CHANGES [dbo].[Employees], <span class="num">42</span>
+  ) <span class="kw">AS</span> CT
+<span class="kw">INNER JOIN</span> [dbo].[Employees] <span class="kw">AS</span> T
+  <span class="kw">ON</span> CT.[EmployeeID] = T.[EmployeeID]
+<span class="kw">WHERE</span> CT.<span class="col">SYS_CHANGE_OPERATION</span>
+  <span class="kw">IN</span> (<span class="str">'I'</span>, <span class="str">'U'</span>)</pre>
+      <div class="info-box tip" style="margin-top:10px;">
+        <span class="info-icon">✅</span>
+        <div>Returns <strong>only changed rows</strong> since version 42. Updates CT version to latest.</div>
+      </div>
+    </div>
+  </div>
+
+  <p style="font-size:14px;font-weight:700;color:var(--t1);margin:20px 0 10px;">SYS_CHANGE_OPERATION Values</p>
+  <table>
+    <tr><th style="width:80px;">Code</th><th style="width:120px;">Operation</th><th>Description</th><th>Pipeline Action</th></tr>
+    <tr><td><code style="color:var(--green);font-weight:700;">I</code></td><td>Insert</td><td>New row added to source table</td><td>Appended to Landing → INSERT in Silver</td></tr>
+    <tr><td><code style="color:var(--amber);font-weight:700;">U</code></td><td>Update</td><td>Existing row modified</td><td>Appended to Landing → UPDATE in Silver (SCD Type 1)</td></tr>
+    <tr><td><code style="color:var(--red);font-weight:700;">D</code></td><td>Delete</td><td>Row deleted from source table</td><td>Captured by CT → DELETE from Silver via apply_as_deletes</td></tr>
+  </table>
+
+  <p style="font-size:14px;font-weight:700;color:var(--t1);margin:20px 0 10px;">Audit Columns Added to Every Row</p>
+  <table>
+    <tr><th>Column</th><th>Type</th><th>Source</th><th>Example Value</th></tr>
+    <tr><td><code>__cdc_operation</code></td><td>String</td><td>SYS_CHANGE_OPERATION</td><td><code>I</code>, <code>U</code>, or <code>D</code></td></tr>
+    <tr><td><code>__cdc_version</code></td><td>Long</td><td>SYS_CHANGE_VERSION</td><td><code>42</code></td></tr>
+    <tr><td><code>__cdc_mode</code></td><td>String</td><td>Pipeline config</td><td><code>change_tracking</code></td></tr>
+    <tr><td><code>__landing_ts</code></td><td>Timestamp</td><td>current_timestamp()</td><td><code>2026-03-22T10:30:00Z</code></td></tr>
+    <tr><td><code>__source_system</code></td><td>String</td><td>Server/Database</td><td><code>myserver.database.windows.net/MyDB</code></td></tr>
+    <tr><td><code>__load_type</code></td><td>String</td><td>Computed</td><td><code>incremental</code></td></tr>
+    <tr><td><code>__batch_id</code></td><td>String</td><td>Run timestamp</td><td><code>20260322_103000</code></td></tr>
+    <tr><td><code>__job_id</code></td><td>String</td><td>Pipeline metadata</td><td><code>job_abc123</code></td></tr>
+  </table>
+</div>
+
+<!-- ═══════════ STAGE 2 — BRONZE ═══════════ -->
+<div class="divider"><div class="divider-line"></div><div class="divider-text">Stage 2 — Bronze</div><div class="divider-line"></div></div>
+
+<div class="card">
+  <div class="card-header">
+    <div class="card-icon" style="background:rgba(16,185,129,.15);color:var(--green);">🥉</div>
+    <div>
+      <div class="card-title">02_Meta_Bronze.py — DLT Bronze with Quality Expectations</div>
+      <div class="card-subtitle">Reads Parquet from Landing, validates, writes Bronze Delta with CDF enabled</div>
+    </div>
+  </div>
+
+  <pre><span class="cm"># When exec_mode = "dlt"</span>
+<span class="kw">import</span> dlt
+
+<span class="fn">@dlt.table</span>(
+    name=<span class="str">"bronze_Employees"</span>,
+    comment=<span class="str">"Bronze — raw ingestion with DLT quality expectations"</span>,
+    table_properties={
+        <span class="str">"quality"</span>: <span class="str">"bronze"</span>,
+        <span class="str">"delta.autoOptimize.optimizeWrite"</span>: <span class="str">"true"</span>,
+        <span class="str">"delta.enableChangeDataFeed"</span>: <span class="str">"true"</span>,  <span class="cm"># ← CDF enabled!</span>
+    },
+)
+<span class="fn">@dlt.expect_or_drop</span>(<span class="str">"__valid_landing_ts"</span>, <span class="str">"__landing_ts IS NOT NULL"</span>)
+<span class="fn">@dlt.expect</span>(<span class="str">"__has_batch_id"</span>, <span class="str">"__batch_id IS NOT NULL"</span>)
+<span class="fn">@dlt.expect</span>(<span class="str">"__has_source"</span>, <span class="str">"__source_table IS NOT NULL"</span>)
+<span class="kw">def</span> <span class="fn">bronze_dlt_table</span>():
+    df = spark.read.parquet(<span class="str">"/mnt/landing/Employees"</span>)
+    <span class="kw">return</span> (df
+        .withColumn(<span class="str">"__bronze_ts"</span>, F.current_timestamp())
+        .withColumn(<span class="str">"__source_table"</span>, F.lit(<span class="str">"dbo.Employees"</span>))
+        .withColumn(<span class="str">"__is_quarantined"</span>, F.lit(<span class="kw">False</span>)))
+</pre>
+
+  <div class="grid-3" style="margin-top:16px;">
+    <div class="info-box note">
+      <span class="info-icon">📋</span>
+      <div><strong>expect_or_drop</strong><br>Rows failing this check are dropped silently</div>
+    </div>
+    <div class="info-box note">
+      <span class="info-icon">📋</span>
+      <div><strong>expect</strong><br>Rows failing are flagged but kept (tracked in DLT event log)</div>
+    </div>
+    <div class="info-box note">
+      <span class="info-icon">📋</span>
+      <div><strong>CDF Enabled</strong><br>Change Data Feed lets downstream consumers read only changes</div>
+    </div>
+  </div>
+
+  <p style="font-size:13px;color:var(--t3);margin-top:14px;">
+    <strong>Key:</strong> The CDC columns (<code>__cdc_operation</code>, <code>__cdc_version</code>) pass through Bronze <em>untouched</em> — they are consumed by Silver's <code>apply_changes()</code>.
+  </p>
+</div>
+
+<!-- ═══════════ STAGE 3 — SILVER ═══════════ -->
+<div class="divider"><div class="divider-line"></div><div class="divider-text">Stage 3 — Silver (SCD Type 1 Merge)</div><div class="divider-line"></div></div>
+
+<div class="card">
+  <div class="card-header">
+    <div class="card-icon" style="background:rgba(139,92,246,.15);color:var(--purple);">🥈</div>
+    <div>
+      <div class="card-title">03_Meta_Silver.py — dlt.apply_changes() for CDC Merge</div>
+      <div class="card-subtitle">SCD Type 1 MERGE: Inserts, Updates, and Deletes automatically applied</div>
+    </div>
+  </div>
+
+  <pre><span class="cm"># When exec_mode = "dlt" AND cdc_mode = "change_tracking"</span>
+<span class="kw">import</span> dlt
+
+<span class="cm"># 1. Create target streaming table</span>
+dlt.<span class="fn">create_streaming_table</span>(
+    name=<span class="str">"silver_Employees"</span>,
+    comment=<span class="str">"Silver — CDC merge via Change Tracking"</span>,
+    table_properties={
+        <span class="str">"quality"</span>: <span class="str">"silver"</span>,
+        <span class="str">"delta.autoOptimize.optimizeWrite"</span>: <span class="str">"true"</span>,
+        <span class="str">"delta.enableChangeDataFeed"</span>: <span class="str">"true"</span>,
+    },
+)
+
+<span class="cm"># 2. Define the CDC merge logic</span>
+dlt.<span class="fn">apply_changes</span>(
+    target = <span class="str">"silver_Employees"</span>,           <span class="cm"># Target table</span>
+    source = <span class="str">"bronze_Employees"</span>,           <span class="cm"># Source (Bronze DLT table)</span>
+    keys   = [<span class="str">"EmployeeID"</span>],               <span class="cm"># Primary Key for MERGE</span>
+    sequence_by = F.col(<span class="str">"__bronze_ts"</span>),    <span class="cm"># Ordering for late-arriving data</span>
+    apply_as_deletes = F.expr(             <span class="cm"># Delete condition</span>
+        <span class="str">"__cdc_operation = 'D'"</span>
+    ),
+    except_column_list = [                 <span class="cm"># Columns to drop</span>
+        <span class="str">"__landing_ts"</span>, <span class="str">"__load_type"</span>,
+        <span class="str">"__is_quarantined"</span>,
+        <span class="str">"__cdc_operation"</span>, <span class="str">"__cdc_version"</span>,
+        <span class="str">"__cdc_mode"</span>, <span class="str">"__batch_id"</span>,
+        <span class="str">"__bronze_version"</span>,
+    ],
+)</pre>
+
+  <p style="font-size:14px;font-weight:700;color:var(--t1);margin:20px 0 10px;">How apply_changes() Works</p>
+
+  <div class="timeline">
+    <div class="tl-item">
+      <div class="tl-title">1. Read source (Bronze) table</div>
+      <div class="tl-desc">DLT reads <code>bronze_Employees</code> using <code>dlt.read()</code> — gets all new/changed rows including CDC audit columns.</div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-title">2. Match rows by primary key</div>
+      <div class="tl-desc">Uses <code>keys = ["EmployeeID"]</code> to join incoming rows against existing Silver table. This performs a MERGE operation.</div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-title">3. Order by sequence column</div>
+      <div class="tl-desc"><code>sequence_by = __bronze_ts</code> ensures that if multiple changes for the same key arrive, only the latest wins (handles late-arriving data).</div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-title">4. Apply operations</div>
+      <div class="tl-desc">
+        <strong style="color:var(--green);">INSERT (I):</strong> Key not found in Silver → new row inserted<br>
+        <strong style="color:var(--amber);">UPDATE (U):</strong> Key exists → row overwritten (SCD Type 1)<br>
+        <strong style="color:var(--red);">DELETE (D):</strong> Matched by <code>apply_as_deletes</code> expression → row removed
+      </div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-title">5. Strip audit columns</div>
+      <div class="tl-desc"><code>except_column_list</code> removes internal CDC/audit columns so the Silver table contains only clean business data.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ CONFIG FLOW ═══════════ -->
+<div class="divider"><div class="divider-line"></div><div class="divider-text">Configuration Flow</div><div class="divider-line"></div></div>
+
+<div class="card">
+  <div class="card-header">
+    <div class="card-icon" style="background:rgba(6,182,212,.15);color:var(--cyan);">⚙️</div>
+    <div>
+      <div class="card-title">How Configuration Flows from UI to Notebooks</div>
+      <div class="card-subtitle">Settings UI → Flask API → workflow_manager → source_config → Notebook widgets</div>
+    </div>
+  </div>
+
+  <div class="flow">
+    <div class="flow-box" style="background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.3);color:var(--blue);">
+      <div style="font-size:11px;opacity:.7;">Settings UI</div>
+      CDC Mode Dropdown<br>Primary Keys Input
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box" style="background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.3);color:var(--amber);">
+      <div style="font-size:11px;opacity:.7;">deployconfig.json</div>
+      cdc.cdc_mode<br>cdc.primary_keys
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box" style="background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.3);color:var(--green);">
+      <div style="font-size:11px;opacity:.7;">Flask API</div>
+      /create-pipeline<br>/deploy-notebooks
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box" style="background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.3);color:var(--purple);">
+      <div style="font-size:11px;opacity:.7;">workflow_manager</div>
+      source_config dict<br>wf_job_metadata
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box" style="background:rgba(236,72,153,.15);border:1px solid rgba(236,72,153,.3);color:var(--pink);">
+      <div style="font-size:11px;opacity:.7;">Databricks Notebooks</div>
+      cdc_mode widget<br>PRIMARY_KEYS var
+    </div>
+  </div>
+
+  <p style="font-size:14px;font-weight:700;color:var(--t1);margin:24px 0 10px;">deployconfig.json Example</p>
+  <pre>{
+  <span class="str">"cdc"</span>: {
+    <span class="str">"cdc_mode"</span>: <span class="str">"change_tracking"</span>,     <span class="cm">// CT mode selected in UI</span>
+    <span class="str">"dlt_mode"</span>: <span class="str">"dlt"</span>,                  <span class="cm">// DLT execution mode</span>
+    <span class="str">"primary_keys"</span>: [<span class="str">"EmployeeID"</span>]       <span class="cm">// Keys for MERGE</span>
+  }
+}</pre>
+
+  <p style="font-size:14px;font-weight:700;color:var(--t1);margin:24px 0 10px;">source_config in wf_job_metadata</p>
+  <pre>{
+  <span class="str">"server"</span>:       <span class="str">"myserver.database.windows.net"</span>,
+  <span class="str">"database"</span>:     <span class="str">"MyDatabase"</span>,
+  <span class="str">"username"</span>:     <span class="str">"sqladmin"</span>,
+  <span class="str">"cdc_mode"</span>:     <span class="str">"change_tracking"</span>,      <span class="cm">// ← Read by notebooks</span>
+  <span class="str">"primary_keys"</span>: [<span class="str">"EmployeeID"</span>]          <span class="cm">// ← Used by CHANGETABLE + apply_changes</span>
+}</pre>
+</div>
+
+<!-- ═══════════ CT VERSION TRACKING ═══════════ -->
+<div class="divider"><div class="divider-line"></div><div class="divider-text">Version Tracking</div><div class="divider-line"></div></div>
+
+<div class="card">
+  <div class="card-header">
+    <div class="card-icon" style="background:rgba(236,72,153,.15);color:var(--pink);">📊</div>
+    <div>
+      <div class="card-title">CT Version Tracking — wm_watermark_metadata</div>
+      <div class="card-subtitle">How the pipeline knows where it left off</div>
+    </div>
+  </div>
+
+  <table>
+    <tr><th>table_name</th><th>watermark_column</th><th>last_value</th><th>updated_at</th></tr>
+    <tr><td>dbo.Employees</td><td>SYS_CHANGE_VERSION</td><td style="color:var(--green);font-weight:700;">42</td><td>2026-03-22 10:30:00</td></tr>
+    <tr><td>dbo.Departments</td><td>SYS_CHANGE_VERSION</td><td style="color:var(--green);font-weight:700;">42</td><td>2026-03-22 10:30:00</td></tr>
+    <tr><td>dbo.Orders</td><td>ModifiedDate</td><td style="color:var(--amber);">2026-03-21</td><td>2026-03-22 09:00:00</td></tr>
+  </table>
+
+  <div class="grid-2" style="margin-top:16px;">
+    <div class="info-box note">
+      <span class="info-icon">🔵</span>
+      <div><strong>CT Mode</strong> — Stores <code>CHANGE_TRACKING_CURRENT_VERSION()</code> fetched from SQL Server after each extraction. Integer that auto-increments with every DML operation.</div>
+    </div>
+    <div class="info-box note">
+      <span class="info-icon">🟡</span>
+      <div><strong>Watermark Mode</strong> — Stores the MAX value of the watermark column (e.g., <code>ModifiedDate</code>). Used for classic incremental loads without CT.</div>
+    </div>
+  </div>
+
+  <p style="font-size:14px;font-weight:700;color:var(--t1);margin:20px 0 10px;">Version Update Logic (Extract Notebook)</p>
+  <pre><span class="cm"># After successful extraction, fetch latest CT version from SQL Server</span>
+ct_ver_query = <span class="str">"(SELECT CHANGE_TRACKING_CURRENT_VERSION() AS ct_ver) AS ctv"</span>
+ct_ver_df = spark.read.jdbc(jdbc_url, ct_ver_query, properties=jdbc_props)
+new_ct_ver = <span class="kw">str</span>(ct_ver_df.collect()[<span class="num">0</span>][<span class="str">"ct_ver"</span>])
+
+<span class="cm"># MERGE into watermark table (insert or update)</span>
+spark.sql(<span class="str">f"""
+    MERGE INTO {wm_tbl} AS t
+    USING (SELECT '{FULL_TABLE}' AS table_name,
+                  '{new_ct_ver}' AS last_value) AS s
+    ON t.table_name = s.table_name
+    WHEN MATCHED THEN UPDATE SET t.last_value = s.last_value
+    WHEN NOT MATCHED THEN INSERT *
+"""</span>)</pre>
+</div>
+
+<!-- ═══════════ DATA EXAMPLE ═══════════ -->
+<div class="divider"><div class="divider-line"></div><div class="divider-text">Data Example — End to End</div><div class="divider-line"></div></div>
+
+<div class="card">
+  <div class="card-header">
+    <div class="card-icon" style="background:rgba(59,130,246,.15);color:var(--blue);">📝</div>
+    <div>
+      <div class="card-title">Worked Example: Employee Table CDC</div>
+      <div class="card-subtitle">What happens when rows are inserted, updated, and deleted in Azure SQL</div>
+    </div>
+  </div>
+
+  <p style="font-size:14px;font-weight:600;color:var(--t1);margin:0 0 8px;">Scenario: Between Run 1 (version 42) and Run 2:</p>
+  <ul style="font-size:13px;color:var(--t3);margin:0 0 14px 20px;list-style:disc;">
+    <li>Employee <strong>101</strong> — Salary updated from 50000 to 55000</li>
+    <li>Employee <strong>105</strong> — New hire inserted</li>
+    <li>Employee <strong>88</strong> — Terminated, deleted from source</li>
+  </ul>
+
+  <p style="font-size:13px;font-weight:700;color:var(--t2);margin:16px 0 8px;">1. Landing Zone (Parquet) — output of CHANGETABLE query:</p>
+  <table>
+    <tr><th>EmployeeID</th><th>Name</th><th>Salary</th><th>__cdc_operation</th><th>__cdc_version</th><th>__cdc_mode</th></tr>
+    <tr><td>101</td><td>John Doe</td><td>55000</td><td style="color:var(--amber);font-weight:700;">U</td><td>45</td><td>change_tracking</td></tr>
+    <tr><td>105</td><td>Jane Smith</td><td>62000</td><td style="color:var(--green);font-weight:700;">I</td><td>46</td><td>change_tracking</td></tr>
+  </table>
+  <div class="info-box note" style="margin-top:4px;">
+    <span class="info-icon">ℹ️</span>
+    <div>Deletes (Employee 88) are captured by CT but excluded from INNER JOIN in the extract query. The Silver <code>apply_as_deletes</code> handles them when <code>__cdc_operation = 'D'</code> is detected.</div>
+  </div>
+
+  <p style="font-size:13px;font-weight:700;color:var(--t2);margin:16px 0 8px;">2. Bronze Delta — after @dlt.table processing:</p>
+  <table>
+    <tr><th>EmployeeID</th><th>Name</th><th>Salary</th><th>__cdc_operation</th><th>__bronze_ts</th><th>__is_quarantined</th></tr>
+    <tr><td>101</td><td>John Doe</td><td>55000</td><td style="color:var(--amber);font-weight:700;">U</td><td>2026-03-22 10:32:00</td><td>false</td></tr>
+    <tr><td>105</td><td>Jane Smith</td><td>62000</td><td style="color:var(--green);font-weight:700;">I</td><td>2026-03-22 10:32:00</td><td>false</td></tr>
+  </table>
+
+  <p style="font-size:13px;font-weight:700;color:var(--t2);margin:16px 0 8px;">3. Silver Delta — after dlt.apply_changes() MERGE:</p>
+  <table>
+    <tr><th>EmployeeID</th><th>Name</th><th>Salary</th><th>__silver_ts</th><th>Action</th></tr>
+    <tr><td>101</td><td>John Doe</td><td style="color:var(--amber);">55000 (was 50000)</td><td>2026-03-22 10:32:05</td><td style="color:var(--amber);font-weight:700;">UPDATED</td></tr>
+    <tr><td>105</td><td>Jane Smith</td><td>62000</td><td>2026-03-22 10:32:05</td><td style="color:var(--green);font-weight:700;">INSERTED</td></tr>
+    <tr><td><s>88</s></td><td><s>Ex Employee</s></td><td><s>45000</s></td><td></td><td style="color:var(--red);font-weight:700;">DELETED</td></tr>
+  </table>
+  <div class="info-box tip">
+    <span class="info-icon">✅</span>
+    <div>All CDC audit columns (<code>__cdc_operation</code>, <code>__cdc_version</code>, etc.) are stripped by <code>except_column_list</code> — the Silver table contains <strong>only clean business data</strong>.</div>
+  </div>
+</div>
+
+<!-- ═══════════ DAB JOBS ═══════════ -->
+<div class="divider"><div class="divider-line"></div><div class="divider-text">Databricks Asset Bundle Jobs</div><div class="divider-line"></div></div>
+
+<div class="card">
+  <div class="card-header">
+    <div class="card-icon" style="background:rgba(139,92,246,.15);color:var(--purple);">📦</div>
+    <div>
+      <div class="card-title">migration_jobs.yml — CDC + DLT Job Definitions</div>
+      <div class="card-subtitle">Three predefined DAB job configurations</div>
+    </div>
+  </div>
+
+  <div class="grid-3">
+    <div style="background:var(--surface-2);border-radius:var(--r-sm);padding:16px;border-left:3px solid var(--blue);">
+      <div style="font-weight:700;font-size:13px;color:var(--blue);margin-bottom:6px;">cdc_dlt_pipeline</div>
+      <div style="font-size:12px;color:var(--t3);">
+        <strong>Task 1:</strong> Extract (CT mode)<br>
+        <strong>Task 2:</strong> DLT Bronze + Silver<br>
+        <code style="font-size:11px;">cdc_mode=change_tracking</code>
+      </div>
+    </div>
+    <div style="background:var(--surface-2);border-radius:var(--r-sm);padding:16px;border-left:3px solid var(--green);">
+      <div style="font-weight:700;font-size:13px;color:var(--green);margin-bottom:6px;">dlt_medallion_pipeline</div>
+      <div style="font-size:12px;color:var(--t3);">
+        <strong>DLT-only pipeline</strong><br>
+        Bronze + Silver DLT tables<br>
+        <code style="font-size:11px;">exec_mode=dlt</code>
+      </div>
+    </div>
+    <div style="background:var(--surface-2);border-radius:var(--r-sm);padding:16px;border-left:3px solid var(--amber);">
+      <div style="font-weight:700;font-size:13px;color:var(--amber);margin-bottom:6px;">static_medallion_pipeline</div>
+      <div style="font-size:12px;color:var(--t3);">
+        <strong>Standard PySpark</strong><br>
+        Classic watermark mode<br>
+        <code style="font-size:11px;">exec_mode=standard</code>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ CDC MODE vs DLT MODE ═══════════ -->
+<div class="divider"><div class="divider-line"></div><div class="divider-text">CDC Mode vs DLT Execution Mode</div><div class="divider-line"></div></div>
+
+<div class="card">
+  <div class="card-header">
+    <div class="card-icon" style="background:rgba(236,72,153,.15);color:var(--pink);">⚡</div>
+    <div>
+      <div class="card-title">CDC Mode vs DLT Execution Mode — What's the Difference?</div>
+      <div class="card-subtitle">Two independent settings that control different parts of the pipeline</div>
+    </div>
+  </div>
+
+  <div class="info-box warn" style="margin-bottom:20px;">
+    <span class="info-icon">💡</span>
+    <div><strong>Key Insight:</strong> CDC Mode controls <em>how data is extracted</em> from SQL Server. DLT Execution Mode controls <em>how data is processed</em> in Databricks. They are independent — you can mix and match them.</div>
+  </div>
+
+  <div class="grid-2" style="margin-bottom:24px;">
+    <!-- CDC Mode -->
+    <div style="background:var(--surface-2);border-radius:var(--r);padding:24px;border-top:3px solid var(--blue);">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--blue);margin-bottom:8px;">CDC Mode <code style="font-size:10px;opacity:.7;">cdc_mode</code></div>
+      <div style="font-size:18px;font-weight:800;color:var(--t1);margin-bottom:12px;">How Data is <span style="color:var(--blue);">Extracted</span></div>
+      <p style="font-size:13px;color:var(--t3);margin-bottom:16px;">Controls the SQL query used by <strong>01_Meta_Extract.py</strong> to pull data from Azure SQL Server into the Landing Zone.</p>
+
+      <div style="background:var(--surface);border-radius:var(--r-sm);padding:14px;margin-bottom:12px;border:1px solid var(--border);">
+        <div style="font-weight:700;font-size:13px;color:var(--amber);margin-bottom:6px;">🔸 Watermark (Classic)</div>
+        <div style="font-size:12px;color:var(--t3);margin-bottom:8px;">Uses a date/ID column to track "last extracted" position</div>
+        <pre style="font-size:11px;margin:0;padding:10px;"><span class="kw">SELECT</span> * <span class="kw">FROM</span> [dbo].[Employees]
+<span class="kw">WHERE</span> [ModifiedDate] > <span class="str">'2026-03-21'</span></pre>
+      </div>
+
+      <div style="background:var(--surface);border-radius:var(--r-sm);padding:14px;border:1px solid var(--border);">
+        <div style="font-weight:700;font-size:13px;color:var(--green);margin-bottom:6px;">🔹 Change Tracking (CT)</div>
+        <div style="font-size:12px;color:var(--t3);margin-bottom:8px;">Uses SQL Server's built-in CT system to get exact I/U/D operations</div>
+        <pre style="font-size:11px;margin:0;padding:10px;"><span class="kw">SELECT</span> T.*, CT.<span class="col">SYS_CHANGE_OPERATION</span>
+<span class="kw">FROM</span> <span class="fn">CHANGETABLE</span>(CHANGES [Employees], <span class="num">42</span>) CT
+<span class="kw">INNER JOIN</span> [Employees] T <span class="kw">ON</span> CT.ID = T.ID</pre>
+      </div>
+    </div>
+
+    <!-- DLT Execution Mode -->
+    <div style="background:var(--surface-2);border-radius:var(--r);padding:24px;border-top:3px solid var(--purple);">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--purple);margin-bottom:8px;">DLT Execution Mode <code style="font-size:10px;opacity:.7;">exec_mode</code></div>
+      <div style="font-size:18px;font-weight:800;color:var(--t1);margin-bottom:12px;">How Data is <span style="color:var(--purple);">Processed</span></div>
+      <p style="font-size:13px;color:var(--t3);margin-bottom:16px;">Controls how <strong>02_Bronze</strong> and <strong>03_Silver</strong> notebooks write data — standard PySpark or Delta Live Tables.</p>
+
+      <div style="background:var(--surface);border-radius:var(--r-sm);padding:14px;margin-bottom:12px;border:1px solid var(--border);">
+        <div style="font-weight:700;font-size:13px;color:var(--amber);margin-bottom:6px;">🔸 Standard (PySpark)</div>
+        <div style="font-size:12px;color:var(--t3);margin-bottom:8px;">Regular <code>spark.write.saveAsTable()</code> with manual DQ checks</div>
+        <pre style="font-size:11px;margin:0;padding:10px;">df.write.format(<span class="str">"delta"</span>)
+  .mode(<span class="str">"overwrite"</span>)
+  .saveAsTable(<span class="str">"bronze_Employees"</span>)</pre>
+      </div>
+
+      <div style="background:var(--surface);border-radius:var(--r-sm);padding:14px;border:1px solid var(--border);">
+        <div style="font-weight:700;font-size:13px;color:var(--green);margin-bottom:6px;">🔹 Delta Live Tables (DLT)</div>
+        <div style="font-size:12px;color:var(--t3);margin-bottom:8px;">Uses <code>@dlt.table</code>, <code>@dlt.expect</code>, and <code>dlt.apply_changes()</code></div>
+        <pre style="font-size:11px;margin:0;padding:10px;"><span class="fn">@dlt.table</span>(name=<span class="str">"bronze_Employees"</span>)
+<span class="fn">@dlt.expect_or_drop</span>(<span class="str">"valid_ts"</span>, <span class="str">"..."</span>)
+<span class="kw">def</span> <span class="fn">bronze</span>(): <span class="kw">return</span> df</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Combination Matrix -->
+  <p style="font-size:16px;font-weight:800;color:var(--t1);margin:0 0 14px;">All 4 Possible Combinations</p>
+
+  <table>
+    <tr>
+      <th style="width:160px;">Combination</th>
+      <th style="width:130px;">CDC Mode</th>
+      <th style="width:130px;">DLT Mode</th>
+      <th>What Happens</th>
+      <th style="width:100px;">Use Case</th>
+    </tr>
+    <tr>
+      <td style="font-weight:700;color:var(--t4);">① Basic</td>
+      <td><span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;background:rgba(100,116,139,.2);color:var(--t3);">Watermark</span></td>
+      <td><span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;background:rgba(100,116,139,.2);color:var(--t3);">Standard</span></td>
+      <td style="font-size:12px;">Classic incremental by date column → PySpark <code>spark.write</code> → overwrite/append to Bronze/Silver Delta tables</td>
+      <td style="font-size:11px;color:var(--t4);">Simple migration</td>
+    </tr>
+    <tr>
+      <td style="font-weight:700;color:var(--amber);">② DLT Only</td>
+      <td><span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;background:rgba(100,116,139,.2);color:var(--t3);">Watermark</span></td>
+      <td><span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;background:rgba(139,92,246,.2);color:var(--purple);">DLT</span></td>
+      <td style="font-size:12px;">Watermark extract → <code>@dlt.table</code> with quality expectations → <code>@dlt.table</code> Silver with DQ. No MERGE.</td>
+      <td style="font-size:11px;color:var(--t4);">DLT quality gates</td>
+    </tr>
+    <tr>
+      <td style="font-weight:700;color:var(--blue);">③ CT Only</td>
+      <td><span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;background:rgba(59,130,246,.2);color:var(--blue);">Change Tracking</span></td>
+      <td><span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;background:rgba(100,116,139,.2);color:var(--t3);">Standard</span></td>
+      <td style="font-size:12px;">CHANGETABLE extract with I/U/D ops → PySpark writes with CDC columns → manual MERGE in Silver if needed</td>
+      <td style="font-size:11px;color:var(--t4);">CT without DLT</td>
+    </tr>
+    <tr style="background:rgba(16,185,129,.05);">
+      <td style="font-weight:700;color:var(--green);">④ Full CDC+DLT ★</td>
+      <td><span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;background:rgba(59,130,246,.2);color:var(--blue);">Change Tracking</span></td>
+      <td><span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;background:rgba(139,92,246,.2);color:var(--purple);">DLT</span></td>
+      <td style="font-size:12px;">CHANGETABLE extract → <code>@dlt.table</code> Bronze → <code>dlt.apply_changes()</code> Silver with <strong>SCD Type 1 MERGE</strong>. Full automated I/U/D.</td>
+      <td style="font-size:11px;color:var(--green);font-weight:700;">Recommended</td>
+    </tr>
+  </table>
+
+  <!-- Visual comparison -->
+  <p style="font-size:14px;font-weight:700;color:var(--t1);margin:24px 0 14px;">Visual: Where Each Setting Acts</p>
+
+  <div style="display:flex;align-items:stretch;gap:0;margin:0 0 16px;flex-wrap:wrap;">
+    <!-- Extract block -->
+    <div style="flex:1;min-width:200px;padding:16px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:var(--r-sm) 0 0 var(--r-sm);text-align:center;">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--blue);margin-bottom:6px;">01_Extract</div>
+      <div style="font-size:24px;margin-bottom:4px;">📥</div>
+      <div style="font-size:13px;font-weight:700;color:var(--t1);">Azure SQL → Landing</div>
+      <div style="margin-top:8px;padding:6px 12px;border-radius:6px;background:rgba(59,130,246,.15);display:inline-block;">
+        <span style="font-size:11px;font-weight:700;color:var(--blue);">← CDC MODE controls this</span>
+      </div>
+      <div style="font-size:11px;color:var(--t4);margin-top:6px;">Watermark query <em>or</em> CHANGETABLE</div>
+    </div>
+    <!-- Arrow -->
+    <div style="display:flex;align-items:center;padding:0 2px;font-size:20px;color:var(--t4);">→</div>
+    <!-- Bronze block -->
+    <div style="flex:1;min-width:200px;padding:16px;background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.2);text-align:center;">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--purple);margin-bottom:6px;">02_Bronze</div>
+      <div style="font-size:24px;margin-bottom:4px;">🥉</div>
+      <div style="font-size:13px;font-weight:700;color:var(--t1);">Landing → Bronze Delta</div>
+      <div style="margin-top:8px;padding:6px 12px;border-radius:6px;background:rgba(139,92,246,.15);display:inline-block;">
+        <span style="font-size:11px;font-weight:700;color:var(--purple);">← DLT MODE controls this</span>
+      </div>
+      <div style="font-size:11px;color:var(--t4);margin-top:6px;">spark.write <em>or</em> @dlt.table</div>
+    </div>
+    <!-- Arrow -->
+    <div style="display:flex;align-items:center;padding:0 2px;font-size:20px;color:var(--t4);">→</div>
+    <!-- Silver block -->
+    <div style="flex:1;min-width:200px;padding:16px;background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.2);border-radius:0 var(--r-sm) var(--r-sm) 0;text-align:center;">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--purple);margin-bottom:6px;">03_Silver</div>
+      <div style="font-size:24px;margin-bottom:4px;">🥈</div>
+      <div style="font-size:13px;font-weight:700;color:var(--t1);">Bronze → Silver Delta</div>
+      <div style="margin-top:8px;padding:6px 12px;border-radius:6px;background:linear-gradient(90deg,rgba(59,130,246,.15),rgba(139,92,246,.15));display:inline-block;">
+        <span style="font-size:11px;font-weight:700;color:var(--cyan);">← BOTH control this</span>
+      </div>
+      <div style="font-size:11px;color:var(--t4);margin-top:6px;">CT+DLT → apply_changes()<br>CT+Std → manual MERGE<br>WM+DLT → @dlt.table</div>
+    </div>
+  </div>
+
+  <div class="info-box tip">
+    <span class="info-icon">⭐</span>
+    <div>
+      <strong>Recommendation:</strong> Use <strong>Change Tracking + DLT</strong> (combination ④) for production workloads. This gives you:
+      <ul style="margin:6px 0 0 16px;font-size:12px;">
+        <li><strong>Efficient extraction</strong> — only changed rows pulled via CHANGETABLE</li>
+        <li><strong>Automated MERGE</strong> — <code>dlt.apply_changes()</code> handles INSERT/UPDATE/DELETE automatically</li>
+        <li><strong>Quality gates</strong> — <code>@dlt.expect</code> validates data at each layer</li>
+        <li><strong>Lineage & observability</strong> — DLT event log tracks all expectations, row counts, and pipeline health</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ FAQ ═══════════ -->
+<div class="divider"><div class="divider-line"></div><div class="divider-text">Frequently Asked Questions</div><div class="divider-line"></div></div>
+
+<div class="card">
+  <details style="margin-bottom:12px;">
+    <summary style="cursor:pointer;font-weight:700;font-size:14px;color:var(--t1);padding:8px 0;">What if Change Tracking retention expires?</summary>
+    <div style="padding:8px 0 0 16px;font-size:13px;color:var(--t3);">If the stored CT version is older than the <code>CHANGE_RETENTION</code> period, SQL Server returns an error. The pipeline will fall back to a full load and reset the CT version. Set <code>CHANGE_RETENTION</code> high enough to cover your pipeline schedule (e.g., 3-7 days).</div>
+  </details>
+  <details style="margin-bottom:12px;">
+    <summary style="cursor:pointer;font-weight:700;font-size:14px;color:var(--t1);padding:8px 0;">Can I use different primary keys per table?</summary>
+    <div style="padding:8px 0 0 16px;font-size:13px;color:var(--t3);">Yes. When creating pipelines in bulk, each table can override the global <code>primary_keys</code> in its source_config. The notebook reads <code>source_config.get("primary_keys", [])</code> per-job from <code>wf_job_metadata</code>.</div>
+  </details>
+  <details style="margin-bottom:12px;">
+    <summary style="cursor:pointer;font-weight:700;font-size:14px;color:var(--t1);padding:8px 0;">Why both CDF and apply_changes?</summary>
+    <div style="padding:8px 0 0 16px;font-size:13px;color:var(--t3);"><strong>Change Data Feed (CDF)</strong> on Bronze/Silver tables allows <em>downstream</em> consumers to read only changes (e.g., Gold layer, BI tools). <strong>apply_changes</strong> is how the Silver layer <em>processes</em> CDC data from Bronze — they serve different purposes and complement each other.</div>
+  </details>
+  <details style="margin-bottom:12px;">
+    <summary style="cursor:pointer;font-weight:700;font-size:14px;color:var(--t1);padding:8px 0;">What's the difference between CDC Mode and DLT Execution Mode?</summary>
+    <div style="padding:8px 0 0 16px;font-size:13px;color:var(--t3);">
+      <strong>CDC Mode</strong> (<code>cdc_mode</code>): Controls how data is <em>extracted</em> from SQL Server — either classic watermark-based or Change Tracking.<br>
+      <strong>DLT Execution Mode</strong> (<code>exec_mode</code>): Controls how Bronze/Silver notebooks <em>process</em> data — either standard PySpark write or DLT decorators.<br>
+      You can use CT extraction with standard PySpark mode (no DLT), but DLT + CT gives you the full <code>apply_changes()</code> SCD merge capability.
+    </div>
+  </details>
+  <details>
+    <summary style="cursor:pointer;font-weight:700;font-size:14px;color:var(--t1);padding:8px 0;">How do Deletes work if they're excluded from the INNER JOIN?</summary>
+    <div style="padding:8px 0 0 16px;font-size:13px;color:var(--t3);">The extract query uses <code>WHERE SYS_CHANGE_OPERATION IN ('I','U')</code> because deleted rows no longer exist in the source table (so INNER JOIN returns nothing). To capture deletes, you'd add a separate query for <code>SYS_CHANGE_OPERATION = 'D'</code> using only the CT columns — the pipeline's <code>apply_as_deletes</code> expression in Silver then removes matching rows by primary key.</div>
+  </details>
+</div>
+
+<!-- Footer -->
+<div style="text-align:center;padding:40px 0 20px;color:var(--t4);font-size:12px;">
+  <p>SQL → Databricks Migration Studio · CDC &amp; DLT Technical Reference</p>
+  <p style="margin-top:4px;">Generated March 2026</p>
+</div>
+
+</div>
+</body>
+</html>

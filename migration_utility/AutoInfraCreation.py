@@ -3,6 +3,8 @@ AutoInfraCreation — Automated Unity Catalog Infrastructure Setup
 Creates Azure Storage, Access Connector, External Locations, Volume, and Catalogs
 for an external Unity Catalog on Azure Databricks.
 
+Uses Azure Python SDK (no Azure CLI dependency).
+
 Usage:
     python AutoInfraCreation.py                 # interactive — prompts for credentials
     python AutoInfraCreation.py --auto          # uses env-vars for all credentials
@@ -12,9 +14,8 @@ import os
 import sys
 import json
 import time
-import shutil
+import uuid
 import argparse
-import subprocess
 from datetime import datetime
 
 
@@ -76,77 +77,37 @@ def _log(msg, level="INFO"):
     print(f"[{_ts()}] [{level}] {msg}")
 
 
-def _find_az():
-    """Locate the Azure CLI executable (handles Windows .cmd/.bat extension)."""
-    # Try 'az' directly first
-    az = shutil.which("az")
-    if az:
-        return az
-    # On Windows, az may be az.cmd (MSI) or az.bat (pip install)
-    if sys.platform == "win32":
-        for ext in ("az.cmd", "az.bat"):
-            az = shutil.which(ext)
-            if az:
-                return az
-        # Check inside the current Python env's Scripts dir (pip-installed az)
-        scripts_dir = os.path.join(sys.prefix, "Scripts")
-        for name in ("az.bat", "az.cmd"):
-            candidate = os.path.join(scripts_dir, name)
-            if os.path.isfile(candidate):
-                return candidate
-        # Common MSI install locations
-        for candidate in [
-            os.path.expandvars(r"%ProgramFiles(x86)%\Microsoft SDKs\Azure\CLI2\wbin\az.cmd"),
-            os.path.expandvars(r"%ProgramFiles%\Microsoft SDKs\Azure\CLI2\wbin\az.cmd"),
-            os.path.expandvars(r"%LOCALAPPDATA%\Programs\Microsoft SDKs\Azure\CLI2\wbin\az.cmd"),
-        ]:
-            if os.path.isfile(candidate):
-                return candidate
-    return None
+# Cache credential so the browser prompt only appears once per session
+_CACHED_CREDENTIAL = None
 
-_AZ_PATH = _find_az()
+def _get_azure_credential():
+    """Return an Azure credential.
 
+    Tries DefaultAzureCredential first (env-vars, managed-identity, VS Code,
+    Azure CLI if installed).  If that fails, falls back to
+    InteractiveBrowserCredential which opens a browser window for login.
+    """
+    global _CACHED_CREDENTIAL
+    if _CACHED_CREDENTIAL is not None:
+        return _CACHED_CREDENTIAL
 
-def _run_az(args: list, check: bool = True) -> dict:
-    """Run an `az` CLI command and return parsed JSON output."""
-    if not _AZ_PATH:
-        msg = ("Azure CLI ('az') not found in PATH. "
-               "Install from https://aka.ms/installazurecli and restart the terminal/server.")
-        _log(msg, "ERROR")
-        if check:
-            raise RuntimeError(msg)
-        return {}
+    from azure.identity import DefaultAzureCredential, InteractiveBrowserCredential
 
-    cmd = [_AZ_PATH] + args + ["-o", "json"]
-    _log(f"az {' '.join(args[:6])}…")
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300,
-                                stdin=subprocess.DEVNULL,          # prevent interactive prompts
-                                shell=(sys.platform == "win32"))   # shell=True on Windows for .cmd
-    except FileNotFoundError:
-        msg = "Azure CLI ('az') not found. Install from https://aka.ms/installazurecli"
-        _log(msg, "ERROR")
-        if check:
-            raise RuntimeError(msg)
-        return {}
-    except subprocess.TimeoutExpired:
-        msg = "az command timed out after 300 seconds"
-        _log(msg, "ERROR")
-        if check:
-            raise RuntimeError(msg)
-        return {}
+        cred = DefaultAzureCredential()
+        # Force a token request to verify it works
+        cred.get_token("https://management.azure.com/.default")
+        _log("Authenticated via DefaultAzureCredential.")
+        _CACHED_CREDENTIAL = cred
+        return cred
+    except Exception:
+        _log("DefaultAzureCredential unavailable — opening browser for interactive login…", "WARN")
 
-    if result.returncode != 0:
-        err = result.stderr.strip() or result.stdout.strip() or f"exit code {result.returncode}"
-        if check:
-            _log(f"AZ CLI error: {err[:500]}", "ERROR")
-            raise RuntimeError(err[:500])
-        _log(f"AZ CLI warning (rc={result.returncode}): {err[:300]}", "WARN")
-        return {}
-    try:
-        return json.loads(result.stdout) if result.stdout.strip() else {}
-    except json.JSONDecodeError:
-        return {"raw": result.stdout.strip()[:500]}
+    cred = InteractiveBrowserCredential()
+    cred.get_token("https://management.azure.com/.default")  # triggers browser
+    _log("Authenticated via interactive browser login.")
+    _CACHED_CREDENTIAL = cred
+    return cred
 
 
 def _databricks_api(method, path, cfg, payload=None):
@@ -171,110 +132,156 @@ def _databricks_api(method, path, cfg, payload=None):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  Step 1 — Create Storage Account + Container + Folders
+#  Step 0 — Verify Azure Credentials  (Python SDK — no CLI needed)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def set_subscription(cfg):
+    """Verify Azure credentials and subscription access via Python SDK."""
+    from azure.mgmt.resource import ResourceManagementClient
+
+    sub = cfg["subscription_id"]
+    _log(f"Authenticating to Azure (subscription: {sub})…")
+    credential = _get_azure_credential()
+    # Verify we can access the subscription by listing resource groups
+    rm_client = ResourceManagementClient(credential, sub)
+    rg_name = cfg["resource_group"]
+    try:
+        rg = rm_client.resource_groups.get(rg_name)
+        _log(f"Verified: Resource Group '{rg_name}' exists in '{rg.location}'")
+    except Exception as e:
+        if "not found" in str(e).lower() or "could not be found" in str(e).lower():
+            _log(f"Resource Group '{rg_name}' not found — creating in '{cfg['region']}'…")
+            rm_client.resource_groups.create_or_update(rg_name, {"location": cfg["region"]})
+            _log(f"Resource Group '{rg_name}' created.")
+        else:
+            raise
+    _log("Azure authentication successful.")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Step 1 — Create Storage Account + Container + Folders  (Python SDK)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def create_storage(cfg):
     _log("═══ Step 1: Storage Account + Container + Folders ═══")
+
+    from azure.mgmt.storage import StorageManagementClient
+    from azure.mgmt.storage.models import (
+        StorageAccountCreateParameters, Sku, Kind,
+    )
+    from azure.storage.filedatalake import DataLakeServiceClient
 
     sub  = cfg["subscription_id"]
     rg   = cfg["resource_group"]
     sa   = cfg["storage_account"]
     loc  = cfg["region"]
     ctr  = cfg["container"]
+    credential = _get_azure_credential()
 
     # 1a — Storage account (HNS enabled for ADLS Gen2)
     _log(f"Creating storage account '{sa}' in '{loc}'…")
-    _run_az([
-        "storage", "account", "create",
-        "--name", sa,
-        "--resource-group", rg,
-        "--location", loc,
-        "--sku", "Standard_LRS",
-        "--kind", "StorageV2",
-        "--hns", "true",                     # hierarchical namespace → ADLS Gen2
-        "--subscription", sub,
-    ], check=False)
-    _log(f"Storage account '{sa}' ready.")
+    storage_client = StorageManagementClient(credential, sub)
+    try:
+        existing = storage_client.storage_accounts.get_properties(rg, sa)
+        _log(f"Storage account '{sa}' already exists — OK.", "WARN")
+    except Exception:
+        # Create the account
+        params = StorageAccountCreateParameters(
+            sku=Sku(name="Standard_LRS"),
+            kind=Kind.STORAGE_V2,
+            location=loc,
+            is_hns_enabled=True,  # hierarchical namespace → ADLS Gen2
+        )
+        poller = storage_client.storage_accounts.begin_create(rg, sa, params)
+        poller.result()  # wait for completion
+        _log(f"Storage account '{sa}' created.")
 
     # Verify it exists
-    sa_info = _run_az([
-        "storage", "account", "show",
-        "--name", sa,
-        "--resource-group", rg,
-        "--subscription", sub,
-    ], check=False)
-    if not sa_info.get("id"):
-        raise RuntimeError(f"Storage account '{sa}' not found after create. Check RG '{rg}' exists and you have permissions.")
+    try:
+        sa_info = storage_client.storage_accounts.get_properties(rg, sa)
+        _log(f"Storage account '{sa}' verified (id: {sa_info.id[:80]}…)")
+    except Exception as e:
+        raise RuntimeError(
+            f"Storage account '{sa}' not found after create. "
+            f"Check RG '{rg}' exists and you have permissions. Error: {e}"
+        )
 
-    # 1b — Container
-    _log(f"Creating container '{ctr}'…")
-    _run_az([
-        "storage", "container", "create",
-        "--name", ctr,
-        "--account-name", sa,
-        "--auth-mode", "login",
-        "--subscription", sub,
-    ], check=False)
-    _log(f"Container '{ctr}' ready.")
+    # 1b & 1c — Container + Folders using DataLake SDK
+    account_url = f"https://{sa}.dfs.core.windows.net"
+    datalake_client = DataLakeServiceClient(account_url=account_url, credential=credential)
 
-    # 1c — Folders (virtual directories — create zero-byte marker blobs)
-    for folder in cfg["folders"]:
+    _log(f"Creating container (filesystem) '{ctr}'…")
+    try:
+        fs_client = datalake_client.create_file_system(ctr)
+        _log(f"Container '{ctr}' created.")
+    except Exception as e:
+        if "already exists" in str(e).lower() or "ContainerAlreadyExists" in str(e):
+            _log(f"Container '{ctr}' already exists — OK.", "WARN")
+            fs_client = datalake_client.get_file_system_client(ctr)
+        else:
+            raise
+
+    # 1c — Folders (directories in ADLS)
+    for folder in cfg.get("folders", []):
         _log(f"Creating folder '{folder}'…")
-        _run_az([
-            "storage", "fs", "directory", "create",
-            "--name", folder,
-            "--file-system", ctr,
-            "--account-name", sa,
-            "--auth-mode", "login",
-        ], check=False)
+        try:
+            dir_client = fs_client.create_directory(folder)
+            _log(f"  Folder '{folder}' created.")
+        except Exception as e:
+            if "already exists" in str(e).lower() or "PathAlreadyExists" in str(e):
+                _log(f"  Folder '{folder}' already exists — OK.", "WARN")
+            else:
+                _log(f"  Failed to create folder '{folder}': {e}", "ERROR")
     _log("All folders created.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  Step 2 — Create Access Connector + Role Assignment
+#  Step 2 — Create Access Connector + Role Assignment  (Python SDK)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def create_access_connector(cfg):
     _log("═══ Step 2: Access Connector + Role Assignment ═══")
+
+    from azure.mgmt.databricks import AzureDatabricksManagementClient
+    from azure.mgmt.authorization import AuthorizationManagementClient
 
     sub  = cfg["subscription_id"]
     rg   = cfg["resource_group"]
     loc  = cfg["region"]
     ac   = cfg["access_connector"]
     sa   = cfg["storage_account"]
+    credential = _get_azure_credential()
 
-    # 2a — Create Access Connector (idempotent — check=False so "already exists" doesn't abort)
+    # 2a — Create Access Connector via azure-mgmt-databricks
     _log(f"Creating Access Connector '{ac}'…")
-    _run_az([
-        "databricks", "access-connector", "create",
-        "--name", ac,
-        "--resource-group", rg,
-        "--location", loc,
-        "--identity-type", "SystemAssigned",
-        "--subscription", sub,
-    ], check=False)
-    _log(f"Access Connector '{ac}' create request done.")
+    dbr_client = AzureDatabricksManagementClient(credential, sub)
+    connector_body = {
+        "location": loc,
+        "identity": {"type": "SystemAssigned"},
+    }
+    try:
+        poller = dbr_client.access_connectors.begin_create_or_update(rg, ac, connector_body)
+        ac_result = poller.result()
+        _log(f"Access Connector '{ac}' created/updated.")
+    except Exception as e:
+        _log(f"Access Connector create error: {e}", "ERROR")
+        # Try to fetch it if it already exists
+        try:
+            ac_result = dbr_client.access_connectors.get(rg, ac)
+            _log(f"Access Connector '{ac}' already exists — using it.", "WARN")
+        except Exception as e2:
+            raise RuntimeError(
+                f"Access Connector '{ac}' not found in RG '{rg}'. Error: {e2}"
+            )
 
-    # 2b — Always fetch via `show` to get the ID and principal (works even if already existed)
-    _log(f"Fetching Access Connector details…")
-    ac_info = _run_az([
-        "databricks", "access-connector", "show",
-        "--name", ac,
-        "--resource-group", rg,
-        "--subscription", sub,
-    ], check=False)
-
-    connector_id = ac_info.get("id", "")
-    principal_id = ac_info.get("identity", {}).get("principalId", "")
+    connector_id = ac_result.id
+    principal_id = (ac_result.identity.principal_id
+                    if ac_result.identity else None)
 
     if not connector_id:
-        _log("Could not retrieve Access Connector ID! Check that the resource group and connector name are correct.", "ERROR")
-        _log(f"  az response: {json.dumps(ac_info)[:400]}", "ERROR")
         raise RuntimeError(
             f"Access Connector '{ac}' not found in RG '{rg}'. "
-            f"Verify the resource group exists and 'az databricks' extension is installed "
-            f"(`az extension add --name databricks`)."
+            f"Verify the resource group exists."
         )
 
     _log(f"Access Connector ID: {connector_id}")
@@ -286,16 +293,42 @@ def create_access_connector(cfg):
             f"/subscriptions/{sub}/resourceGroups/{rg}"
             f"/providers/Microsoft.Storage/storageAccounts/{sa}"
         )
-        _log("Assigning Storage Blob Data Contributor role…")
-        _run_az([
-            "role", "assignment", "create",
-            "--assignee-object-id", principal_id,
-            "--assignee-principal-type", "ServicePrincipal",
-            "--role", cfg.get("role_assignment", "Storage Blob Data Contributor"),
-            "--scope", storage_scope,
-            "--subscription", sub,
-        ], check=False)   # may already exist — treat as warning
-        _log("Role assignment complete.")
+        role_name = cfg.get("role_assignment", "Storage Blob Data Contributor")
+        _log(f"Assigning '{role_name}' role…")
+
+        auth_client = AuthorizationManagementClient(credential, sub)
+
+        # Find the role definition ID
+        role_defs = list(auth_client.role_definitions.list(
+            storage_scope,
+            filter=f"roleName eq '{role_name}'"
+        ))
+        if not role_defs:
+            _log(f"Role definition '{role_name}' not found!", "ERROR")
+        else:
+            role_def_id = role_defs[0].id
+            assignment_name = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{principal_id}:{role_def_id}:{storage_scope}"))
+            try:
+                auth_client.role_assignments.create(
+                    storage_scope,
+                    assignment_name,
+                    {
+                        "role_definition_id": role_def_id,
+                        "principal_id": principal_id,
+                        "principal_type": "ServicePrincipal",
+                    },
+                )
+                _log("Role assignment complete.")
+            except Exception as e:
+                if "already exists" in str(e).lower() or "RoleAssignmentExists" in str(e):
+                    _log("Role assignment already exists — OK.", "WARN")
+                else:
+                    _log(f"Role assignment warning: {e}", "WARN")
+                    _log(f"ACTION REQUIRED: Manually assign '{role_name}' role to the Access Connector's managed identity.", "WARN")
+                    _log(f"  Principal ID : {principal_id}", "WARN")
+                    _log(f"  Storage Acct : {sa}", "WARN")
+                    _log(f"  Go to: Azure Portal → Storage Account '{sa}' → Access Control (IAM) → Add role assignment", "WARN")
+                    _log("  External Locations will be created with skip_validation=true and can be validated later.", "WARN")
     else:
         _log("No principalId found — role assignment skipped (connector may not have SystemAssigned identity)", "WARN")
 
@@ -365,6 +398,22 @@ def create_external_locations(cfg, credential_name):
             _log(f"External location '{loc_name}' created.")
         elif "already exists" in json.dumps(body).lower():
             _log(f"External location '{loc_name}' already exists — skipping.", "WARN")
+        elif "cloud_storage_access" in json.dumps(body).lower() or "abfsrestoperation" in json.dumps(body).lower():
+            # Storage access not yet available (role assignment pending) — retry with skip_validation
+            _log(f"Storage access validation failed — retrying '{loc_name}' with skip_validation=true…", "WARN")
+            payload["skip_validation"] = True
+            ok2, body2 = _databricks_api(
+                "POST",
+                "/api/2.1/unity-catalog/external-locations",
+                cfg,
+                payload,
+            )
+            if ok2:
+                _log(f"External location '{loc_name}' created (validation skipped — assign Storage Blob Data Contributor role and validate later).", "WARN")
+            elif "already exists" in json.dumps(body2).lower():
+                _log(f"External location '{loc_name}' already exists — OK.", "WARN")
+            else:
+                _log(f"Failed to create external location '{loc_name}' even with skip_validation: {body2}", "ERROR")
         else:
             _log(f"Failed to create external location '{loc_name}': {body}", "ERROR")
 
@@ -426,6 +475,62 @@ def create_catalogs(cfg):
                 _log(f"  Schema '{catalog_name}.{schema_name}' already exists — OK.", "WARN")
             else:
                 _log(f"  Failed to create schema '{catalog_name}.{schema_name}': {body2}", "ERROR")
+
+    # ── Create Reconciliation catalog if configured ──
+    recon_cfg = cfg.get("reconciliation", {})
+    if recon_cfg and recon_cfg.get("catalog"):
+        r_cat = recon_cfg["catalog"]
+        r_sch = recon_cfg.get("schema", "hr")
+        r_loc = recon_cfg.get("location", "")
+        _log(f"Creating reconciliation catalog '{r_cat}' → {r_loc}")
+        payload = {"name": r_cat, "comment": "Reconciliation results catalog"}
+        if r_loc:
+            payload["storage_root"] = r_loc
+        ok, body = _databricks_api("POST", "/api/2.1/unity-catalog/catalogs", cfg, payload)
+        if ok:
+            _log(f"Catalog '{r_cat}' created.")
+        elif "already exists" in json.dumps(body).lower():
+            _log(f"Catalog '{r_cat}' already exists — OK.", "WARN")
+        else:
+            _log(f"Failed to create reconciliation catalog: {body}", "ERROR")
+        # Create schema
+        if ok or "already exists" in json.dumps(body).lower():
+            ok2, body2 = _databricks_api("POST", "/api/2.1/unity-catalog/schemas", cfg,
+                {"name": r_sch, "catalog_name": r_cat, "comment": f"Reconciliation schema {r_sch}"})
+            if ok2:
+                _log(f"  Schema '{r_cat}.{r_sch}' created.")
+            elif "already exists" in json.dumps(body2).lower():
+                _log(f"  Schema '{r_cat}.{r_sch}' already exists — OK.", "WARN")
+            else:
+                _log(f"  Failed to create schema '{r_cat}.{r_sch}': {body2}", "ERROR")
+
+    # ── Create Logging catalog if configured ──
+    log_cfg = cfg.get("logging", {})
+    if log_cfg and log_cfg.get("catalog"):
+        l_cat = log_cfg["catalog"]
+        l_sch = log_cfg.get("schema", "hr")
+        l_loc = log_cfg.get("location", "")
+        _log(f"Creating logging catalog '{l_cat}' → {l_loc}")
+        payload = {"name": l_cat, "comment": "Execution logging catalog"}
+        if l_loc:
+            payload["storage_root"] = l_loc
+        ok, body = _databricks_api("POST", "/api/2.1/unity-catalog/catalogs", cfg, payload)
+        if ok:
+            _log(f"Catalog '{l_cat}' created.")
+        elif "already exists" in json.dumps(body).lower():
+            _log(f"Catalog '{l_cat}' already exists — OK.", "WARN")
+        else:
+            _log(f"Failed to create logging catalog: {body}", "ERROR")
+        # Create schema
+        if ok or "already exists" in json.dumps(body).lower():
+            ok2, body2 = _databricks_api("POST", "/api/2.1/unity-catalog/schemas", cfg,
+                {"name": l_sch, "catalog_name": l_cat, "comment": f"Logging schema {l_sch}"})
+            if ok2:
+                _log(f"  Schema '{l_cat}.{l_sch}' created.")
+            elif "already exists" in json.dumps(body2).lower():
+                _log(f"  Schema '{l_cat}.{l_sch}' already exists — OK.", "WARN")
+            else:
+                _log(f"  Failed to create schema '{l_cat}.{l_sch}': {body2}", "ERROR")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -498,8 +603,8 @@ def run_all(cfg):
     _log(f"Storage Acct : {cfg['storage_account']}")
     _log("")
 
-    # Ensure correct subscription
-    _run_az(["account", "set", "--subscription", cfg["subscription_id"]])
+    # Step 0 — Verify Azure credentials
+    set_subscription(cfg)
 
     # Step 1 — Azure Storage
     create_storage(cfg)
@@ -562,9 +667,8 @@ def run_all_api(cfg):
         finally:
             steps.append(entry)
 
-    # Step 0 — Set subscription
-    _run_step(0, "Set Azure Subscription", _run_az,
-              ["account", "set", "--subscription", cfg["subscription_id"]])
+    # Step 0 — Verify Azure credentials
+    _run_step(0, "Set Azure Subscription", set_subscription, cfg)
 
     # Step 1 — Storage
     _run_step(1, "Create Storage Account + Container + Folders", create_storage, cfg)
@@ -574,19 +678,17 @@ def run_all_api(cfg):
 
     # Steps 3-6 require Databricks credentials
     if cfg.get("databricks_host") and cfg.get("databricks_token"):
-        # Gate: If connector_id is missing, we cannot proceed with steps 3-6
+        # Steps 3 & 4 need connector_id from Step 2
         if not connector_id:
-            msg = ("Access Connector ID not available (Step 2 failed). "
-                   "Cannot create Storage Credential, External Locations, Catalogs, or Volume. "
-                   "Fix Step 2 errors and retry.")
+            skip_msg = ("Access Connector ID not available (Step 2 failed). "
+                        "Cannot create Storage Credential or External Locations. "
+                        "Fix Step 2 errors and retry.")
             for skip_step, skip_name in [
                 (3, "Register Storage Credential"),
                 (4, "Create External Locations"),
-                (5, "Create Unity Catalogs"),
-                (6, "Create Volume"),
             ]:
                 steps.append({"step": skip_step, "name": skip_name,
-                              "status": "skipped", "message": msg, "logs": ""})
+                              "status": "skipped", "message": skip_msg, "logs": ""})
         else:
             cred_name = _run_step(3, "Register Storage Credential in Unity Catalog",
                                   create_storage_credential, cfg, connector_id)
@@ -598,8 +700,10 @@ def run_all_api(cfg):
                               "status": "skipped",
                               "message": "Storage Credential not available (Step 3 failed)",
                               "logs": ""})
-            _run_step(5, "Create Unity Catalogs", create_catalogs, cfg)
-            _run_step(6, "Create Volume", create_volume, cfg)
+
+        # Steps 5 & 6 use Databricks API directly — no connector_id needed
+        _run_step(5, "Create Unity Catalogs", create_catalogs, cfg)
+        _run_step(6, "Create Volume", create_volume, cfg)
     else:
         steps.append({"step": 3, "name": "Databricks API Steps (3-6)",
                       "status": "skipped",
@@ -653,11 +757,10 @@ def run_all_streaming(cfg):
         all_steps.append(entry)
         return entry, result
 
-    # Step 0 — Set subscription
+    # Step 0 — Verify Azure credentials via SDK
     yield {"event": "step", "step": 0, "name": "Set Azure Subscription",
-           "status": "running", "message": "Setting subscription…", "logs": ""}
-    entry, _ = _do_step(0, "Set Azure Subscription", _run_az,
-                        ["account", "set", "--subscription", cfg["subscription_id"]])
+           "status": "running", "message": "Authenticating via Azure SDK…", "logs": ""}
+    entry, _ = _do_step(0, "Set Azure Subscription", set_subscription, cfg)
     yield entry
 
     # Step 1 — Storage
@@ -674,15 +777,15 @@ def run_all_streaming(cfg):
 
     # Steps 3-6 require Databricks credentials
     if cfg.get("databricks_host") and cfg.get("databricks_token"):
+        # Steps 3 & 4 need connector_id from Step 2
         if not connector_id:
-            msg = ("Access Connector ID not available (Step 2 failed). "
-                   "Cannot create Storage Credential, External Locations, Catalogs, or Volume.")
+            skip_msg = ("Access Connector ID not available (Step 2 failed). "
+                        "Cannot create Storage Credential or External Locations.")
             for skip_step, skip_name in [
                 (3, "Register Storage Credential"), (4, "Create External Locations"),
-                (5, "Create Unity Catalogs"), (6, "Create Volume"),
             ]:
                 skip_entry = {"event": "step", "step": skip_step, "name": skip_name,
-                              "status": "skipped", "message": msg, "logs": ""}
+                              "status": "skipped", "message": skip_msg, "logs": ""}
                 all_steps.append(skip_entry)
                 yield skip_entry
         else:
@@ -707,17 +810,16 @@ def run_all_streaming(cfg):
                 all_steps.append(skip_entry)
                 yield skip_entry
 
-            # Step 5
-            yield {"event": "step", "step": 5, "name": "Create Unity Catalogs",
-                   "status": "running", "message": "Creating catalogs…", "logs": ""}
-            entry, _ = _do_step(5, "Create Unity Catalogs", create_catalogs, cfg)
-            yield entry
+        # Steps 5 & 6 use Databricks REST API directly — no connector_id needed
+        yield {"event": "step", "step": 5, "name": "Create Unity Catalogs",
+               "status": "running", "message": "Creating catalogs…", "logs": ""}
+        entry, _ = _do_step(5, "Create Unity Catalogs", create_catalogs, cfg)
+        yield entry
 
-            # Step 6
-            yield {"event": "step", "step": 6, "name": "Create Volume",
-                   "status": "running", "message": "Creating volume…", "logs": ""}
-            entry, _ = _do_step(6, "Create Volume", create_volume, cfg)
-            yield entry
+        yield {"event": "step", "step": 6, "name": "Create Volume",
+               "status": "running", "message": "Creating volume…", "logs": ""}
+        entry, _ = _do_step(6, "Create Volume", create_volume, cfg)
+        yield entry
     else:
         skip_entry = {"event": "step", "step": 3, "name": "Databricks API Steps (3-6)",
                       "status": "skipped",

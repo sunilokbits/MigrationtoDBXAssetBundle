@@ -4,8 +4,11 @@ Routes for: SP → PySpark conversion, Databricks connection test, Notebook uplo
 """
 
 from flask import Flask, request, jsonify, render_template_string, Response
-import os, json, traceback, time
+import os, sys, json, traceback, time
 from datetime import datetime
+
+# Ensure sibling modules are importable regardless of working directory
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from stored_procedures    import STORED_PROCEDURES, SQL_VIEWS, SQL_UDFS, ALL_OBJECTS
 from sp_converter          import get_pyspark_code, get_combined_pyspark_code, get_separate_pyspark_codes
@@ -775,7 +778,38 @@ def healer_health_check():
         d = request.get_json() or {}
         host  = d.get("host", "").strip()
         token = d.get("token", "").strip()
+
+        # Fall back to deployconfig if no credentials provided
+        if not host or not token:
+            try:
+                with open(DEPLOY_CONFIG_PATH, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                host  = host or cfg.get("databricks_host", "").rstrip("/")
+                token = token or cfg.get("databricks_token", "")
+            except Exception:
+                pass
+
         connector = DatabricksConnector(host, token) if host and token else None
+
+        server = d.get("server", "").strip()
+        # Fall back to deployconfig source if no server provided
+        if not server:
+            try:
+                with open(DEPLOY_CONFIG_PATH, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                src_cfg = cfg.get("source", {})
+                server = src_cfg.get("server", "")
+                if server:
+                    d = {
+                        "source_type": src_cfg.get("source_type", "sqlserver"),
+                        "server":      server,
+                        "database":    src_cfg.get("database", ""),
+                        "username":    src_cfg.get("username", ""),
+                        "password":    src_cfg.get("password", ""),
+                    }
+            except Exception:
+                pass
+
         source_config = {
             "source_type": d.get("source_type", "sqlserver"),
             "server":      d.get("server", "").strip(),
@@ -856,6 +890,45 @@ def healer_monitor_check(monitor_id):
 @app.route("/api/healer/monitors", methods=["GET"])
 def healer_list_monitors():
     return jsonify({"success": True, "monitors": healer.list_monitors()})
+
+
+@app.route("/api/healer/recent-runs", methods=["GET"])
+def healer_recent_runs():
+    """Fetch recent job runs from Databricks for the monitor dropdown."""
+    try:
+        with open(DEPLOY_CONFIG_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        host  = cfg.get("databricks_host", "").rstrip("/")
+        token = cfg.get("databricks_token", "")
+        if not host or not token:
+            return jsonify({"success": False, "error": "Databricks not configured"}), 400
+
+        import requests as req
+        resp = req.get(
+            f"{host}/api/2.1/jobs/runs/list",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"limit": 25, "expand_tasks": "false"},
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            return jsonify({"success": False, "error": f"Databricks API: {resp.text[:200]}"}), 500
+
+        data = resp.json()
+        runs = []
+        for r in data.get("runs", []):
+            state = r.get("state", {})
+            runs.append({
+                "run_id":        r.get("run_id"),
+                "run_name":      r.get("run_name", ""),
+                "job_id":        r.get("job_id"),
+                "life_cycle":    state.get("life_cycle_state", ""),
+                "result_state":  state.get("result_state", ""),
+                "start_time":    r.get("start_time"),
+                "end_time":      r.get("end_time"),
+            })
+        return jsonify({"success": True, "runs": runs})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/api/healer/monitor/stop/<monitor_id>", methods=["POST"])
@@ -942,6 +1015,35 @@ def wf_metadata_init():
         warehouse_id = d.get("warehouse_id", "").strip(),
     ))
 
+# ── Auto-init from deployconfig.json (no MetadataFlow visit required) ──
+@app.route("/api/workflow/auto-init", methods=["POST"])
+def wf_auto_init():
+    """Silent init from saved deployconfig.json — called on page load."""
+    try:
+        if not os.path.isfile(DEPLOY_CONFIG_PATH):
+            return jsonify({"success": False, "reason": "no_config"})
+        with open(DEPLOY_CONFIG_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        host = (cfg.get("databricks_host") or "").strip().rstrip("/")
+        token = (cfg.get("databricks_token") or "").strip()
+        catalog = (cfg.get("metadata_catalog") or "").strip()
+        schema = (cfg.get("metadata_schema") or "").strip()
+        if not host or not token:
+            return jsonify({"success": False, "reason": "no_credentials"})
+        if not catalog or not schema:
+            return jsonify({"success": False, "reason": "no_metadata_location"})
+        # If already initialized with same settings, skip
+        if wfm._metadata_initialized and wfm._dbr_host == host and wfm._dbr_catalog == catalog:
+            return jsonify({"success": True, "already_initialized": True,
+                            "catalog": catalog, "schema": schema})
+        result = wfm.init_metadata_flow(host=host, token=token, catalog=catalog, schema=schema)
+        if result.get("success"):
+            # Also load metadata into memory
+            wfm.load_metadata_from_dbr()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
 # ── MetadataFlow — Check metadata status ──
 @app.route("/api/workflow/metadata/status", methods=["GET"])
 def wf_metadata_status():
@@ -978,6 +1080,16 @@ def wf_deploy_notebooks():
         landing_path   = d.get("landing_path", "/mnt/landing").strip(),
         workspace_path = d.get("workspace_path", "/Shared/MetadataPipeline").strip(),
         pipeline_mode  = d.get("pipeline_mode", "standard").strip(),
+        cdc_mode       = d.get("cdc_mode", "watermark").strip(),
+        primary_keys   = d.get("primary_keys", []),
+        recon_catalog  = d.get("recon_catalog", "reconciliation").strip(),
+        recon_schema   = d.get("recon_schema", "hr").strip(),
+        recon_table    = d.get("recon_table", "ReconcilationDetails").strip(),
+        log_catalog    = d.get("log_catalog", "logging").strip(),
+        log_schema     = d.get("log_schema", "hr").strip(),
+        log_table      = d.get("log_table", "ExecutionLog").strip(),
+        recon_location = d.get("recon_location", "").strip(),
+        log_location   = d.get("log_location", "").strip(),
     ))
 
 # ── MetadataFlow — Check notebook deployment status ──
@@ -1053,6 +1165,12 @@ def wf_run_on_databricks(group_id):
         catalog        = d.get("catalog", "").strip(),
         schema         = d.get("schema", "").strip(),
         landing_path   = d.get("landing_path", "/mnt/landing").strip(),
+        recon_catalog  = d.get("recon_catalog", "reconciliation").strip(),
+        recon_schema   = d.get("recon_schema", "hr").strip(),
+        recon_table    = d.get("recon_table", "ReconcilationDetails").strip(),
+        log_catalog    = d.get("log_catalog", "logging").strip(),
+        log_schema     = d.get("log_schema", "hr").strip(),
+        log_table      = d.get("log_table", "ExecutionLog").strip(),
     )
     if not result.get("success"):
         print(f"[WARN] run-databricks failed for group '{group_id}': {result.get('error') or result.get('message')}")
@@ -1106,6 +1224,9 @@ def wf_create_pipeline():
         watermark_column= d.get("watermark_column", ""),
         source_config   = d.get("source_config"),
         target_config   = d.get("target_config"),
+        pipeline_mode   = d.get("pipeline_mode", "standard"),
+        cdc_mode        = d.get("cdc_mode", "watermark"),
+        primary_keys    = d.get("primary_keys", []),
     ))
 
 # ── Bulk Create Pipelines ──
@@ -1116,6 +1237,9 @@ def wf_create_pipelines_bulk():
         tables         = d.get("tables", []),
         source_config  = d.get("source_config"),
         target_config  = d.get("target_config"),
+        pipeline_mode  = d.get("pipeline_mode", "standard"),
+        cdc_mode       = d.get("cdc_mode", "watermark"),
+        primary_keys   = d.get("primary_keys", []),
     ))
 
 # ── List Pipeline Groups ──
@@ -1236,6 +1360,635 @@ def wf_update_watermark():
 def wf_reset_watermark():
     d = request.get_json() or {}
     return jsonify(wfm.reset_watermark(d.get("table")))
+
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  Reports & Analytics — Email Report                                          ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+@app.route("/api/reports/email", methods=["POST"])
+def reports_send_email():
+    """Build an HTML report from job data and send via SMTP."""
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    d = request.get_json() or {}
+    to_addr  = (d.get("to") or "").strip()
+    subject  = d.get("subject", "Migration Pipeline Report")
+    summary  = d.get("summary", {})
+    jobs     = d.get("jobs", [])
+    filters  = d.get("filters", {})
+
+    if not to_addr:
+        return jsonify({"success": False, "error": "Recipient email is required"}), 400
+
+    # Load SMTP config from deployconfig.json (or env vars)
+    smtp_host = os.environ.get("SMTP_HOST", "")
+    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+    smtp_user = os.environ.get("SMTP_USER", "")
+    smtp_pass = os.environ.get("SMTP_PASS", "")
+    smtp_from = os.environ.get("SMTP_FROM", smtp_user or "migration-studio@noreply.com")
+
+    if not smtp_host:
+        # Try loading from deployconfig
+        try:
+            if os.path.isfile(DEPLOY_CONFIG_PATH):
+                with open(DEPLOY_CONFIG_PATH, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                smtp_cfg   = cfg.get("smtp", {})
+                smtp_host  = smtp_cfg.get("host", "")
+                smtp_port  = int(smtp_cfg.get("port", 587))
+                smtp_user  = smtp_cfg.get("user", "")
+                smtp_pass  = smtp_cfg.get("password", "")
+                smtp_from  = smtp_cfg.get("from", smtp_user or "migration-studio@noreply.com")
+        except Exception:
+            pass
+
+    if not smtp_host:
+        return jsonify({
+            "success": False,
+            "error": "SMTP not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS environment variables, or add an 'smtp' section to deployconfig.json."
+        }), 400
+
+    # Build HTML body
+    filter_str = ", ".join(f"{k}: {v or 'all'}" for k, v in filters.items()) if filters else "none"
+    job_rows = ""
+    for j in jobs[:100]:  # Cap at 100 rows for email
+        status_color = {"success": "#059669", "failed": "#DC2626", "running": "#D97706"}.get(j.get("status", ""), "#6366F1")
+        job_rows += f"""<tr>
+          <td style="padding:6px 10px;border-bottom:1px solid #E5E7EB;">{j.get('job_name','—')}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #E5E7EB;">{j.get('stage','—')}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #E5E7EB;">{j.get('table_name','—')}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #E5E7EB;text-align:center;">
+            <span style="padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600;color:#fff;background:{status_color};">{j.get('status','—')}</span>
+          </td>
+          <td style="padding:6px 10px;border-bottom:1px solid #E5E7EB;text-align:center;">{j.get('run_count',0)}</td>
+        </tr>"""
+
+    html = f"""
+    <html><body style="font-family:Arial,sans-serif;color:#1F2937;max-width:800px;margin:0 auto;">
+      <div style="background:linear-gradient(135deg,#0D1526,#1E293B);color:#fff;padding:24px 28px;border-radius:12px 12px 0 0;">
+        <h1 style="margin:0;font-size:20px;">Migration Pipeline Report</h1>
+        <p style="margin:6px 0 0;opacity:.7;font-size:13px;">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')} | Filters: {filter_str}</p>
+      </div>
+      <div style="padding:20px 28px;background:#F9FAFB;border:1px solid #E5E7EB;">
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px;">
+          <div style="flex:1;min-width:120px;background:#fff;border-radius:8px;padding:14px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.08);">
+            <div style="font-size:24px;font-weight:800;color:#1F2937;">{summary.get('total',0)}</div>
+            <div style="font-size:11px;color:#6B7280;text-transform:uppercase;font-weight:600;">Total Jobs</div>
+          </div>
+          <div style="flex:1;min-width:120px;background:#ECFDF5;border-radius:8px;padding:14px;text-align:center;">
+            <div style="font-size:24px;font-weight:800;color:#059669;">{summary.get('success',0)}</div>
+            <div style="font-size:11px;color:#047857;text-transform:uppercase;font-weight:600;">Success</div>
+          </div>
+          <div style="flex:1;min-width:120px;background:#FEF2F2;border-radius:8px;padding:14px;text-align:center;">
+            <div style="font-size:24px;font-weight:800;color:#DC2626;">{summary.get('failed',0)}</div>
+            <div style="font-size:11px;color:#B91C1C;text-transform:uppercase;font-weight:600;">Failed</div>
+          </div>
+          <div style="flex:1;min-width:120px;background:#FFFBEB;border-radius:8px;padding:14px;text-align:center;">
+            <div style="font-size:24px;font-weight:800;color:#D97706;">{summary.get('running',0)}</div>
+            <div style="font-size:11px;color:#92400E;text-transform:uppercase;font-weight:600;">Running</div>
+          </div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);">
+          <thead>
+            <tr style="background:#F3F4F6;">
+              <th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:#6B7280;">Job Name</th>
+              <th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:#6B7280;">Stage</th>
+              <th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;color:#6B7280;">Table</th>
+              <th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase;color:#6B7280;">Status</th>
+              <th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase;color:#6B7280;">Runs</th>
+            </tr>
+          </thead>
+          <tbody>{job_rows if job_rows else '<tr><td colspan="5" style="padding:20px;text-align:center;color:#9CA3AF;">No jobs to report</td></tr>'}</tbody>
+        </table>
+        <p style="margin-top:16px;font-size:11px;color:#9CA3AF;text-align:center;">
+          SQL → Databricks Migration Studio
+        </p>
+      </div>
+    </body></html>
+    """
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"]    = smtp_from
+        msg["To"]      = to_addr
+        msg.attach(MIMEText(html, "html"))
+
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as srv:
+            srv.ehlo()
+            if smtp_port != 25:
+                srv.starttls()
+            if smtp_user and smtp_pass:
+                srv.login(smtp_user, smtp_pass)
+            srv.sendmail(smtp_from, [to_addr], msg.as_string())
+
+        return jsonify({"success": True, "message": f"Report emailed to {to_addr}"})
+    except Exception as e:
+        return jsonify({"success": False, "error": f"SMTP error: {str(e)}"}), 500
+
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  Audit & Compliance Log                                                      ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+AUDIT_LOG_PATH = os.path.join(os.path.dirname(__file__), "audit_events.json")
+
+def _append_audit_event(event):
+    """Append a single audit event to the persistent JSON log."""
+    events = []
+    if os.path.isfile(AUDIT_LOG_PATH):
+        try:
+            with open(AUDIT_LOG_PATH, "r", encoding="utf-8") as f:
+                events = json.load(f)
+        except Exception:
+            events = []
+    events.append(event)
+    with open(AUDIT_LOG_PATH, "w", encoding="utf-8") as f:
+        json.dump(events, f, indent=2, default=str)
+
+@app.route("/api/audit/events", methods=["GET"])
+def get_audit_events():
+    """Return all stored audit events."""
+    if not os.path.isfile(AUDIT_LOG_PATH):
+        return jsonify({"events": []})
+    try:
+        with open(AUDIT_LOG_PATH, "r", encoding="utf-8") as f:
+            events = json.load(f)
+        return jsonify({"events": events})
+    except Exception as e:
+        return jsonify({"events": [], "error": str(e)})
+
+@app.route("/api/audit/events", methods=["POST"])
+def add_audit_event():
+    """Log a new audit event."""
+    data = request.get_json(force=True)
+    event = {
+        "timestamp": data.get("timestamp", datetime.now().isoformat()),
+        "event": data.get("event", ""),
+        "category": data.get("category", "access"),
+        "severity": data.get("severity", "info"),
+        "user": data.get("user", "system"),
+        "details": data.get("details", ""),
+    }
+    _append_audit_event(event)
+    return jsonify({"success": True, "event": event})
+
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  Data Quality Dashboard                                                      ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+DQ_RESULTS_PATH = os.path.join(os.path.dirname(__file__), "dq_results.json")
+
+@app.route("/api/dq/summary", methods=["GET"])
+def get_dq_summary():
+    """Return stored data quality results, if any."""
+    if not os.path.isfile(DQ_RESULTS_PATH):
+        return jsonify({"tables": []})
+    try:
+        with open(DQ_RESULTS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return jsonify({"tables": data if isinstance(data, list) else data.get("tables", [])})
+    except Exception as e:
+        return jsonify({"tables": [], "error": str(e)})
+
+@app.route("/api/dq/summary", methods=["POST"])
+def save_dq_summary():
+    """Save / update data quality results."""
+    data = request.get_json(force=True)
+    tables = data.get("tables", data if isinstance(data, list) else [])
+    with open(DQ_RESULTS_PATH, "w", encoding="utf-8") as f:
+        json.dump(tables, f, indent=2, default=str)
+    return jsonify({"success": True, "count": len(tables)})
+
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  Reports — Databricks Job Metadata                                          ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+@app.route("/api/reports/jobs", methods=["GET"])
+def get_reports_jobs():
+    """Fetch job metadata from Databricks admin_source.Configtables.wf_job_metadata for Reports dashboard."""
+    try:
+        with open(DEPLOY_CONFIG_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except Exception:
+        cfg = {}
+
+    dbx_host  = cfg.get("databricks_host", "").rstrip("/")
+    dbx_token = cfg.get("databricks_token", "")
+
+    if not dbx_host or not dbx_token:
+        return jsonify({"success": False, "jobs": [], "error": "Databricks not configured."})
+
+    # Determine metadata catalog & schema from config
+    catalogs = cfg.get("catalogs", {})
+    meta_cat = "admin_source"
+    meta_sch = "Configtables"
+    for cat_name, cat_cfg in catalogs.items():
+        schemas = cat_cfg.get("schemas", [])
+        if "Configtables" in schemas:
+            meta_cat = cat_name
+            meta_sch = "Configtables"
+            break
+
+    uc = UnityCatalogExecutor(dbx_host, dbx_token, meta_cat, meta_sch)
+    wh_resp = uc.list_warehouses()
+    warehouses = wh_resp.get("warehouses", [])
+    wh_id = next((w["id"] for w in warehouses if w.get("state") == "RUNNING"), None)
+    if not wh_id and warehouses:
+        wh_id = warehouses[0].get("id")
+    if not wh_id:
+        return jsonify({"success": False, "jobs": [], "error": "No SQL Warehouse available."})
+
+    fqn = f"`{meta_cat}`.`{meta_sch}`.`wf_job_metadata`"
+    sql = f"SELECT * FROM {fqn} ORDER BY updated_at DESC"
+    result = uc._execute_statement(sql, wh_id, wait_timeout="30s")
+
+    if result.get("error"):
+        return jsonify({"success": False, "jobs": [], "error": result["error"]})
+
+    status = result.get("status", {}).get("state", "")
+    if status in ("PENDING", "RUNNING"):
+        stmt_id = result.get("statement_id", "")
+        if stmt_id:
+            result = uc._poll_statement(stmt_id)
+
+    if result.get("status", {}).get("error"):
+        return jsonify({"success": False, "jobs": [], "error": str(result["status"]["error"])})
+
+    columns = [c.get("name", "") for c in result.get("manifest", {}).get("schema", {}).get("columns", [])]
+    data_array = result.get("result", {}).get("data_array", [])
+
+    jobs = []
+    for row in data_array:
+        obj = {}
+        for i, col in enumerate(columns):
+            obj[col] = row[i] if i < len(row) else None
+        # Ensure numeric fields
+        obj["run_count"] = int(obj.get("run_count") or 0)
+        obj["fail_count"] = int(obj.get("fail_count") or 0)
+        jobs.append(obj)
+
+    return jsonify({"success": True, "jobs": jobs, "total": len(jobs)})
+
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  Schema Comparison                                                           ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+SCHEMA_COMPARE_PATH = os.path.join(os.path.dirname(__file__), "schema_compare_results.json")
+
+# SQL type → Databricks type mapping (for display normalisation)
+_SQL_TO_DBX_TYPE = {
+    "int": "INT", "bigint": "BIGINT", "smallint": "SMALLINT", "tinyint": "TINYINT",
+    "bit": "BOOLEAN", "float": "DOUBLE", "real": "FLOAT",
+    "decimal": "DECIMAL", "numeric": "DECIMAL", "money": "DECIMAL(19,4)", "smallmoney": "DECIMAL(10,4)",
+    "char": "STRING", "varchar": "STRING", "nchar": "STRING", "nvarchar": "STRING",
+    "text": "STRING", "ntext": "STRING",
+    "date": "DATE", "datetime": "TIMESTAMP", "datetime2": "TIMESTAMP",
+    "smalldatetime": "TIMESTAMP", "datetimeoffset": "TIMESTAMP",
+    "time": "STRING", "uniqueidentifier": "STRING",
+    "binary": "BINARY", "varbinary": "BINARY", "image": "BINARY",
+    "xml": "STRING", "sql_variant": "STRING",
+}
+
+
+def _normalise_sql_type(data_type, char_max_len, precision, scale):
+    """Convert a SQL Server INFORMATION_SCHEMA type to a short display string."""
+    dt = data_type.lower()
+    if dt in ("decimal", "numeric") and precision is not None:
+        return f"DECIMAL({precision},{scale or 0})"
+    if dt in ("varchar", "nvarchar", "char", "nchar"):
+        length = "MAX" if char_max_len in (None, -1) else str(char_max_len)
+        return f"{data_type.upper()}({length})"
+    return data_type.upper()
+
+
+def _expected_dbx_type(data_type):
+    """What Databricks type we expect a SQL Server type to map to."""
+    base = data_type.lower().split("(")[0]
+    return _SQL_TO_DBX_TYPE.get(base, data_type.upper())
+
+
+def _fetch_source_columns(source_cfg, schema_name):
+    """Return {table_name: [{column, data_type, is_nullable}, ...]} from SQL Server."""
+    import pyodbc
+    conn_str = _build_sql_conn_str(
+        source_cfg.get("source_type", "sqlserver"),
+        source_cfg["server"], source_cfg["database"],
+        source_cfg["username"], source_cfg["password"],
+    )
+    conn = pyodbc.connect(conn_str, timeout=15)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE,
+               CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE,
+               IS_NULLABLE
+        FROM   INFORMATION_SCHEMA.COLUMNS
+        WHERE  TABLE_SCHEMA = ?
+        ORDER  BY TABLE_NAME, ORDINAL_POSITION
+    """, (schema_name,))
+    result = {}
+    for row in cursor.fetchall():
+        tbl = row[0]
+        result.setdefault(tbl, []).append({
+            "column": row[1],
+            "data_type": _normalise_sql_type(row[2], row[3], row[4], row[5]),
+            "is_nullable": row[6] == "YES",
+        })
+    conn.close()
+    return result
+
+
+def _fetch_target_columns(host, token, catalog, schema_name):
+    """Return {table_name: [{column, data_type, is_nullable}, ...]} from Databricks UC."""
+    uc = UnityCatalogExecutor(host, token, catalog, schema_name)
+
+    # First, list all tables in catalog.schema via UC REST API
+    tables_resp = uc.list_tables()
+    table_names = []
+    for t in tables_resp.get("tables", []):
+        tname = t.get("table_name") or t.get("name", "")
+        if tname:
+            table_names.append(tname)
+
+    if not table_names:
+        # Fallback: try via SQL if REST API didn't return tables
+        wh_resp = uc.list_warehouses()
+        warehouses = wh_resp.get("warehouses", [])
+        wh_id = next((w["id"] for w in warehouses if w.get("state") == "RUNNING"), None)
+        if not wh_id and warehouses:
+            wh_id = warehouses[0].get("id")
+        if wh_id:
+            show_result = uc._execute_statement(
+                f"SHOW TABLES IN `{catalog}`.`{schema_name}`", wh_id
+            )
+            for chunk in show_result.get("result", {}).get("data_array", []):
+                if len(chunk) >= 2:
+                    table_names.append(chunk[1])
+
+    if not table_names:
+        return {}
+
+    # Get a warehouse for DESCRIBE queries
+    wh_resp = uc.list_warehouses()
+    warehouses = wh_resp.get("warehouses", [])
+    wh_id = next((w["id"] for w in warehouses if w.get("state") == "RUNNING"), None)
+    if not wh_id and warehouses:
+        wh_id = warehouses[0].get("id")
+    if not wh_id:
+        return {}
+
+    result = {}
+    for tbl in table_names:
+        fqn = f"`{catalog}`.`{schema_name}`.`{tbl}`"
+        desc = uc._execute_statement(f"DESCRIBE TABLE {fqn}", wh_id)
+        cols = []
+        for row in desc.get("result", {}).get("data_array", []):
+            col_name = (row[0] or "").strip()
+            if not col_name or col_name.startswith("#"):
+                break  # stop at partition/metadata section
+            cols.append({
+                "column": col_name,
+                "data_type": (row[1] or "").strip().upper(),
+                "is_nullable": True,  # Databricks defaults nullable
+            })
+        if cols:
+            result[tbl] = cols
+    return result
+
+
+@app.route("/api/schema/compare", methods=["POST"])
+def compare_schemas():
+    """Compare source SQL Server schema against target Databricks catalog.schema.
+
+    Accepts JSON body: {source: "database.schema", target: "catalog.schema"}
+    Connects live to both databases and returns column-level diffs.
+    """
+    data = request.get_json(force=True)
+    src = data.get("source", "").strip()
+    tgt = data.get("target", "").strip()
+
+    if not src or not tgt:
+        return jsonify({"tables": [], "error": "source and target are required"}), 400
+
+    # ── Load config ───────────────────────────────────────────────────────────
+    try:
+        with open(DEPLOY_CONFIG_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except Exception:
+        cfg = {}
+
+    source_cfg = cfg.get("source", {})
+    dbx_host = cfg.get("databricks_host", "").rstrip("/")
+    dbx_token = cfg.get("databricks_token", "")
+
+    if not source_cfg.get("server"):
+        return jsonify({"tables": [], "error": "Source DB not configured. Please set source connection first."}), 400
+    if not dbx_host or not dbx_token:
+        return jsonify({"tables": [], "error": "Databricks host/token not configured."}), 400
+
+    # ── Parse source / target identifiers ─────────────────────────────────────
+    # Source: "database.schema" — we already know the database from config
+    src_parts = src.split(".")
+    src_schema = src_parts[-1] if src_parts else "dbo"
+
+    tgt_parts = tgt.split(".")
+    if len(tgt_parts) < 2:
+        return jsonify({"tables": [], "error": "Target must be catalog.schema format"}), 400
+    tgt_catalog, tgt_schema = tgt_parts[0], tgt_parts[1]
+
+    # ── Fetch metadata ────────────────────────────────────────────────────────
+    try:
+        src_tables = _fetch_source_columns(source_cfg, src_schema)
+    except Exception as e:
+        return jsonify({"tables": [], "error": f"Source DB error: {str(e)}"}), 500
+
+    try:
+        tgt_tables = _fetch_target_columns(dbx_host, dbx_token, tgt_catalog, tgt_schema)
+    except Exception as e:
+        return jsonify({"tables": [], "error": f"Databricks error: {str(e)}"}), 500
+
+    # Debug: log what both sides returned
+    import logging
+    logging.info(f"[SchemaCompare] Source tables ({len(src_tables)}): {list(src_tables.keys())}")
+    logging.info(f"[SchemaCompare] Target tables ({len(tgt_tables)}): {list(tgt_tables.keys())}")
+
+    # ── Build comparison ──────────────────────────────────────────────────────
+    # Strip common tier prefixes (bronze_, silver_, gold_) to match source names
+    _TIER_PREFIXES = ("bronze_", "silver_", "gold_")
+
+    def _strip_tier_prefix(name):
+        """Remove bronze_/silver_/gold_ prefix for matching against source."""
+        lower = name.lower()
+        for pfx in _TIER_PREFIXES:
+            if lower.startswith(pfx):
+                return name[len(pfx):]
+        return name
+
+    # Case-insensitive dedup: prefer source name casing, fall back to stripped target
+    _seen_lower = {}
+    for name in src_tables:
+        _seen_lower[name.lower()] = name
+    for k in tgt_tables:
+        stripped = _strip_tier_prefix(k)
+        low = stripped.lower()
+        if low not in _seen_lower:
+            _seen_lower[low] = stripped
+    all_table_names = sorted(_seen_lower.values(), key=str.lower)
+
+    # Build a lookup: stripped-lowercase-name → original target table key
+    tgt_lookup = {}
+    for k in tgt_tables:
+        stripped = _strip_tier_prefix(k).lower()
+        tgt_lookup[stripped] = k
+
+    # Build a case-insensitive source lookup
+    src_lookup = {k.lower(): k for k in src_tables}
+
+    tables = []
+    for tbl in all_table_names:
+        src_key = src_lookup.get(tbl.lower(), tbl)
+        src_cols = {c["column"].lower(): c for c in src_tables.get(src_key, [])}
+        # Target may have bronze_/silver_/gold_ prefix from DLT
+        tgt_key = tgt_lookup.get(tbl.lower(), tbl)
+        tgt_cols_raw = tgt_tables.get(tgt_key)
+        tgt_cols = {c["column"].lower(): c for c in (tgt_cols_raw or [])}
+
+        diffs = []
+        # Process source columns
+        for col_lower, sc in src_cols.items():
+            tc = tgt_cols.get(col_lower)
+            if tc is None:
+                diffs.append({
+                    "table": tbl, "column": sc["column"],
+                    "src_type": sc["data_type"], "tgt_type": "\u2014",
+                    "src_nullable": sc["is_nullable"], "tgt_nullable": False,
+                    "diff_type": "missing_col",
+                })
+            else:
+                expected = _expected_dbx_type(sc["data_type"])
+                actual = tc["data_type"]
+                # Normalise for comparison: ignore precision details for broad match
+                exp_base = expected.split("(")[0]
+                act_base = actual.split("(")[0]
+                if exp_base != act_base:
+                    diff_type = "type_mismatch"
+                elif sc["is_nullable"] != tc["is_nullable"]:
+                    diff_type = "nullable_diff"
+                else:
+                    diff_type = "match"
+                diffs.append({
+                    "table": tbl, "column": sc["column"],
+                    "src_type": sc["data_type"], "tgt_type": actual,
+                    "src_nullable": sc["is_nullable"], "tgt_nullable": tc["is_nullable"],
+                    "diff_type": diff_type,
+                })
+
+        # Extra cols in target not in source
+        for col_lower, tc in tgt_cols.items():
+            if col_lower not in src_cols:
+                diffs.append({
+                    "table": tbl, "column": tc["column"],
+                    "src_type": "\u2014", "tgt_type": tc["data_type"],
+                    "src_nullable": False, "tgt_nullable": tc["is_nullable"],
+                    "diff_type": "extra_col",
+                })
+
+        tables.append({
+            "table": tbl,
+            "src_cols": len(src_cols),
+            "tgt_cols": len(tgt_cols),
+            "matched": len([d for d in diffs if d["diff_type"] == "match"]),
+            "diffs": diffs,
+        })
+
+    from datetime import datetime
+    compared_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    # Stamp every diff row with the comparison timestamp
+    for t in tables:
+        for d in t.get("diffs", []):
+            d["compared_at"] = compared_at
+
+    result = {"tables": tables, "source": src, "target": tgt, "compared_at": compared_at}
+
+    # Cache the results
+    try:
+        with open(SCHEMA_COMPARE_PATH, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2, default=str)
+    except Exception:
+        pass
+
+    return jsonify(result)
+
+@app.route("/api/schema/compare/results", methods=["POST"])
+def save_schema_compare():
+    """Save schema comparison results for later retrieval."""
+    data = request.get_json(force=True)
+    with open(SCHEMA_COMPARE_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, default=str)
+    return jsonify({"success": True})
+
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  Reconciliation Report                                                       ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+@app.route("/api/recon/data", methods=["POST"])
+def get_recon_data():
+    """Fetch reconciliation data from Databricks reconciliation.hr.ReconcilationDetails."""
+    try:
+        with open(DEPLOY_CONFIG_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except Exception:
+        cfg = {}
+
+    dbx_host  = cfg.get("databricks_host", "").rstrip("/")
+    dbx_token = cfg.get("databricks_token", "")
+    recon_cfg = cfg.get("reconciliation", {})
+    recon_cat = recon_cfg.get("catalog", "reconciliation")
+    recon_sch = recon_cfg.get("schema", "hr")
+    recon_tbl = recon_cfg.get("table", "ReconcilationDetails")
+
+    if not dbx_host or not dbx_token:
+        return jsonify({"rows": [], "error": "Databricks host/token not configured."}), 400
+
+    uc = UnityCatalogExecutor(dbx_host, dbx_token, recon_cat, recon_sch)
+
+    # Find a running warehouse
+    wh_resp = uc.list_warehouses()
+    warehouses = wh_resp.get("warehouses", [])
+    wh_id = next((w["id"] for w in warehouses if w.get("state") == "RUNNING"), None)
+    if not wh_id and warehouses:
+        wh_id = warehouses[0].get("id")
+    if not wh_id:
+        return jsonify({"rows": [], "error": "No SQL Warehouse available."}), 400
+
+    fqn = f"`{recon_cat}`.`{recon_sch}`.`{recon_tbl}`"
+    sql = f"SELECT * FROM {fqn} ORDER BY recon_timestamp DESC LIMIT 5000"
+    result = uc._execute_statement(sql, wh_id, wait_timeout="50s")
+
+    if result.get("error"):
+        return jsonify({"rows": [], "error": result["error"]}), 500
+
+    # Parse statement result
+    status = result.get("status", {}).get("state", "")
+    if status == "PENDING" or status == "RUNNING":
+        stmt_id = result.get("statement_id", "")
+        if stmt_id:
+            result = uc._poll_statement(stmt_id)
+
+    columns = [c.get("name", "") for c in result.get("manifest", {}).get("schema", {}).get("columns", [])]
+    data_array = result.get("result", {}).get("data_array", [])
+
+    rows = []
+    for row in data_array:
+        obj = {}
+        for i, col in enumerate(columns):
+            obj[col] = row[i] if i < len(row) else None
+        rows.append(obj)
+
+    return jsonify({"rows": rows, "columns": columns, "table": fqn})
 
 
 # ╔══════════════════════════════════════════════════════════════════════════════╗

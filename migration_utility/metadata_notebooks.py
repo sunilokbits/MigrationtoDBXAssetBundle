@@ -18,7 +18,22 @@ Notebooks produced:
   4. 03_Meta_Silver.py        — Bronze → Silver (Delta) driven by metadata
 """
 
+import json
+import os
 from datetime import datetime
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  DEPLOY CONFIG LOADER
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def _load_deploy_config() -> dict:
+    """Load deployconfig.json from the same directory as this module."""
+    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "deployconfig.json")
+    if os.path.isfile(cfg_path):
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -26,17 +41,45 @@ from datetime import datetime
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def generate_metadata_notebooks(
-    catalog: str = "main",
-    schema: str = "default",
-    landing_path: str = "/mnt/landing",
+    catalog: str = "",
+    schema: str = "",
+    landing_path: str = "",
     workspace_path: str = "/Shared/MetadataPipeline",
     pipeline_mode: str = "standard",
+    recon_catalog: str = "",
+    recon_schema: str = "",
+    recon_table: str = "",
+    log_catalog: str = "",
+    log_schema: str = "",
+    log_table: str = "",
+    recon_location: str = "",
+    log_location: str = "",
+    cdc_mode: str = "watermark",
+    primary_keys: list = None,
 ) -> dict:
     """
     Generate metadata-driven notebooks.
-    pipeline_mode: "standard" (4 notebooks) or "dlt" (3 notebooks with DLT).
+    pipeline_mode: "standard" (4+2 notebooks) or "dlt" (3+2 notebooks with DLT).
+    All parameters fall back to values from deployconfig.json when not provided.
     Returns: {success, notebooks: [{name, code, description, layer, lines}], summary}
     """
+    # ── Load defaults from deployconfig.json ──────────────────────────
+    cfg = _load_deploy_config()
+    recon_cfg = cfg.get("reconciliation", {})
+    log_cfg   = cfg.get("logging", {})
+
+    catalog        = catalog        or cfg.get("catalogs", {}).get("bronze", {}).get("schemas", [""])[0] and "main"
+    schema         = schema         or "default"
+    landing_path   = landing_path   or cfg.get("volume_path", "/mnt/landing")
+    recon_catalog  = recon_catalog  or recon_cfg.get("catalog", "reconciliation")
+    recon_schema   = recon_schema   or recon_cfg.get("schema", "hr")
+    recon_table    = recon_table    or recon_cfg.get("table", "ReconcilationDetails")
+    recon_location = recon_location or recon_cfg.get("location", "")
+    log_catalog    = log_catalog    or log_cfg.get("catalog", "logging")
+    log_schema     = log_schema     or log_cfg.get("schema", "hr")
+    log_table      = log_table      or log_cfg.get("table", "ExecutionLog")
+    log_location   = log_location   or log_cfg.get("location", "")
+
     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     if pipeline_mode == "dlt":
@@ -58,6 +101,18 @@ def generate_metadata_notebooks(
                 "code":        _gen_orchestrator_dlt(catalog, schema, landing_path, workspace_path, ts),
                 "description": "DLT Orchestrator — Extract → DLT pipeline trigger",
                 "layer":       "orchestrator",
+            },
+            {
+                "name":        "04_Meta_Reconciliation",
+                "code":        _gen_reconciliation(catalog, schema, landing_path, recon_catalog, recon_schema, recon_table, ts, recon_location=recon_location),
+                "description": "Aggregate reconciliation — Source vs Bronze numeric column validation",
+                "layer":       "reconciliation",
+            },
+            {
+                "name":        "05_Meta_ExecutionLog",
+                "code":        _gen_execution_log(catalog, schema, log_catalog, log_schema, log_table, ts, log_location=log_location),
+                "description": "Execution logging — saves per-job run details to logging catalog",
+                "layer":       "logging",
             },
         ]
     else:
@@ -82,9 +137,21 @@ def generate_metadata_notebooks(
             },
             {
                 "name":        "00_Meta_Orchestrator",
-                "code":        _gen_orchestrator(catalog, schema, landing_path, workspace_path, ts),
+                "code":        _gen_orchestrator(catalog, schema, landing_path, workspace_path, ts, recon_catalog, recon_schema, recon_table, log_catalog, log_schema, log_table),
                 "description": "Orchestrator — reads metadata, chains all stages",
                 "layer":       "orchestrator",
+            },
+            {
+                "name":        "04_Meta_Reconciliation",
+                "code":        _gen_reconciliation(catalog, schema, landing_path, recon_catalog, recon_schema, recon_table, ts, recon_location=recon_location),
+                "description": "Aggregate reconciliation — Source vs Bronze numeric column validation",
+                "layer":       "reconciliation",
+            },
+            {
+                "name":        "05_Meta_ExecutionLog",
+                "code":        _gen_execution_log(catalog, schema, log_catalog, log_schema, log_table, ts, log_location=log_location),
+                "description": "Execution logging — saves per-job run details to logging catalog",
+                "layer":       "logging",
             },
         ]
 
@@ -1070,14 +1137,15 @@ dbutils.notebook.exit(exit_payload)
 #  4. METADATA-DRIVEN ORCHESTRATOR
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def _gen_orchestrator(catalog, schema, landing_path, workspace_path, ts):
+def _gen_orchestrator(catalog, schema, landing_path, workspace_path, ts, recon_catalog="reconciliation", recon_schema="hr", recon_table="ReconcilationDetails", log_catalog="logging", log_schema="hr", log_table="ExecutionLog"):
     return f'''# Databricks notebook source
 # MAGIC %md
 # MAGIC # 🎯 Metadata-Driven Orchestrator
 # MAGIC **Generated:** {ts}
 # MAGIC
 # MAGIC Reads pipeline metadata from Delta tables and chains:
-# MAGIC   Extract → Bronze → Silver for each pipeline group.
+# MAGIC   Extract → Bronze → Reconciliation → Silver for each pipeline group.
+# MAGIC   Then logs all execution details to the Logging catalog.
 # MAGIC
 # MAGIC Can run a **single pipeline group** or **all groups**.
 # MAGIC ---
@@ -1091,6 +1159,12 @@ dbutils.widgets.text("catalog", "{catalog}", "Metadata Catalog")
 dbutils.widgets.text("schema", "{schema}", "Metadata Schema")
 dbutils.widgets.text("landing_path", "{landing_path}", "Landing Base Path")
 dbutils.widgets.text("workspace_path", "{workspace_path}", "Notebook Workspace Path")
+dbutils.widgets.text("recon_catalog", "{recon_catalog}", "Reconciliation Catalog")
+dbutils.widgets.text("recon_schema", "{recon_schema}", "Reconciliation Schema")
+dbutils.widgets.text("recon_table", "{recon_table}", "Reconciliation Table")
+dbutils.widgets.text("log_catalog", "{log_catalog}", "Logging Catalog")
+dbutils.widgets.text("log_schema", "{log_schema}", "Logging Schema")
+dbutils.widgets.text("log_table", "{log_table}", "Logging Table")
 
 GROUP_ID       = dbutils.widgets.get("group_id").strip()
 LOAD_OVERRIDE  = dbutils.widgets.get("load_type").strip()
@@ -1099,11 +1173,16 @@ CATALOG        = dbutils.widgets.get("catalog").strip()
 SCHEMA         = dbutils.widgets.get("schema").strip()
 LANDING_PATH   = dbutils.widgets.get("landing_path").strip()
 WORKSPACE_PATH = dbutils.widgets.get("workspace_path").strip()
+RECON_CATALOG  = dbutils.widgets.get("recon_catalog").strip()
+RECON_SCHEMA   = dbutils.widgets.get("recon_schema").strip()
+RECON_TABLE    = dbutils.widgets.get("recon_table").strip()
+LOG_CATALOG    = dbutils.widgets.get("log_catalog").strip()
+LOG_SCHEMA     = dbutils.widgets.get("log_schema").strip()
+LOG_TABLE      = dbutils.widgets.get("log_table").strip()
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 🔍 Discover Jobs from Metadata
 
 # COMMAND ----------
 
@@ -1209,6 +1288,36 @@ for group in groups:
                 print(f"   ✅ {{job['job_name']}}: {{status}} ({{rows:,}} rows)")
                 results.append({{"job": job["job_name"], "status": status, "rows": rows}})
 
+                # ── Reconciliation after Bronze ──────────────────────────
+                if stage == "landing_to_bronze":
+                    print(f"\\n   🔍 Running Reconciliation for {{job['job_name']}}…")
+                    try:
+                        recon_json = dbutils.notebook.run(
+                            f"{{WORKSPACE_PATH}}/04_Meta_Reconciliation",
+                            timeout_seconds=1800,
+                            arguments={{
+                                "job_id":        job_id,
+                                "run_id":        run_id,
+                                "password_b64":  PASSWORD_B64,
+                                "catalog":       CATALOG,
+                                "schema":        SCHEMA,
+                                "landing_path":  LANDING_PATH,
+                                "recon_catalog": RECON_CATALOG,
+                                "recon_schema":  RECON_SCHEMA,
+                                "recon_table":   RECON_TABLE,
+                            }}
+                        )
+                        recon_result = json.loads(recon_json) if recon_json else {{}}
+                        r_status = recon_result.get("status", "UNKNOWN")
+                        r_checks = recon_result.get("checks", 0)
+                        r_passed = recon_result.get("passed", 0)
+                        r_failed = recon_result.get("failed", 0)
+                        print(f"   🔍 Reconciliation: {{r_status}} — {{r_checks}} checks ({{r_passed}} pass, {{r_failed}} fail)")
+                        results.append({{"job": f"Recon_{{job['job_name']}}", "status": r_status, "rows": r_checks}})
+                    except Exception as re:
+                        print(f"   ⚠️ Reconciliation failed (non-blocking): {{re}}")
+                        results.append({{"job": f"Recon_{{job['job_name']}}", "status": "WARN", "rows": 0, "error": str(re)[:200]}})
+
         except Exception as e:
             print(f"   ❌ {{job['job_name']}} FAILED: {{e}}")
             # Mark failure in run history
@@ -1241,16 +1350,21 @@ for group in groups:
 
 # COMMAND ----------
 
-succeeded = [r for r in results if r.get("status") in ("COMPLETED", "SUCCESS")]
-failed    = [r for r in results if r.get("status") == "FAILED"]
-total_rows = sum(r.get("rows", 0) for r in results)
+succeeded = [r for r in results if r.get("status") in ("COMPLETED", "SUCCESS") and not r.get("job","").startswith("Recon_")]
+failed    = [r for r in results if r.get("status") == "FAILED" and not r.get("job","").startswith("Recon_")]
+recon_results = [r for r in results if r.get("job","").startswith("Recon_")]
+total_rows = sum(r.get("rows", 0) for r in results if not r.get("job","").startswith("Recon_"))
 
 print(f"\\n{{'='*60}}")
 print(f"📊 ORCHESTRATION COMPLETE")
 print(f"{{'='*60}}")
-print(f"  ✅ Succeeded : {{len(succeeded)}} / {{len(results)}}")
-print(f"  ❌ Failed    : {{len(failed)}} / {{len(results)}}")
+print(f"  ✅ Succeeded : {{len(succeeded)}} / {{len(succeeded) + len(failed)}}")
+print(f"  ❌ Failed    : {{len(failed)}} / {{len(succeeded) + len(failed)}}")
 print(f"  📊 Total Rows: {{total_rows:,}}")
+if recon_results:
+    r_ok = sum(1 for r in recon_results if r.get("status") in ("COMPLETED",))
+    r_warn = sum(1 for r in recon_results if r.get("status") not in ("COMPLETED",))
+    print(f"  🔍 Recon     : {{r_ok}} pass, {{r_warn}} warn/fail")
 
 if failed:
     print(f"\\n⚠️ Failed jobs:")
@@ -1270,6 +1384,620 @@ exit_payload = json.dumps({{
     "groups":     len(groups),
     "errors":     error_details,
 }})
+
+# ── Execution Logging ──────────────────────────────────────────────
+print(f"\\n📝 Saving execution log to {{LOG_CATALOG}}.{{LOG_SCHEMA}}.{{LOG_TABLE}}…")
+try:
+    log_json = dbutils.notebook.run(
+        f"{{WORKSPACE_PATH}}/05_Meta_ExecutionLog",
+        timeout_seconds=600,
+        arguments={{
+            "catalog":      CATALOG,
+            "schema":       SCHEMA,
+            "log_catalog":  LOG_CATALOG,
+            "log_schema":   LOG_SCHEMA,
+            "log_table":    LOG_TABLE,
+            "results_json": json.dumps(results),
+            "groups_json":  json.dumps([{{"group_id": g["group_id"], "full_table": g["full_table"], "load_type": g.get("load_type","full")}} for g in groups]),
+            "orchestrator_status": "COMPLETED" if not failed else "PARTIAL",
+        }}
+    )
+    print(f"   ✅ Execution log saved")
+except Exception as log_err:
+    print(f"   ⚠️ Execution logging failed (non-blocking): {{log_err}}")
+
+dbutils.notebook.exit(exit_payload)
+'''
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  4b. AGGREGATE RECONCILIATION NOTEBOOK  (Source vs Bronze)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def _gen_reconciliation(catalog, schema, landing_path, recon_catalog, recon_schema, recon_table, ts, recon_location=""):
+    _loc_clause = f" MANAGED LOCATION '{recon_location}'" if recon_location else ""
+    return f'''# Databricks notebook source
+# MAGIC %md
+# MAGIC # 🔍 Aggregate Reconciliation — Source vs Bronze
+# MAGIC **Generated:** {ts}
+# MAGIC
+# MAGIC This notebook performs aggregate reconciliation between the **source database**
+# MAGIC and the **Bronze Delta table** for the current pipeline execution.
+# MAGIC
+# MAGIC **What it does:**
+# MAGIC 1. Identifies all numeric columns (int, bigint, float, decimal, numeric, smallint, tinyint, real, money)
+# MAGIC 2. Computes SUM for each numeric column from **Source** (via JDBC) and **Bronze** (Delta)
+# MAGIC 3. Compares row counts
+# MAGIC 4. Saves per-column results to `{recon_catalog}.{recon_schema}.{recon_table}`
+# MAGIC 5. Each execution creates a unique `recon_run_id` — no duplicates, full audit trail
+# MAGIC ---
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 📋 Widget Configuration
+
+# COMMAND ----------
+
+dbutils.widgets.text("job_id", "", "Job ID")
+dbutils.widgets.text("run_id", "", "Run ID")
+dbutils.widgets.text("password_b64", "", "Source DB Password (base64)")
+dbutils.widgets.text("catalog", "{catalog}", "Metadata Catalog")
+dbutils.widgets.text("schema", "{schema}", "Metadata Schema")
+dbutils.widgets.text("landing_path", "{landing_path}", "Landing Base Path")
+dbutils.widgets.text("recon_catalog", "{recon_catalog}", "Reconciliation Catalog")
+dbutils.widgets.text("recon_schema", "{recon_schema}", "Reconciliation Schema")
+dbutils.widgets.text("recon_table", "{recon_table}", "Reconciliation Table")
+
+import base64, json, uuid
+from datetime import datetime
+from pyspark.sql import functions as F
+from pyspark.sql.types import StructType, StructField, StringType, LongType, DoubleType, TimestampType
+
+JOB_ID       = dbutils.widgets.get("job_id").strip()
+RUN_ID       = dbutils.widgets.get("run_id").strip()
+_PWD_B64     = dbutils.widgets.get("password_b64").strip()
+PASSWORD     = base64.b64decode(_PWD_B64.encode("ascii")).decode("utf-8") if _PWD_B64 else ""
+CATALOG      = dbutils.widgets.get("catalog").strip()
+SCHEMA       = dbutils.widgets.get("schema").strip()
+LANDING_PATH = dbutils.widgets.get("landing_path").strip()
+RECON_CATALOG= dbutils.widgets.get("recon_catalog").strip()
+RECON_SCHEMA = dbutils.widgets.get("recon_schema").strip()
+RECON_TABLE  = dbutils.widgets.get("recon_table").strip()
+
+RECON_RUN_ID = uuid.uuid4().hex[:12]
+
+print(f"🔍 Reconciliation for Job: {{JOB_ID}}, Run: {{RUN_ID}}")
+print(f"📦 Results → {{RECON_CATALOG}}.{{RECON_SCHEMA}}.{{RECON_TABLE}}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## � Ensure Reconciliation Table Exists
+
+# COMMAND ----------
+
+try:
+    spark.sql(f"CREATE CATALOG IF NOT EXISTS `{{RECON_CATALOG}}`{_loc_clause}")
+except Exception as cat_err:
+    print(f"⚠️ Could not create catalog {{RECON_CATALOG}}: {{cat_err}} — assuming it exists")
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{{RECON_CATALOG}}`.`{{RECON_SCHEMA}}`")
+
+recon_full_table = f"`{{RECON_CATALOG}}`.`{{RECON_SCHEMA}}`.`{{RECON_TABLE}}`"
+
+recon_schema_def = StructType([
+    StructField("recon_run_id",    StringType(),    False),
+    StructField("pipeline_run_id", StringType(),    False),
+    StructField("job_id",          StringType(),    False),
+    StructField("source_table",    StringType(),    False),
+    StructField("bronze_table",    StringType(),    False),
+    StructField("column_name",     StringType(),    False),
+    StructField("data_type",       StringType(),    True),
+    StructField("source_value",    DoubleType(),    True),
+    StructField("bronze_value",    DoubleType(),    True),
+    StructField("variance",        DoubleType(),    True),
+    StructField("variance_pct",    DoubleType(),    True),
+    StructField("status",          StringType(),    True),
+    StructField("recon_timestamp", TimestampType(), True),
+])
+
+try:
+    spark.table(recon_full_table)
+    print(f"📦 Table {{recon_full_table}} exists")
+except Exception:
+    empty_df = spark.createDataFrame([], schema=recon_schema_def)
+    empty_df.write.format("delta").saveAsTable(recon_full_table)
+    print(f"📦 Created table {{recon_full_table}}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## �🔍 Read Job Metadata
+
+# COMMAND ----------
+
+job_tbl = f"`{{CATALOG}}`.`{{SCHEMA}}`.wf_job_metadata"
+job_df  = spark.sql(f"SELECT * FROM {{job_tbl}} WHERE job_id = '{{JOB_ID}}'")
+
+if job_df.count() == 0:
+    dbutils.notebook.exit(json.dumps({{"status": "SKIPPED", "reason": f"Job {{JOB_ID}} not found"}}))
+
+job = job_df.collect()[0].asDict()
+TABLE_NAME   = job["table_name"]
+TABLE_SCHEMA = job["table_schema"]
+FULL_TABLE   = job["full_table"]
+
+source_config = json.loads(job.get("source_config", "{{}}") or "{{}}")
+SERVER   = source_config.get("server", "")
+DATABASE = source_config.get("database", "")
+USERNAME = source_config.get("username", "")
+
+target_config = json.loads(job.get("target_config", "{{}}") or "{{}}")
+BRONZE_CATALOG = target_config.get("bronze_catalog", "")
+TGT_SCHEMA     = target_config.get("target_schema", "")
+VOLUMES_CATALOG= target_config.get("volumes_catalog", "")
+
+# Determine bronze table name (DLT prefixes tables with bronze_)
+if BRONZE_CATALOG and TGT_SCHEMA:
+    BRONZE_TABLE = f"`{{BRONZE_CATALOG}}`.`{{TGT_SCHEMA}}`.`bronze_{{TABLE_NAME}}`"
+else:
+    BRONZE_TABLE = f"`{{target_config.get('catalog', CATALOG)}}`.`{{target_config.get('schema', SCHEMA)}}`.`bronze_{{TABLE_NAME}}`"
+
+print(f"📋 Source: [{{TABLE_SCHEMA}}].[{{TABLE_NAME}}] on {{SERVER}}/{{DATABASE}}")
+print(f"📋 Bronze: {{BRONZE_TABLE}}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 🔌 JDBC Connection to Source
+
+# COMMAND ----------
+
+encrypt = "true" if source_config.get("source_type") in ("azuresql", "synapse") else "false"
+trust   = "false" if source_config.get("source_type") in ("azuresql", "synapse") else "true"
+
+if "," in SERVER:
+    _host, _port = SERVER.rsplit(",", 1)
+elif ":" in SERVER:
+    _host, _port = SERVER.rsplit(":", 1)
+else:
+    _host, _port = SERVER, "1433"
+
+jdbc_url = f"jdbc:sqlserver://{{_host}}:{{_port}};databaseName={{DATABASE}};encrypt={{encrypt}};trustServerCertificate={{trust}}"
+jdbc_props = {{
+    "user":     USERNAME,
+    "password": PASSWORD,
+    "driver":   "com.microsoft.sqlserver.jdbc.SQLServerDriver",
+    "fetchsize": "10000",
+}}
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 📊 Identify Numeric Columns from Source
+
+# COMMAND ----------
+
+# Query SQL Server INFORMATION_SCHEMA to find numeric columns
+numeric_types_sql = "('int','bigint','smallint','tinyint','float','real','decimal','numeric','money','smallmoney')"
+col_query = f"""(
+    SELECT COLUMN_NAME, DATA_TYPE
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = '{{TABLE_SCHEMA}}'
+      AND TABLE_NAME   = '{{TABLE_NAME}}'
+      AND DATA_TYPE IN {{numeric_types_sql}}
+) AS col_info"""
+
+try:
+    cols_df = spark.read.jdbc(jdbc_url, col_query, properties=jdbc_props)
+    numeric_cols = [(r["COLUMN_NAME"], r["DATA_TYPE"]) for r in cols_df.collect()]
+    print(f"🔢 Found {{len(numeric_cols)}} numeric columns:")
+    for cn, ct in numeric_cols:
+        print(f"   • {{cn}} ({{ct}})")
+except Exception as e:
+    print(f"❌ Failed to read column metadata: {{e}}")
+    dbutils.notebook.exit(json.dumps({{"status": "FAILED", "error": str(e)[:500]}}))
+
+if not numeric_cols:
+    print("⚠️ No numeric columns found — reconciliation skipped")
+    dbutils.notebook.exit(json.dumps({{"status": "SKIPPED", "reason": "No numeric columns"}}))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 📊 Compute Source Aggregates (JDBC)
+
+# COMMAND ----------
+
+# Build a single SQL query that computes COUNT(*) plus SUM of each numeric column
+agg_exprs = ["COUNT(*) AS __row_count"]
+for cn, _ in numeric_cols:
+    safe_col = cn.replace("'", "''")
+    agg_exprs.append(f"SUM(CAST([{{cn}}] AS FLOAT)) AS [sum_{{cn}}]")
+
+agg_sql = ", ".join(agg_exprs)
+src_query = f"(SELECT {{agg_sql}} FROM [{{TABLE_SCHEMA}}].[{{TABLE_NAME}}]) AS src_agg"
+
+try:
+    src_agg_df = spark.read.jdbc(jdbc_url, src_query, properties=jdbc_props)
+    src_row = src_agg_df.collect()[0]
+    src_count = int(src_row["__row_count"])
+    print(f"📊 Source row count: {{src_count:,}}")
+except Exception as e:
+    print(f"❌ Failed to compute source aggregates: {{e}}")
+    dbutils.notebook.exit(json.dumps({{"status": "FAILED", "error": str(e)[:500]}}))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 📊 Compute Bronze Aggregates (Delta)
+
+# COMMAND ----------
+
+try:
+    brz_df = spark.table(BRONZE_TABLE)
+    brz_count = brz_df.count()
+    print(f"📊 Bronze row count: {{brz_count:,}}")
+
+    # Compute SUM of each numeric column in Bronze
+    brz_agg_exprs = [F.count("*").alias("__row_count")]
+    for cn, _ in numeric_cols:
+        brz_agg_exprs.append(F.sum(F.col(f"`{{cn}}`").cast("double")).alias(f"sum_{{cn}}"))
+
+    brz_agg_df = brz_df.agg(*brz_agg_exprs)
+    brz_row = brz_agg_df.collect()[0]
+except Exception as e:
+    print(f"❌ Failed to compute Bronze aggregates: {{e}}")
+    dbutils.notebook.exit(json.dumps({{"status": "FAILED", "error": str(e)[:500]}}))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 🔍 Compare & Build Reconciliation Results
+
+# COMMAND ----------
+
+recon_ts = datetime.now()
+results = []
+
+# Row count reconciliation
+count_match = "PASS" if src_count == brz_count else "FAIL"
+count_variance = abs(src_count - brz_count)
+results.append({{
+    "recon_run_id":    RECON_RUN_ID,
+    "pipeline_run_id": RUN_ID,
+    "job_id":          JOB_ID,
+    "source_table":    FULL_TABLE,
+    "bronze_table":    BRONZE_TABLE,
+    "column_name":     "__ROW_COUNT__",
+    "data_type":       "count",
+    "source_value":    float(src_count),
+    "bronze_value":    float(brz_count),
+    "variance":        float(count_variance),
+    "variance_pct":    round((count_variance / src_count * 100), 4) if src_count > 0 else 0.0,
+    "status":          count_match,
+    "recon_timestamp": recon_ts,
+}})
+
+# Per-column SUM reconciliation
+for cn, ct in numeric_cols:
+    src_val = src_row[f"sum_{{cn}}"]
+    brz_val = brz_row[f"sum_{{cn}}"]
+    s = float(src_val) if src_val is not None else 0.0
+    b = float(brz_val) if brz_val is not None else 0.0
+    var = abs(s - b)
+    pct = round((var / abs(s) * 100), 4) if s != 0.0 else 0.0
+    status = "PASS" if var < 0.01 else ("WARN" if pct < 0.01 else "FAIL")
+
+    results.append({{
+        "recon_run_id":    RECON_RUN_ID,
+        "pipeline_run_id": RUN_ID,
+        "job_id":          JOB_ID,
+        "source_table":    FULL_TABLE,
+        "bronze_table":    BRONZE_TABLE,
+        "column_name":     cn,
+        "data_type":       ct,
+        "source_value":    s,
+        "bronze_value":    b,
+        "variance":        var,
+        "variance_pct":    pct,
+        "status":          status,
+        "recon_timestamp": recon_ts,
+    }})
+
+print(f"\\n📊 Reconciliation results: {{len(results)}} checks")
+for r in results:
+    icon = "✅" if r["status"] == "PASS" else ("⚠️" if r["status"] == "WARN" else "❌")
+    print(f"   {{icon}} {{r['column_name']:<30}} src={{r['source_value']:>15,.2f}}  brz={{r['bronze_value']:>15,.2f}}  var={{r['variance_pct']:.4f}}%  {{r['status']}}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 💾 Save to Reconciliation Table
+
+# COMMAND ----------
+
+# Ensure reconciliation catalog, schema, and table exist (already done early — safe to repeat)
+recon_df = spark.createDataFrame(results, schema=recon_schema_def)
+
+# Append — each execution creates new rows with unique recon_run_id
+recon_df.write.mode("append").option("mergeSchema", "true").saveAsTable(recon_full_table)
+
+total_checks = len(results)
+passed  = sum(1 for r in results if r["status"] == "PASS")
+warned  = sum(1 for r in results if r["status"] == "WARN")
+failed_ = sum(1 for r in results if r["status"] == "FAIL")
+
+print(f"\\n💾 Saved {{total_checks}} reconciliation records to {{recon_full_table}}")
+print(f"   ✅ PASS: {{passed}}  ⚠️ WARN: {{warned}}  ❌ FAIL: {{failed_}}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 📊 Summary
+
+# COMMAND ----------
+
+exit_payload = json.dumps({{
+    "status":       "COMPLETED",
+    "recon_run_id": RECON_RUN_ID,
+    "job_id":       JOB_ID,
+    "run_id":       RUN_ID,
+    "table":        FULL_TABLE,
+    "checks":       total_checks,
+    "passed":       passed,
+    "warned":       warned,
+    "failed":       failed_,
+    "recon_table":  recon_full_table,
+}})
+
+print(f"\\n✅ RECONCILIATION COMPLETE — {{FULL_TABLE}} — {{total_checks}} checks ({{passed}} pass, {{warned}} warn, {{failed_}} fail)")
+dbutils.notebook.exit(exit_payload)
+'''
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  EXECUTION LOG NOTEBOOK
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def _gen_execution_log(catalog, schema, log_catalog, log_schema, log_table, ts, log_location=""):
+    """Generate the 05_Meta_ExecutionLog notebook.
+
+    This notebook is called by the Orchestrator AFTER all jobs complete.
+    It receives the per-job results JSON and the groups JSON, then writes
+    a full audit-trail row per job into the logging Delta table.
+    """
+    _log_loc_clause = f" MANAGED LOCATION '{log_location}'" if log_location else ""
+    return f'''# Databricks notebook source
+# MAGIC %md
+# MAGIC # 📝 Execution Log — Pipeline Run Audit Trail
+# MAGIC **Generated:** {ts}
+# MAGIC
+# MAGIC This notebook saves per-job execution details to
+# MAGIC `{{log_catalog}}.{{log_schema}}.{{log_table}}` as an append-only audit trail.
+# MAGIC
+# MAGIC **Logged per job:** job_id, job_name, stage, full_table, load_type,
+# MAGIC status, rows_processed, started_at, completed_at, duration_sec, error_message
+# MAGIC ---
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 📋 Widget Configuration
+
+# COMMAND ----------
+
+dbutils.widgets.text("catalog",              "{catalog}",      "Metadata Catalog")
+dbutils.widgets.text("schema",               "{schema}",       "Metadata Schema")
+dbutils.widgets.text("log_catalog",          "{log_catalog}",  "Log Catalog")
+dbutils.widgets.text("log_schema",           "{log_schema}",   "Log Schema")
+dbutils.widgets.text("log_table",            "{log_table}",    "Log Table")
+dbutils.widgets.text("results_json",         "{{}}", "Results JSON")
+dbutils.widgets.text("groups_json",          "[]", "Groups JSON")
+dbutils.widgets.text("orchestrator_status",  "",  "Orchestrator Status")
+
+import json, uuid
+from datetime import datetime
+from pyspark.sql.types import (StructType, StructField, StringType,
+                                LongType, DoubleType, TimestampType)
+
+CATALOG      = dbutils.widgets.get("catalog").strip()
+SCHEMA       = dbutils.widgets.get("schema").strip()
+LOG_CATALOG  = dbutils.widgets.get("log_catalog").strip()
+LOG_SCHEMA   = dbutils.widgets.get("log_schema").strip()
+LOG_TABLE    = dbutils.widgets.get("log_table").strip()
+RESULTS_JSON = dbutils.widgets.get("results_json").strip()
+GROUPS_JSON  = dbutils.widgets.get("groups_json").strip()
+ORCH_STATUS  = dbutils.widgets.get("orchestrator_status").strip()
+
+LOG_RUN_ID   = uuid.uuid4().hex[:12]
+LOG_TS       = datetime.now()
+
+print(f"📝 Execution Log Run: {{LOG_RUN_ID}}")
+print(f"📦 Target: {{LOG_CATALOG}}.{{LOG_SCHEMA}}.{{LOG_TABLE}}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 📊 Parse Execution Results
+
+# COMMAND ----------
+
+try:
+    results_raw = json.loads(RESULTS_JSON)
+except Exception:
+    results_raw = []
+
+try:
+    groups = json.loads(GROUPS_JSON)
+except Exception:
+    groups = []
+
+# Build group lookup for load_type
+# groups can be a list of strings (group IDs) or a list of dicts
+group_lookup = {{}}
+for g in groups:
+    if isinstance(g, dict):
+        gid = g.get("group_id", "")
+        group_lookup[gid] = {{
+            "full_table": g.get("full_table", ""),
+            "load_type":  g.get("load_type", "full"),
+        }}
+    else:
+        # g is a plain group_id string
+        group_lookup[str(g)] = {{"full_table": "", "load_type": "full"}}
+
+# Normalise results — orchestrator sends a flat list of dicts
+if isinstance(results_raw, dict):
+    results_list = [results_raw]
+elif isinstance(results_raw, list):
+    results_list = results_raw
+else:
+    results_list = []
+
+print(f"📊 Received {{len(results_list)}} job results, {{len(groups)}} groups")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 💾 Ensure Logging Table Exists
+
+# COMMAND ----------
+
+from pyspark.sql.types import (StructType, StructField, StringType,
+                                LongType, DoubleType, TimestampType)
+
+try:
+    spark.sql(f"CREATE CATALOG IF NOT EXISTS `{{LOG_CATALOG}}`{_log_loc_clause}")
+except Exception as cat_err:
+    print(f"⚠️ Could not create catalog {{LOG_CATALOG}}: {{cat_err}} — assuming it exists")
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{{LOG_CATALOG}}`.`{{LOG_SCHEMA}}`")
+
+log_full_table = f"`{{LOG_CATALOG}}`.`{{LOG_SCHEMA}}`.`{{LOG_TABLE}}`"
+
+log_schema = StructType([
+    StructField("log_run_id",          StringType(),    False),
+    StructField("group_id",            StringType(),    False),
+    StructField("full_table",          StringType(),    False),
+    StructField("stage",               StringType(),    False),
+    StructField("load_type",           StringType(),    True),
+    StructField("status",              StringType(),    True),
+    StructField("rows_processed",      LongType(),      True),
+    StructField("started_at",          StringType(),    True),
+    StructField("completed_at",        StringType(),    True),
+    StructField("duration_sec",        DoubleType(),    True),
+    StructField("error_message",       StringType(),    True),
+    StructField("orchestrator_status", StringType(),    True),
+    StructField("log_timestamp",       TimestampType(), True),
+])
+
+# Create empty table if it doesn't exist yet
+try:
+    spark.table(log_full_table)
+    print(f"📦 Table {{log_full_table}} exists")
+except Exception:
+    empty_df = spark.createDataFrame([], schema=log_schema)
+    empty_df.write.format("delta").saveAsTable(log_full_table)
+    print(f"📦 Created table {{log_full_table}}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 🔨 Build Log Rows
+
+# COMMAND ----------
+
+log_rows = []
+
+# results_list is a flat list of job result dicts from the orchestrator
+for entry in results_list:
+    job_name   = entry.get("job", "unknown")
+    status     = entry.get("status", "UNKNOWN")
+    rows       = entry.get("rows", 0)
+    error      = entry.get("error", "")
+
+    # Infer stage from job name pattern
+    if "Recon_" in job_name:
+        stage = "reconciliation"
+    elif job_name.startswith("ExtractTo_"):
+        stage = "extract"
+    elif "_To_bronze_" in job_name or "_To_Bronze_" in job_name:
+        stage = "landing_to_bronze"
+    elif "_To_silver_" in job_name or "_To_Silver_" in job_name:
+        stage = "bronze_to_silver"
+    else:
+        stage = "unknown"
+
+    # Try to match a group for full_table/load_type
+    full_table = job_name
+    load_type  = "full"
+    for gid, ginfo in group_lookup.items():
+        if ginfo.get("full_table", "") and ginfo["full_table"] in job_name:
+            full_table = ginfo["full_table"]
+            load_type  = ginfo.get("load_type", "full")
+            break
+
+    log_rows.append({{
+        "log_run_id":          LOG_RUN_ID,
+        "group_id":            job_name,
+        "full_table":          str(full_table),
+        "stage":               str(stage),
+        "load_type":           str(load_type),
+        "status":              str(status),
+        "rows_processed":      int(rows) if rows else 0,
+        "started_at":          "",
+        "completed_at":        "",
+        "duration_sec":        0.0,
+        "error_message":       str(error)[:2000] if error else "",
+        "orchestrator_status": str(ORCH_STATUS),
+        "log_timestamp":       LOG_TS,
+    }})
+
+print(f"📝 Built {{len(log_rows)}} log entries")
+
+if not log_rows:
+    print("⚠️ No execution data to log")
+    dbutils.notebook.exit(json.dumps({{"status": "SKIPPED", "reason": "No execution data"}}))
+
+for lr in log_rows[:5]:
+    icon = "✅" if lr["status"] == "SUCCESS" else ("⚠️" if lr["status"] == "SKIPPED" else "❌")
+    print(f"   {{icon}} {{lr['full_table']}} / {{lr['stage']}} → {{lr['status']}} ({{lr['rows_processed']:,}} rows, {{lr['duration_sec']:.1f}}s)")
+if len(log_rows) > 5:
+    print(f"   … and {{len(log_rows) - 5}} more")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 💾 Save to Logging Table
+
+# COMMAND ----------
+
+log_df = spark.createDataFrame(log_rows, schema=log_schema)
+log_df.write.mode("append").option("mergeSchema", "true").saveAsTable(log_full_table)
+
+total_logged = len(log_rows)
+success_count = sum(1 for r in log_rows if r["status"] == "SUCCESS")
+failed_count  = sum(1 for r in log_rows if r["status"] == "FAILED")
+
+print(f"\\n💾 Saved {{total_logged}} execution log records to {{log_full_table}}")
+print(f"   ✅ SUCCESS: {{success_count}}  ❌ FAILED: {{failed_count}}  📊 OTHER: {{total_logged - success_count - failed_count}}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 📊 Summary
+
+# COMMAND ----------
+
+exit_payload = json.dumps({{
+    "status":       "COMPLETED",
+    "log_run_id":   LOG_RUN_ID,
+    "total_logged": total_logged,
+    "success":      success_count,
+    "failed":       failed_count,
+    "log_table":    log_full_table,
+}})
+
+print(f"\\n✅ EXECUTION LOG COMPLETE — {{total_logged}} entries saved to {{log_full_table}}")
 dbutils.notebook.exit(exit_payload)
 '''
 
@@ -1307,8 +2035,10 @@ from pyspark.sql import functions as F
 import json
 
 # ─── Pipeline configuration (injected via DLT pipeline settings) ──────
-CATALOG      = spark.conf.get("pipeline.catalog", "{catalog}")
-SCHEMA       = spark.conf.get("pipeline.schema", "{schema}")
+# Note: The DLT pipeline spec's catalog/schema controls where tables are created.
+# meta_catalog/meta_schema point to where wf_job_metadata lives (may differ).
+META_CATALOG = spark.conf.get("pipeline.meta_catalog", "{catalog}")
+META_SCHEMA  = spark.conf.get("pipeline.meta_schema", "{schema}")
 LANDING_PATH = spark.conf.get("pipeline.landing_path", "{landing_path}")
 GROUP_ID     = spark.conf.get("pipeline.group_id", "")
 
@@ -1319,27 +2049,34 @@ GROUP_ID     = spark.conf.get("pipeline.group_id", "")
 
 # COMMAND ----------
 
-job_tbl = f"`{{CATALOG}}`.`{{SCHEMA}}`.wf_job_metadata"
+job_tbl = f"`{{META_CATALOG}}`.`{{META_SCHEMA}}`.wf_job_metadata"
 
 _gf = f"AND group_id = '{{GROUP_ID}}'" if GROUP_ID else ""
 
-bronze_jobs = [r.asDict() for r in spark.sql(f"""
+# In DLT mode, jobs are stored with stage='dlt_bronze_silver' (single stage).
+# In standard mode, they use 'landing_to_bronze' / 'bronze_to_silver'.
+# Query for ALL matching stages so both modes work.
+all_dlt_jobs = [r.asDict() for r in spark.sql(f"""
     SELECT DISTINCT table_name, full_table, target_config, load_type
     FROM {{job_tbl}}
-    WHERE stage = 'landing_to_bronze'
+    WHERE stage IN ('landing_to_bronze', 'bronze_to_silver', 'dlt_bronze_silver')
       AND (enabled = true OR enabled IS NULL)
       {{_gf}}
 """).collect()]
 
-silver_jobs = [r.asDict() for r in spark.sql(f"""
-    SELECT DISTINCT table_name, full_table, target_config, load_type
-    FROM {{job_tbl}}
-    WHERE stage = 'bronze_to_silver'
-      AND (enabled = true OR enabled IS NULL)
-      {{_gf}}
-""").collect()]
+# Both bronze and silver use the same job list
+bronze_jobs = all_dlt_jobs
+silver_jobs = all_dlt_jobs
 
 print(f"⚡ DLT — Bronze tables: {{len(bronze_jobs)}}, Silver tables: {{len(silver_jobs)}}")
+
+if not bronze_jobs:
+    print("⚠️ WARNING: No tables found in wf_job_metadata for DLT processing!")
+    print(f"   Checked stages: landing_to_bronze, bronze_to_silver, dlt_bronze_silver")
+    print(f"   Metadata table: {{job_tbl}}")
+    # Show what stages DO exist
+    _existing = [r[0] for r in spark.sql(f"SELECT DISTINCT stage FROM {{job_tbl}}").collect()]
+    print(f"   Existing stages in metadata: {{_existing}}")
 
 # COMMAND ----------
 
@@ -1387,6 +2124,12 @@ def _make_bronze(job):
                 .withColumn("__source_table",   F.lit(full))
                 .withColumn("__is_quarantined", F.lit(False))
         )
+
+if not bronze_jobs:
+    raise ValueError(
+        "No tables found in wf_job_metadata for DLT pipeline. "
+        "Ensure pipelines are created via MetadataFlow before running DLT."
+    )
 
 for _j in bronze_jobs:
     _make_bronze(_j)
@@ -1594,13 +2337,13 @@ for job in extract_jobs:
         rows   = result.get("rows", 0)
         if status in ("FAILED", "ERROR"):
             print(f"    ❌ {{job['job_name']}}: {{result.get('error','')}}")
-            extract_results.append({{"job": job["job_name"], "status": "FAILED", "error": result.get("error","")}})
+            extract_results.append({{"job": job["job_name"], "status": "FAILED", "error": result.get("error",""), "run_id": run_id}})
         else:
             print(f"    ✅ {{job['job_name']}}: {{rows:,}} rows")
-            extract_results.append({{"job": job["job_name"], "status": "OK", "rows": rows}})
+            extract_results.append({{"job": job["job_name"], "status": "OK", "rows": rows, "run_id": run_id}})
     except Exception as e:
         print(f"    ❌ {{job['job_name']}}: {{e}}")
-        extract_results.append({{"job": job["job_name"], "status": "FAILED", "error": str(e)[:500]}})
+        extract_results.append({{"job": job["job_name"], "status": "FAILED", "error": str(e)[:500], "run_id": run_id}})
 
 extract_ok   = len([r for r in extract_results if r["status"] == "OK"])
 extract_fail = len([r for r in extract_results if r["status"] == "FAILED"])
@@ -1617,25 +2360,57 @@ if extract_fail:
 DLT_NAME = f"MetadataPipeline_{{GROUP_ID}}" if GROUP_ID else "MetadataPipeline_All"
 DLT_NB   = f"{{WORKSPACE_PATH}}/02_Meta_DLT_Pipeline"
 
+# ── Determine DLT output catalog/schema ──────────────────────────
+# DLT tables (bronze_*, silver_*) should go into the bronze catalog,
+# NOT the metadata (admin_source) catalog.
+# Read the proper target from wf_job_metadata target_config, or fall back.
+try:
+    _first_target = spark.sql(f"""
+        SELECT target_config FROM `{{CATALOG}}`.`{{SCHEMA}}`.wf_job_metadata
+        WHERE target_config IS NOT NULL AND LENGTH(TRIM(target_config)) > 2
+        LIMIT 1
+    """).first()
+    if _first_target:
+        _tcfg = json.loads(_first_target[0] or "{{}}")
+        DLT_CATALOG = _tcfg.get("bronze_catalog", "") or CATALOG
+        DLT_SCHEMA  = _tcfg.get("target_schema", "") or SCHEMA
+    else:
+        DLT_CATALOG = CATALOG
+        DLT_SCHEMA  = SCHEMA
+except Exception:
+    DLT_CATALOG = CATALOG
+    DLT_SCHEMA  = SCHEMA
+
+# Ensure the DLT output schema exists
+try:
+    spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{{DLT_CATALOG}}`.`{{DLT_SCHEMA}}`")
+    print(f"✅ Ensured schema exists: {{DLT_CATALOG}}.{{DLT_SCHEMA}}")
+except Exception as schema_err:
+    print(f"⚠️ Could not create schema {{DLT_CATALOG}}.{{DLT_SCHEMA}}: {{schema_err}}")
+
+print(f"📦 DLT output target: {{DLT_CATALOG}}.{{DLT_SCHEMA}}")
+print(f"📋 Metadata source:   {{CATALOG}}.{{SCHEMA}}")
+
 pipeline_cfg = {{
-    "pipeline.catalog":      CATALOG,
-    "pipeline.schema":       SCHEMA,
-    "pipeline.landing_path": LANDING_PATH,
-    "pipeline.group_id":     GROUP_ID,
+    "pipeline.meta_catalog":  CATALOG,
+    "pipeline.meta_schema":   SCHEMA,
+    "pipeline.landing_path":  LANDING_PATH,
+    "pipeline.group_id":      GROUP_ID,
 }}
 
 pipeline_spec = {{
     "name":          DLT_NAME,
-    "catalog":       CATALOG,
-    "target":        SCHEMA,
+    "catalog":       DLT_CATALOG,
+    "schema":        DLT_SCHEMA,
     "configuration": pipeline_cfg,
     "libraries":     [{{"notebook": {{"path": DLT_NB}}}}],
     "continuous":    False,
     "development":   True,
     "channel":       "CURRENT",
+    "serverless":    True,
 }}
 
-# Check for existing pipeline
+# Check for existing pipeline by name
 resp = requests.get(
     f"{{HOST}}/api/2.0/pipelines",
     params={{"filter": f"name LIKE '{{DLT_NAME}}'", "max_results": 10}},
@@ -1643,6 +2418,38 @@ resp = requests.get(
 )
 resp.raise_for_status()
 existing = [p for p in resp.json().get("statuses", []) if p["name"] == DLT_NAME]
+
+if not existing:
+    # Also search for ANY pipeline targeting the same catalog.schema
+    # to avoid "table already managed by pipeline X" errors
+    all_resp = requests.get(
+        f"{{HOST}}/api/2.0/pipelines",
+        params={{"max_results": 50}},
+        headers=_hdrs,
+    )
+    if all_resp.ok:
+        for p in all_resp.json().get("statuses", []):
+            pid = p.get("pipeline_id", "")
+            try:
+                pd = requests.get(f"{{HOST}}/api/2.0/pipelines/{{pid}}", headers=_hdrs)
+                if pd.ok:
+                    pspec = pd.json().get("spec", {{}})
+                    if pspec.get("catalog") == DLT_CATALOG and pspec.get("schema") == DLT_SCHEMA:
+                        print(f"⚠️ Found stale pipeline '{{p.get('name','')}}' ({{pid}}) targeting {{DLT_CATALOG}}.{{DLT_SCHEMA}}")
+                        print(f"   Deleting stale pipeline to avoid ownership conflict…")
+                        requests.delete(f"{{HOST}}/api/2.0/pipelines/{{pid}}", headers=_hdrs)
+                        print(f"   ✅ Deleted stale pipeline {{pid}}")
+            except Exception:
+                pass
+
+    # Re-check after cleanup
+    resp2 = requests.get(
+        f"{{HOST}}/api/2.0/pipelines",
+        params={{"filter": f"name LIKE '{{DLT_NAME}}'", "max_results": 10}},
+        headers=_hdrs,
+    )
+    if resp2.ok:
+        existing = [p for p in resp2.json().get("statuses", []) if p["name"] == DLT_NAME]
 
 if existing:
     pipeline_id = existing[0]["pipeline_id"]
@@ -1689,10 +2496,13 @@ print(f"📋 Update ID: {{update_id}}")
 terminal_states = {{"COMPLETED", "FAILED", "CANCELED"}}
 dlt_status  = "WAITING"
 poll_count  = 0
-MAX_POLLS   = 240   # 240 × 15s = 60 min max
+MAX_POLLS   = 360   # 360 × 10s = 60 min max
+POLL_INTERVAL = 10  # seconds between polls
+
+print(f"🔗 DLT Pipeline URL: {{HOST}}/#joblist/pipelines/{{pipeline_id}}")
 
 while dlt_status not in terminal_states and poll_count < MAX_POLLS:
-    time.sleep(15)
+    time.sleep(POLL_INTERVAL)
     poll_count += 1
     try:
         pr = requests.get(f"{{HOST}}/api/2.0/pipelines/{{pipeline_id}}", headers=_hdrs)
@@ -1704,8 +2514,9 @@ while dlt_status not in terminal_states and poll_count < MAX_POLLS:
             dlt_status = update_state
         elif pipe_data.get("state") in terminal_states:
             dlt_status = pipe_data["state"]
-        if poll_count % 4 == 0:
-            print(f"  ⏳ DLT status: {{update_state or pipe_data.get('state','UNKNOWN')}} ({{poll_count * 15}}s)")
+        if poll_count % 3 == 0:
+            elapsed = poll_count * POLL_INTERVAL
+            print(f"  ⏳ DLT status: {{update_state or pipe_data.get('state','UNKNOWN')}} ({{elapsed}}s)")
     except Exception as e:
         print(f"  ⚠️ Poll error: {{e}}")
 
@@ -1713,10 +2524,219 @@ if poll_count >= MAX_POLLS and dlt_status not in terminal_states:
     dlt_status = "TIMEOUT"
 print(f"\\n⚡ DLT pipeline finished: {{dlt_status}}")
 
+# Fetch error details if DLT failed
+if dlt_status == "FAILED":
+    print("\\n❌ DLT Pipeline FAILED — fetching diagnostics...")
+
+    # 1. Fetch update-level cause (most useful)
+    if update_id:
+        try:
+            upd_resp = requests.get(
+                f"{{HOST}}/api/2.0/pipelines/{{pipeline_id}}/updates/{{update_id}}",
+                headers=_hdrs,
+            )
+            if upd_resp.ok:
+                upd = upd_resp.json().get("update", {{}})
+                cause = upd.get("cause", "")
+                if cause:
+                    print(f"\\n📋 Update Cause: {{cause}}")
+                # Check for cluster/compute errors
+                cluster_id = upd.get("cluster_id", "")
+                if cluster_id:
+                    print(f"   Cluster: {{cluster_id}}")
+        except Exception:
+            pass
+
+    # 2. Fetch pipeline events (errors, flow progress)
+    try:
+        ev_resp = requests.get(
+            f"{{HOST}}/api/2.0/pipelines/{{pipeline_id}}/events",
+            params={{"max_results": 50, "order_by": "timestamp desc"}},
+            headers=_hdrs,
+        )
+        ev_resp.raise_for_status()
+        events = ev_resp.json().get("events", [])
+
+        # Filter for actual error events (not generic update_progress)
+        error_events = [
+            e for e in events
+            if (e.get("level") == "ERROR" and e.get("event_type") != "update_progress")
+            or (e.get("event_type") == "flow_progress" and "ERROR" in json.dumps(e.get("details", {{}})))
+        ]
+
+        if error_events:
+            print("\\n❌ DLT Error Events:")
+            for ev in error_events[:10]:
+                etype = ev.get("event_type", "")
+                msg = ev.get("message", "")
+                details = ev.get("details", {{}})
+                # Extract nested error messages from details
+                if not msg and isinstance(details, dict):
+                    msg = details.get("cause", "") or details.get("reason", "") or json.dumps(details)
+                print(f"  • [{{etype}}] {{msg[:500]}}")
+        else:
+            # Fallback: show ALL recent events for debugging
+            print("\\n⚠️ No specific error events — showing recent pipeline events:")
+            for ev in events[:8]:
+                etype = ev.get("event_type", "")
+                msg = ev.get("message", "")
+                lvl = ev.get("level", "")
+                print(f"  • [{{lvl}}/{{etype}}] {{msg[:300]}}")
+    except Exception as ev_err:
+        print(f"\\n⚠️ Could not fetch DLT events: {{ev_err}}")
+
+    print(f"\\n🔗 Check DLT UI: {{HOST}}/#joblist/pipelines/{{pipeline_id}}")
+
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 📊 Orchestration Summary
+# MAGIC ## � Phase 3 — Relocate Silver Tables to Silver Catalog
+
+# COMMAND ----------
+
+silver_relocated = 0
+silver_failed    = 0
+
+if dlt_status == "COMPLETED":
+    # Determine the silver catalog from target_config
+    SILVER_CATALOG = ""
+    try:
+        _tgt_row = spark.sql(f"""
+            SELECT target_config FROM `{{CATALOG}}`.`{{SCHEMA}}`.wf_job_metadata
+            WHERE target_config IS NOT NULL AND LENGTH(TRIM(target_config)) > 2
+            LIMIT 1
+        """).first()
+        if _tgt_row:
+            _tgt = json.loads(_tgt_row[0] or "{{}}")
+            SILVER_CATALOG = _tgt.get("silver_catalog", "")
+    except Exception:
+        pass
+
+    if SILVER_CATALOG and SILVER_CATALOG != DLT_CATALOG:
+        print(f"🔄 Relocating silver tables: {{DLT_CATALOG}}.{{DLT_SCHEMA}} → {{SILVER_CATALOG}}.{{DLT_SCHEMA}}")
+
+        # Ensure silver schema exists
+        try:
+            spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{{SILVER_CATALOG}}`.`{{DLT_SCHEMA}}`")
+        except Exception as se:
+            print(f"⚠️ Could not create schema {{SILVER_CATALOG}}.{{DLT_SCHEMA}}: {{se}}")
+
+        # Find all silver_* tables created by DLT in the bronze catalog
+        try:
+            silver_tables = [r[1] for r in spark.sql(f"""
+                SHOW TABLES IN `{{DLT_CATALOG}}`.`{{DLT_SCHEMA}}`
+            """).collect() if r[1].startswith("silver_")]
+        except Exception:
+            silver_tables = []
+
+        for stbl in silver_tables:
+            try:
+                src_full = f"`{{DLT_CATALOG}}`.`{{DLT_SCHEMA}}`.`{{stbl}}`"
+                dst_full = f"`{{SILVER_CATALOG}}`.`{{DLT_SCHEMA}}`.`{{stbl}}`"
+                print(f"  📋 {{src_full}} → {{dst_full}}")
+
+                # DLT creates silver as materialized views — use CTAS instead of DEEP CLONE
+                spark.sql(f"CREATE OR REPLACE TABLE {{dst_full}} AS SELECT * FROM {{src_full}}")
+                # Drop the materialized view from bronze catalog
+                try:
+                    spark.sql(f"DROP MATERIALIZED VIEW IF EXISTS {{src_full}}")
+                except Exception:
+                    try:
+                        spark.sql(f"DROP VIEW IF EXISTS {{src_full}}")
+                    except Exception:
+                        spark.sql(f"DROP TABLE IF EXISTS {{src_full}}")
+                silver_relocated += 1
+                print(f"    ✅ Relocated {{stbl}}")
+            except Exception as rel_err:
+                silver_failed += 1
+                print(f"    ❌ Failed to relocate {{stbl}}: {{rel_err}}")
+
+        print(f"\\n📦 Silver relocation: {{silver_relocated}} ok / {{silver_failed}} failed")
+    else:
+        if not SILVER_CATALOG:
+            print("ℹ️ No silver_catalog in target_config — silver tables remain in DLT catalog")
+        else:
+            print(f"ℹ️ Silver catalog same as DLT catalog ({{SILVER_CATALOG}}) — no relocation needed")
+else:
+    print("⏭️ Skipping silver relocation — DLT pipeline did not complete successfully")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 📊 Phase 4 — Run Reconciliation
+
+# COMMAND ----------
+
+recon_status = "SKIPPED"
+if dlt_status == "COMPLETED" and extract_results:
+    try:
+        recon_nb = f"{{WORKSPACE_PATH}}/04_Meta_Reconciliation"
+        recon_ok_count = 0
+        recon_fail_count = 0
+
+        # Run reconciliation for each successfully extracted job
+        for job_idx, job in enumerate(extract_jobs):
+            if extract_results[job_idx]["status"] != "OK":
+                continue
+            try:
+                jid   = job["job_id"]
+                rid   = extract_results[job_idx].get("run_id", "")
+                print(f"  📊 Reconciling: {{job['job_name']}}")
+                dbutils.notebook.run(recon_nb, 1800, {{
+                    "job_id": jid, "run_id": rid,
+                    "password_b64": PASSWORD_B64,
+                    "catalog": CATALOG, "schema": SCHEMA,
+                    "landing_path": LANDING_PATH,
+                }})
+                recon_ok_count += 1
+            except Exception as rj_err:
+                recon_fail_count += 1
+                print(f"    ⚠️ Recon failed for {{job['job_name']}}: {{rj_err}}")
+
+        recon_status = f"{{recon_ok_count}} ok / {{recon_fail_count}} failed"
+        print(f"  ✅ Reconciliation: {{recon_status}}")
+    except Exception as recon_err:
+        recon_status = "FAILED"
+        print(f"  ❌ Reconciliation failed: {{recon_err}}")
+else:
+    print("⏭️ Skipping reconciliation — DLT pipeline did not complete successfully")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 📝 Phase 5 — Run Execution Logging
+
+# COMMAND ----------
+
+log_status = "SKIPPED"
+if dlt_status == "COMPLETED":
+    try:
+        log_nb = f"{{WORKSPACE_PATH}}/05_Meta_ExecutionLog"
+        print(f"📝 Running execution logging: {{log_nb}}")
+
+        # Build results JSON for the execution log
+        _log_results = json.dumps(extract_results)
+        _log_groups  = json.dumps([g.get("group_id","") for g in groups])
+        _orch_status = "COMPLETED" if dlt_status == "COMPLETED" and not extract_fail else "PARTIAL"
+
+        log_result = dbutils.notebook.run(log_nb, 1800, {{
+            "catalog": CATALOG, "schema": SCHEMA,
+            "results_json": _log_results,
+            "groups_json": _log_groups,
+            "orchestrator_status": _orch_status,
+        }})
+        log_status = "COMPLETED"
+        print(f"  ✅ Execution logging complete")
+    except Exception as log_err:
+        log_status = "FAILED"
+        print(f"  ❌ Execution logging failed: {{log_err}}")
+else:
+    print("⏭️ Skipping execution logging — DLT pipeline did not complete successfully")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## �📊 Orchestration Summary
 
 # COMMAND ----------
 
@@ -1725,16 +2745,22 @@ total_rows = sum(r.get("rows", 0) for r in extract_results)
 print(f"\\n{{'='*60}}")
 print(f"📊 DLT ORCHESTRATION COMPLETE")
 print(f"{{'='*60}}")
-print(f"  📥 Extracts   : {{extract_ok}} ok / {{extract_fail}} failed")
-print(f"  ⚡ DLT Pipeline: {{dlt_status}}")
-print(f"  📊 Rows (JDBC) : {{total_rows:,}}")
-print(f"  🔗 Pipeline ID : {{pipeline_id}}")
+print(f"  📥 Extracts        : {{extract_ok}} ok / {{extract_fail}} failed")
+print(f"  ⚡ DLT Pipeline    : {{dlt_status}}")
+print(f"  🔄 Silver Relocated: {{silver_relocated}} ok / {{silver_failed}} failed")
+print(f"  📊 Reconciliation  : {{recon_status}}")
+print(f"  📝 Execution Log   : {{log_status}}")
+print(f"  📊 Rows (JDBC)     : {{total_rows:,}}")
+print(f"  🔗 Pipeline ID     : {{pipeline_id}}")
 
 exit_payload = json.dumps({{
     "status":          "COMPLETED" if dlt_status == "COMPLETED" and not extract_fail else "PARTIAL",
     "extract_ok":      extract_ok,
     "extract_failed":  extract_fail,
     "dlt_status":      dlt_status,
+    "silver_relocated": silver_relocated,
+    "recon_status":    recon_status,
+    "log_status":      log_status,
     "pipeline_id":     pipeline_id,
     "total_rows":      total_rows,
 }})

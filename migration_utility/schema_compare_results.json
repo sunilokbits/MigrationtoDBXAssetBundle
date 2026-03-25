@@ -1,0 +1,1425 @@
+{
+  "tables": [
+    {
+      "table": "BillingTable",
+      "src_cols": 10,
+      "tgt_cols": 21,
+      "matched": 3,
+      "diffs": [
+        {
+          "table": "BillingTable",
+          "column": "BillID",
+          "src_type": "INT",
+          "tgt_type": "INT",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "BillingTable",
+          "column": "CustomerID",
+          "src_type": "INT",
+          "tgt_type": "INT",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "BillingTable",
+          "column": "BillingDate",
+          "src_type": "DATE",
+          "tgt_type": "DATE",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "BillingTable",
+          "column": "DueDate",
+          "src_type": "DATE",
+          "tgt_type": "DATE",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "BillingTable",
+          "column": "Amount",
+          "src_type": "DECIMAL(10,2)",
+          "tgt_type": "DECIMAL(10,2)",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "BillingTable",
+          "column": "Tax",
+          "src_type": "DECIMAL(10,2)",
+          "tgt_type": "DECIMAL(10,2)",
+          "src_nullable": true,
+          "tgt_nullable": true,
+          "diff_type": "match",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "BillingTable",
+          "column": "TotalAmount",
+          "src_type": "DECIMAL(11,2)",
+          "tgt_type": "DECIMAL(11,2)",
+          "src_nullable": true,
+          "tgt_nullable": true,
+          "diff_type": "match",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "BillingTable",
+          "column": "Status",
+          "src_type": "VARCHAR(20)",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "BillingTable",
+          "column": "Notes",
+          "src_type": "VARCHAR(255)",
+          "tgt_type": "STRING",
+          "src_nullable": true,
+          "tgt_nullable": true,
+          "diff_type": "match",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "BillingTable",
+          "column": "CreatedOn",
+          "src_type": "DATETIME",
+          "tgt_type": "TIMESTAMP",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "BillingTable",
+          "column": "__landing_ts",
+          "src_type": "\u2014",
+          "tgt_type": "TIMESTAMP",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "BillingTable",
+          "column": "__source_system",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "BillingTable",
+          "column": "__load_type",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "BillingTable",
+          "column": "__batch_id",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "BillingTable",
+          "column": "__job_id",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "BillingTable",
+          "column": "__run_id",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "BillingTable",
+          "column": "_rescued_data",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "BillingTable",
+          "column": "__bronze_ts",
+          "src_type": "\u2014",
+          "tgt_type": "TIMESTAMP",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "BillingTable",
+          "column": "__source_table",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "BillingTable",
+          "column": "__silver_ts",
+          "src_type": "\u2014",
+          "tgt_type": "TIMESTAMP",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "BillingTable",
+          "column": "__dq_status",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        }
+      ]
+    },
+    {
+      "table": "DimDate",
+      "src_cols": 9,
+      "tgt_cols": 20,
+      "matched": 0,
+      "diffs": [
+        {
+          "table": "DimDate",
+          "column": "DateKey",
+          "src_type": "INT",
+          "tgt_type": "INT",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDate",
+          "column": "Date",
+          "src_type": "DATE",
+          "tgt_type": "DATE",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDate",
+          "column": "Year",
+          "src_type": "INT",
+          "tgt_type": "INT",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDate",
+          "column": "Quarter",
+          "src_type": "INT",
+          "tgt_type": "INT",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDate",
+          "column": "Month",
+          "src_type": "INT",
+          "tgt_type": "INT",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDate",
+          "column": "MonthName",
+          "src_type": "NVARCHAR(20)",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDate",
+          "column": "Day",
+          "src_type": "INT",
+          "tgt_type": "INT",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDate",
+          "column": "DayName",
+          "src_type": "NVARCHAR(20)",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDate",
+          "column": "IsWeekend",
+          "src_type": "BIT",
+          "tgt_type": "BOOLEAN",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDate",
+          "column": "__landing_ts",
+          "src_type": "\u2014",
+          "tgt_type": "TIMESTAMP",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDate",
+          "column": "__source_system",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDate",
+          "column": "__load_type",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDate",
+          "column": "__batch_id",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDate",
+          "column": "__job_id",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDate",
+          "column": "__run_id",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDate",
+          "column": "_rescued_data",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDate",
+          "column": "__bronze_ts",
+          "src_type": "\u2014",
+          "tgt_type": "TIMESTAMP",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDate",
+          "column": "__source_table",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDate",
+          "column": "__silver_ts",
+          "src_type": "\u2014",
+          "tgt_type": "TIMESTAMP",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDate",
+          "column": "__dq_status",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        }
+      ]
+    },
+    {
+      "table": "DimDepartment",
+      "src_cols": 4,
+      "tgt_cols": 0,
+      "matched": 0,
+      "diffs": [
+        {
+          "table": "DimDepartment",
+          "column": "DepartmentKey",
+          "src_type": "INT",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDepartment",
+          "column": "DeptCode",
+          "src_type": "NVARCHAR(20)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDepartment",
+          "column": "DeptName",
+          "src_type": "NVARCHAR(200)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimDepartment",
+          "column": "CostCenter",
+          "src_type": "NVARCHAR(50)",
+          "tgt_type": "\u2014",
+          "src_nullable": true,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        }
+      ]
+    },
+    {
+      "table": "DimEmployee",
+      "src_cols": 11,
+      "tgt_cols": 22,
+      "matched": 4,
+      "diffs": [
+        {
+          "table": "DimEmployee",
+          "column": "EmployeeKey",
+          "src_type": "INT",
+          "tgt_type": "INT",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimEmployee",
+          "column": "EmployeeNumber",
+          "src_type": "NVARCHAR(50)",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimEmployee",
+          "column": "FirstName",
+          "src_type": "NVARCHAR(100)",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimEmployee",
+          "column": "LastName",
+          "src_type": "NVARCHAR(100)",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimEmployee",
+          "column": "Email",
+          "src_type": "NVARCHAR(256)",
+          "tgt_type": "STRING",
+          "src_nullable": true,
+          "tgt_nullable": true,
+          "diff_type": "match",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimEmployee",
+          "column": "HireDate",
+          "src_type": "DATE",
+          "tgt_type": "DATE",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimEmployee",
+          "column": "TerminationDate",
+          "src_type": "DATE",
+          "tgt_type": "DATE",
+          "src_nullable": true,
+          "tgt_nullable": true,
+          "diff_type": "match",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimEmployee",
+          "column": "Gender",
+          "src_type": "NVARCHAR(20)",
+          "tgt_type": "STRING",
+          "src_nullable": true,
+          "tgt_nullable": true,
+          "diff_type": "match",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimEmployee",
+          "column": "BirthDate",
+          "src_type": "DATE",
+          "tgt_type": "DATE",
+          "src_nullable": true,
+          "tgt_nullable": true,
+          "diff_type": "match",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimEmployee",
+          "column": "ActiveFlag",
+          "src_type": "BIT",
+          "tgt_type": "BOOLEAN",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimEmployee",
+          "column": "CreatedAtUTC",
+          "src_type": "DATETIME2",
+          "tgt_type": "TIMESTAMP",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimEmployee",
+          "column": "__landing_ts",
+          "src_type": "\u2014",
+          "tgt_type": "TIMESTAMP",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimEmployee",
+          "column": "__source_system",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimEmployee",
+          "column": "__load_type",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimEmployee",
+          "column": "__batch_id",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimEmployee",
+          "column": "__job_id",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimEmployee",
+          "column": "__run_id",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimEmployee",
+          "column": "_rescued_data",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimEmployee",
+          "column": "__bronze_ts",
+          "src_type": "\u2014",
+          "tgt_type": "TIMESTAMP",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimEmployee",
+          "column": "__source_table",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimEmployee",
+          "column": "__silver_ts",
+          "src_type": "\u2014",
+          "tgt_type": "TIMESTAMP",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimEmployee",
+          "column": "__dq_status",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        }
+      ]
+    },
+    {
+      "table": "DimJobRole",
+      "src_cols": 5,
+      "tgt_cols": 0,
+      "matched": 0,
+      "diffs": [
+        {
+          "table": "DimJobRole",
+          "column": "JobRoleKey",
+          "src_type": "INT",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimJobRole",
+          "column": "JobRoleCode",
+          "src_type": "NVARCHAR(20)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimJobRole",
+          "column": "JobTitle",
+          "src_type": "NVARCHAR(200)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimJobRole",
+          "column": "JobFamily",
+          "src_type": "NVARCHAR(100)",
+          "tgt_type": "\u2014",
+          "src_nullable": true,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimJobRole",
+          "column": "Grade",
+          "src_type": "NVARCHAR(50)",
+          "tgt_type": "\u2014",
+          "src_nullable": true,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        }
+      ]
+    },
+    {
+      "table": "DimLocation",
+      "src_cols": 6,
+      "tgt_cols": 17,
+      "matched": 3,
+      "diffs": [
+        {
+          "table": "DimLocation",
+          "column": "LocationKey",
+          "src_type": "INT",
+          "tgt_type": "INT",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimLocation",
+          "column": "LocationCode",
+          "src_type": "NVARCHAR(20)",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimLocation",
+          "column": "Country",
+          "src_type": "NVARCHAR(100)",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "nullable_diff",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimLocation",
+          "column": "StateProvince",
+          "src_type": "NVARCHAR(100)",
+          "tgt_type": "STRING",
+          "src_nullable": true,
+          "tgt_nullable": true,
+          "diff_type": "match",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimLocation",
+          "column": "City",
+          "src_type": "NVARCHAR(100)",
+          "tgt_type": "STRING",
+          "src_nullable": true,
+          "tgt_nullable": true,
+          "diff_type": "match",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimLocation",
+          "column": "SiteName",
+          "src_type": "NVARCHAR(200)",
+          "tgt_type": "STRING",
+          "src_nullable": true,
+          "tgt_nullable": true,
+          "diff_type": "match",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimLocation",
+          "column": "__landing_ts",
+          "src_type": "\u2014",
+          "tgt_type": "TIMESTAMP",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimLocation",
+          "column": "__source_system",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimLocation",
+          "column": "__load_type",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimLocation",
+          "column": "__batch_id",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimLocation",
+          "column": "__job_id",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimLocation",
+          "column": "__run_id",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimLocation",
+          "column": "_rescued_data",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimLocation",
+          "column": "__bronze_ts",
+          "src_type": "\u2014",
+          "tgt_type": "TIMESTAMP",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimLocation",
+          "column": "__source_table",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimLocation",
+          "column": "__silver_ts",
+          "src_type": "\u2014",
+          "tgt_type": "TIMESTAMP",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "DimLocation",
+          "column": "__dq_status",
+          "src_type": "\u2014",
+          "tgt_type": "STRING",
+          "src_nullable": false,
+          "tgt_nullable": true,
+          "diff_type": "extra_col",
+          "compared_at": "2026-03-25 11:31:33"
+        }
+      ]
+    },
+    {
+      "table": "FactEmployeeActivity",
+      "src_cols": 12,
+      "tgt_cols": 0,
+      "matched": 0,
+      "diffs": [
+        {
+          "table": "FactEmployeeActivity",
+          "column": "ActivityKey",
+          "src_type": "BIGINT",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "FactEmployeeActivity",
+          "column": "DateKey",
+          "src_type": "INT",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "FactEmployeeActivity",
+          "column": "EmployeeKey",
+          "src_type": "INT",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "FactEmployeeActivity",
+          "column": "DepartmentKey",
+          "src_type": "INT",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "FactEmployeeActivity",
+          "column": "LocationKey",
+          "src_type": "INT",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "FactEmployeeActivity",
+          "column": "JobRoleKey",
+          "src_type": "INT",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "FactEmployeeActivity",
+          "column": "HoursWorked",
+          "src_type": "DECIMAL(9,2)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "FactEmployeeActivity",
+          "column": "OvertimeHours",
+          "src_type": "DECIMAL(9,2)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "FactEmployeeActivity",
+          "column": "BaseSalaryMonthly",
+          "src_type": "DECIMAL(18,2)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "FactEmployeeActivity",
+          "column": "BonusAmount",
+          "src_type": "DECIMAL(18,2)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "FactEmployeeActivity",
+          "column": "AllowanceAmount",
+          "src_type": "DECIMAL(18,2)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "FactEmployeeActivity",
+          "column": "TotalCompMonthly",
+          "src_type": "DECIMAL(20,2)",
+          "tgt_type": "\u2014",
+          "src_nullable": true,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        }
+      ]
+    },
+    {
+      "table": "MSchange_tracking_history",
+      "src_cols": 7,
+      "tgt_cols": 0,
+      "matched": 0,
+      "diffs": [
+        {
+          "table": "MSchange_tracking_history",
+          "column": "internal_table_name",
+          "src_type": "NVARCHAR(128)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "MSchange_tracking_history",
+          "column": "table_name",
+          "src_type": "NVARCHAR(128)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "MSchange_tracking_history",
+          "column": "start_time",
+          "src_type": "DATETIME",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "MSchange_tracking_history",
+          "column": "end_time",
+          "src_type": "DATETIME",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "MSchange_tracking_history",
+          "column": "rows_cleaned_up",
+          "src_type": "BIGINT",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "MSchange_tracking_history",
+          "column": "cleanup_version",
+          "src_type": "BIGINT",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "MSchange_tracking_history",
+          "column": "comments",
+          "src_type": "NVARCHAR(MAX)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        }
+      ]
+    },
+    {
+      "table": "systranschemas",
+      "src_cols": 4,
+      "tgt_cols": 0,
+      "matched": 0,
+      "diffs": [
+        {
+          "table": "systranschemas",
+          "column": "tabid",
+          "src_type": "INT",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "systranschemas",
+          "column": "startlsn",
+          "src_type": "BINARY",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "systranschemas",
+          "column": "endlsn",
+          "src_type": "BINARY",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "systranschemas",
+          "column": "typeid",
+          "src_type": "INT",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        }
+      ]
+    },
+    {
+      "table": "vEmployeeCompLatest",
+      "src_cols": 8,
+      "tgt_cols": 0,
+      "matched": 0,
+      "diffs": [
+        {
+          "table": "vEmployeeCompLatest",
+          "column": "EmployeeNumber",
+          "src_type": "NVARCHAR(50)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "vEmployeeCompLatest",
+          "column": "FirstName",
+          "src_type": "NVARCHAR(100)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "vEmployeeCompLatest",
+          "column": "LastName",
+          "src_type": "NVARCHAR(100)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "vEmployeeCompLatest",
+          "column": "DateKey",
+          "src_type": "INT",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "vEmployeeCompLatest",
+          "column": "BaseSalaryMonthly",
+          "src_type": "DECIMAL(18,2)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "vEmployeeCompLatest",
+          "column": "BonusAmount",
+          "src_type": "DECIMAL(18,2)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "vEmployeeCompLatest",
+          "column": "AllowanceAmount",
+          "src_type": "DECIMAL(18,2)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "vEmployeeCompLatest",
+          "column": "TotalCompMonthly",
+          "src_type": "DECIMAL(20,2)",
+          "tgt_type": "\u2014",
+          "src_nullable": true,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        }
+      ]
+    },
+    {
+      "table": "vEmployeeDailyHours",
+      "src_cols": 13,
+      "tgt_cols": 0,
+      "matched": 0,
+      "diffs": [
+        {
+          "table": "vEmployeeDailyHours",
+          "column": "Date",
+          "src_type": "DATE",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "vEmployeeDailyHours",
+          "column": "DateKey",
+          "src_type": "INT",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "vEmployeeDailyHours",
+          "column": "EmployeeNumber",
+          "src_type": "NVARCHAR(50)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "vEmployeeDailyHours",
+          "column": "FirstName",
+          "src_type": "NVARCHAR(100)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "vEmployeeDailyHours",
+          "column": "LastName",
+          "src_type": "NVARCHAR(100)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "vEmployeeDailyHours",
+          "column": "DeptCode",
+          "src_type": "NVARCHAR(20)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "vEmployeeDailyHours",
+          "column": "DeptName",
+          "src_type": "NVARCHAR(200)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "vEmployeeDailyHours",
+          "column": "LocationCode",
+          "src_type": "NVARCHAR(20)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "vEmployeeDailyHours",
+          "column": "City",
+          "src_type": "NVARCHAR(100)",
+          "tgt_type": "\u2014",
+          "src_nullable": true,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "vEmployeeDailyHours",
+          "column": "JobRoleCode",
+          "src_type": "NVARCHAR(20)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "vEmployeeDailyHours",
+          "column": "JobTitle",
+          "src_type": "NVARCHAR(200)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "vEmployeeDailyHours",
+          "column": "HoursWorked",
+          "src_type": "DECIMAL(9,2)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        },
+        {
+          "table": "vEmployeeDailyHours",
+          "column": "OvertimeHours",
+          "src_type": "DECIMAL(9,2)",
+          "tgt_type": "\u2014",
+          "src_nullable": false,
+          "tgt_nullable": false,
+          "diff_type": "missing_col",
+          "compared_at": "2026-03-25 11:31:33"
+        }
+      ]
+    }
+  ],
+  "source": "poc-az-sql-db.dbo",
+  "target": "silver.hr",
+  "compared_at": "2026-03-25 11:31:33"
+}

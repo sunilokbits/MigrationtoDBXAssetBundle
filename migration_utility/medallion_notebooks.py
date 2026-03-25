@@ -358,6 +358,7 @@ def generate_bronze(
     schema: str = "default",
     landing_path: str = "/mnt/landing",
     table_prefix: str = "bronze_",
+    cdc_mode: str = "watermark",
 ) -> str:
     """Generate the Bronze layer DLT notebook."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -377,6 +378,7 @@ def generate_bronze(
         "quality": "bronze",
         "delta.autoOptimize.optimizeWrite": "true",
         "delta.autoOptimize.autoCompact": "true",
+        "delta.enableChangeDataFeed": "true",
         "pipelines.autoOptimize.managed": "true",
     }},
 )
@@ -632,15 +634,19 @@ def generate_silver(
     bronze_schema: str = "",
     table_prefix: str = "silver_",
     bronze_table_prefix: str = "bronze_",
+    cdc_mode: str = "watermark",
+    primary_keys: list = None,
 ) -> str:
-    """Generate the Silver layer DLT notebook with quality checks."""
+    """Generate the Silver layer DLT notebook with quality checks and CDC apply_changes."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
     # Resolve bronze catalog/schema — defaults to same catalog/schema if not specified
     br_catalog = bronze_catalog or catalog
     br_schema = bronze_schema or schema
+    pk_list = primary_keys or []
 
     # Build DLT definitions
     dlt_defs = []
+    cdc_defs = []
     std_defs = []
     for t in tables:
         tname = t["table"]
@@ -648,7 +654,36 @@ def generate_silver(
         delta_name = f"{table_prefix}{safe}"
         bronze_delta_name = f"{bronze_table_prefix}{safe}"
 
-        dlt_defs.append(f'''
+        # Per-table primary keys: table-level override or global
+        t_pks = t.get("primary_keys", pk_list)
+        pk_str = ", ".join(f'"{pk}"' for pk in t_pks) if t_pks else ""
+
+        if cdc_mode == "change_tracking" and t_pks:
+            # CDC path: use dlt.apply_changes() for SCD Type 1 MERGE
+            cdc_defs.append(f'''
+    dlt.create_streaming_table(
+        name="{delta_name}",
+        comment="Silver — CDC merge of {tname} via Change Tracking (SCD Type 1)",
+        table_properties={{
+            "quality": "silver",
+            "delta.autoOptimize.optimizeWrite": "true",
+            "delta.enableChangeDataFeed": "true",
+        }},
+    )
+
+    dlt.apply_changes(
+        target="{delta_name}",
+        source="{bronze_delta_name}",
+        keys=[{pk_str}],
+        sequence_by=F.col("__bronze_ts"),
+        apply_as_deletes=F.expr("__cdc_operation = 'D'"),
+        except_column_list=["__landing_ts", "__load_type", "__is_quarantined",
+                            "__cdc_operation", "__cdc_version", "__cdc_mode",
+                            "__batch_id", "__bronze_version"],
+    )
+    print(f"  CDC apply_changes: {bronze_delta_name} -> {delta_name}")''')
+        else:
+            dlt_defs.append(f'''
 @dlt.table(
     name="{delta_name}",
     comment="Silver layer — cleansed & validated {tname}",
@@ -656,6 +691,7 @@ def generate_silver(
         "quality": "silver",
         "delta.autoOptimize.optimizeWrite": "true",
         "delta.autoOptimize.autoCompact": "true",
+        "delta.enableChangeDataFeed": "true",
         "pipelines.autoOptimize.managed": "true",
     }},
 )
@@ -787,6 +823,7 @@ def process_silver_{safe}():
         return {{"table": "{tname}", "status": "failed", "error": str(e)}}''')
 
     dlt_block = "\n".join(dlt_defs)
+    cdc_block = "\n".join(cdc_defs)
     std_block = "\n".join(std_defs)
     table_names_str = ", ".join(f'"{t["table"]}"' for t in tables)
 
@@ -942,12 +979,14 @@ def validate_silver_table(catalog, schema, table_name):
 # MAGIC %md
 # MAGIC ## 🏭 DLT Pipeline Definitions
 # MAGIC > Active only when running as a **DLT Pipeline**.
+# MAGIC > CDC tables use `dlt.apply_changes()` for SCD Type 1 merge.
 
 # COMMAND ----------
 
 if EXEC_MODE == "dlt":
     import dlt
 {dlt_block}
+{cdc_block}
 
 # COMMAND ----------
 
@@ -1217,6 +1256,8 @@ def generate_all_medallion_notebooks(
     bronze_catalog: str = "",
     silver_catalog: str = "",
     target_schema: str = "",
+    cdc_mode: str = "watermark",
+    primary_keys: list = None,
 ) -> dict:
     """
     Generate all Medallion notebooks and return them as a dict.
@@ -1254,6 +1295,7 @@ def generate_all_medallion_notebooks(
         schema=tgt_schema,
         landing_path=effective_landing_path,
         table_prefix=bronze_table_prefix,
+        cdc_mode=cdc_mode,
     )
     silver = generate_silver(
         tables,
@@ -1263,6 +1305,8 @@ def generate_all_medallion_notebooks(
         bronze_schema=tgt_schema,
         table_prefix=silver_table_prefix,
         bronze_table_prefix=bronze_table_prefix,
+        cdc_mode=cdc_mode,
+        primary_keys=primary_keys or [],
     )
     orchestrator = generate_orchestrator(
         source_type, server, database, username, tables,
@@ -1337,6 +1381,9 @@ def generate_all_medallion_notebooks(
                 "Parallel extraction",
                 "Auto-rollback on failure",
                 "Multi-Catalog Medallion Architecture" if multi_catalog else "Single-Catalog Mode",
+                "SQL Server Change Tracking (CDC)" if cdc_mode == "change_tracking" else "Watermark CDC",
+                "DLT apply_changes() SCD Type 1" if cdc_mode == "change_tracking" else "Standard DLT tables",
+                "Change Data Feed (CDF) enabled on Bronze & Silver",
             ],
         },
     }

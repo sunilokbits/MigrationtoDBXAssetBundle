@@ -10,6 +10,7 @@ Manages medallion pipeline jobs with:
   • **Databricks Unity Catalog persistence** — metadata stored in Delta tables
 """
 
+import os
 import uuid
 import json
 import threading
@@ -17,6 +18,28 @@ import requests
 import time
 from datetime import datetime
 from collections import OrderedDict
+
+_DEPLOY_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "deployconfig.json")
+
+def _load_deploy_config() -> dict:
+    """Read deployconfig.json for fallback Databricks credentials."""
+    try:
+        if os.path.isfile(_DEPLOY_CONFIG_PATH):
+            with open(_DEPLOY_CONFIG_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+def _save_deploy_config_field(key: str, value):
+    """Upsert a top-level field in deployconfig.json."""
+    try:
+        cfg = _load_deploy_config()
+        cfg[key] = value
+        with open(_DEPLOY_CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  In-Memory Metadata Store  +  Databricks Delta persistence
@@ -37,6 +60,39 @@ _dbr_catalog = None
 _dbr_schema = None
 _dbr_warehouse_id = None
 _metadata_initialized = False
+
+# ── Auto-restore connection state from deployconfig.json on module load ──
+def _restore_from_deploy_config():
+    global _dbr_host, _dbr_token, _dbr_catalog, _dbr_schema, _dbr_warehouse_id, _metadata_initialized
+    dcfg = _load_deploy_config()
+    if dcfg:
+        _dbr_host = _dbr_host or dcfg.get("databricks_host", "").rstrip("/") or None
+        _dbr_token = _dbr_token or dcfg.get("databricks_token") or None
+        _dbr_catalog = _dbr_catalog or dcfg.get("metadata_catalog") or None
+        _dbr_schema = _dbr_schema or dcfg.get("metadata_schema") or None
+        # Try to auto-detect warehouse if we have host+token
+        if _dbr_host and _dbr_token and not _dbr_warehouse_id:
+            try:
+                s = requests.Session()
+                s.headers.update({
+                    "Authorization": f"Bearer {_dbr_token}",
+                    "Content-Type": "application/json",
+                })
+                resp = s.get(f"{_dbr_host}/api/2.0/sql/warehouses", timeout=15)
+                if resp.status_code == 200:
+                    whs = resp.json().get("warehouses", [])
+                    running = [w for w in whs if w.get("state") == "RUNNING"]
+                    if running:
+                        _dbr_warehouse_id = running[0]["id"]
+                    elif whs:
+                        _dbr_warehouse_id = whs[0]["id"]
+            except Exception:
+                pass
+        # If we have all needed state, mark as initialized
+        if _dbr_host and _dbr_token and _dbr_catalog and _dbr_schema and _dbr_warehouse_id:
+            _metadata_initialized = True
+
+_restore_from_deploy_config()
 
 # ── Table names ──
 TBL_PIPELINES = "wf_pipeline_metadata"
@@ -249,6 +305,11 @@ def init_metadata_flow(host: str, token: str, catalog: str = "main",
         return {"success": False, "error": "; ".join(errors), "partial_results": results}
 
     _metadata_initialized = True
+
+    # Persist metadata catalog/schema so they survive Flask restarts
+    _save_deploy_config_field("metadata_catalog", _dbr_catalog)
+    _save_deploy_config_field("metadata_schema", _dbr_schema)
+
     return {
         "success": True,
         "message": f"MetadataFlow created — 5 Delta tables provisioned in {_dbr_catalog}.{_dbr_schema}",
@@ -610,6 +671,7 @@ def _job_name(stage: str, table_name: str, target_config: dict = None) -> str:
             "extract":           f"ExtractTo_{vol_cat}_{clean}",
             "landing_to_bronze":  f"{vol_cat}_To_{brz_cat}_{clean}",
             "bronze_to_silver":   f"{brz_cat}_To_{slv_cat}_{clean}",
+            "dlt_bronze_silver":  f"DLT_{vol_cat}_To_{slv_cat}_{clean}",
         }
     else:
         # Legacy naming
@@ -617,6 +679,7 @@ def _job_name(stage: str, table_name: str, target_config: dict = None) -> str:
             "extract":           f"SqlExtract_{clean}",
             "landing_to_bronze":  f"LandingToBronze_{clean}",
             "bronze_to_silver":   f"BronzeToSilver_{clean}",
+            "dlt_bronze_silver":  f"DLT_BronzeToSilver_{clean}",
         }
     return prefix_map.get(stage, f"{stage}_{clean}")
 
@@ -631,12 +694,17 @@ def create_pipeline_for_table(
     watermark_column: str = "",       # e.g. "ModifiedDate"
     source_config: dict = None,       # {source_type, server, database, ...}
     target_config: dict = None,       # {catalog, schema, landing_path, ...}
+    pipeline_mode: str = "standard",  # "standard" (PySpark) or "dlt" (Delta Live Tables)
+    cdc_mode: str = "watermark",      # "watermark" or "change_tracking"
+    primary_keys: list = None,        # e.g. ["CustomerID"] — required for change_tracking
 ) -> dict:
     """
-    Create a 3-job pipeline group for one source table:
-      Job 1: SqlExtract_<Table>       — Extract data from source → Landing
-      Job 2: LandingToBronze_<Table>  — Landing → Bronze (raw delta)
-      Job 3: BronzeToSilver_<Table>   — Bronze → Silver (cleansed)
+    Create a pipeline group for one source table:
+      Standard (3 jobs): extract → landing_to_bronze → bronze_to_silver
+      DLT      (2 jobs): extract → dlt_bronze_silver
+    CDC Mode:
+      watermark        — classic incremental via watermark column
+      change_tracking  — SQL Server Change Tracking via CHANGETABLE()
     """
     full_table = f"{table_schema}.{table_name}"
     group_id = uuid.uuid4().hex[:12]
@@ -644,9 +712,21 @@ def create_pipeline_for_table(
 
     source_config = source_config or {}
     target_config = target_config or {}
+    primary_keys  = primary_keys or []
+
+    # Inject CDC config into source_config for downstream notebooks
+    if cdc_mode and cdc_mode != "watermark":
+        source_config["cdc_mode"] = cdc_mode
+    if primary_keys:
+        source_config["primary_keys"] = primary_keys
+
+    if pipeline_mode == "dlt":
+        stage_list = ["extract", "dlt_bronze_silver"]
+    else:
+        stage_list = ["extract", "landing_to_bronze", "bronze_to_silver"]
 
     jobs = []
-    for stage in ["extract", "landing_to_bronze", "bronze_to_silver"]:
+    for stage in stage_list:
         job_id = uuid.uuid4().hex[:12]
         job = {
             "job_id":           job_id,
@@ -668,7 +748,7 @@ def create_pipeline_for_table(
             "updated_at":       ts,
             "source_config":    source_config,
             "target_config":    target_config,
-            "order":            ["extract", "landing_to_bronze", "bronze_to_silver"].index(stage) + 1,
+            "order":            stage_list.index(stage) + 1,
             "enabled":          True,
         }
         with _lock:
@@ -695,6 +775,9 @@ def create_pipeline_for_table(
         "status":             "created",
         "source_config":      source_config,
         "target_config":      target_config,
+        "pipeline_mode":      pipeline_mode,
+        "cdc_mode":           cdc_mode,
+        "primary_keys":       primary_keys,
         "created_at":         ts,
     }
     with _lock:
@@ -722,6 +805,9 @@ def create_pipelines_bulk(
     tables: list,           # [{schema, table, load_type, watermark_column}, ...]
     source_config: dict = None,
     target_config: dict = None,
+    pipeline_mode: str = "standard",
+    cdc_mode: str = "watermark",
+    primary_keys: list = None,
 ) -> dict:
     """Create pipeline groups for multiple tables at once."""
     results = []
@@ -733,6 +819,9 @@ def create_pipelines_bulk(
             watermark_column=t.get("watermark_column", ""),
             source_config=source_config,
             target_config=target_config,
+            pipeline_mode=pipeline_mode,
+            cdc_mode=cdc_mode,
+            primary_keys=t.get("primary_keys", primary_keys or []),
         )
         results.append(r)
 
@@ -1335,10 +1424,21 @@ def deploy_metadata_notebooks(
     landing_path: str = "/mnt/landing",
     workspace_path: str = "/Shared/MetadataPipeline",
     pipeline_mode: str = "standard",
+    recon_catalog: str = "reconciliation",
+    recon_schema: str = "hr",
+    recon_table: str = "ReconcilationDetails",
+    log_catalog: str = "logging",
+    log_schema: str = "hr",
+    log_table: str = "ExecutionLog",
+    recon_location: str = "",
+    log_location: str = "",
+    cdc_mode: str = "watermark",
+    primary_keys: list = None,
 ) -> dict:
     """
     Generate metadata-driven notebooks and upload them to Databricks.
     pipeline_mode: "standard" (4 notebooks) or "dlt" (3 DLT notebooks).
+    cdc_mode: "watermark" or "change_tracking" (SQL Server CT).
     """
     global _notebooks_deployed, _notebooks_workspace_path
 
@@ -1355,6 +1455,16 @@ def deploy_metadata_notebooks(
         landing_path=landing_path,
         workspace_path=workspace_path,
         pipeline_mode=pipeline_mode,
+        recon_catalog=recon_catalog,
+        recon_schema=recon_schema,
+        recon_table=recon_table,
+        log_catalog=log_catalog,
+        log_schema=log_schema,
+        log_table=log_table,
+        recon_location=recon_location,
+        log_location=log_location,
+        cdc_mode=cdc_mode,
+        primary_keys=primary_keys or [],
     )
     if not gen_result.get("success"):
         return gen_result
@@ -1518,6 +1628,15 @@ def _poll_databricks_run(connector, dbr_run_id, group_id: str):
                             run["error"] = output_info.get("error") or output_info.get("error_trace", "")[:500] or state_msg
                         _sync_run_to_dbr(run)
 
+                        # Update JOB_REGISTRY so list_jobs() reflects final status
+                        job = JOB_REGISTRY.get(run["job_id"])
+                        if job:
+                            job["status"] = run["status"]
+                            job["run_count"] = job.get("run_count", 0) + 1
+                            if run["status"] == "failed":
+                                job["fail_count"] = job.get("fail_count", 0) + 1
+                            _sync_job_to_dbr(job)
+
                 if grp:
                     grp["status"] = "failed" if dlt_failed else local_status
                     _sync_pipeline_to_dbr(grp)
@@ -1554,17 +1673,27 @@ def run_pipeline_on_databricks(
     catalog: str = "",
     schema: str = "",
     landing_path: str = "/mnt/landing",
+    recon_catalog: str = "reconciliation",
+    recon_schema: str = "hr",
+    recon_table: str = "ReconcilationDetails",
+    log_catalog: str = "logging",
+    log_schema: str = "hr",
+    log_table: str = "ExecutionLog",
 ) -> dict:
     """
     Submit the 00_Meta_Orchestrator notebook on Databricks to run a pipeline
     group (or all groups if group_id is empty).
     This is the REAL execution path — it creates a Databricks job run.
     """
-    host  = host or _dbr_host
-    token = token or _dbr_token
+    # Fallback chain: explicit arg → in-memory global → deployconfig.json → hardcoded default
+    dcfg = _load_deploy_config() if (not host or not token or not catalog or not schema) else {}
+    host  = host or _dbr_host or dcfg.get("databricks_host", "")
+    token = token or _dbr_token or dcfg.get("databricks_token", "")
     ws    = workspace_path or _notebooks_workspace_path or "/Shared/MetadataPipeline"
-    cat   = catalog or _dbr_catalog or "main"
-    sch   = schema or _dbr_schema or "default"
+    cat   = catalog or _dbr_catalog or dcfg.get("metadata_catalog", "") or "main"
+    sch   = schema or _dbr_schema or dcfg.get("metadata_schema", "") or "default"
+    if not password:
+        password = dcfg.get("source", {}).get("password", "") if dcfg else ""
 
     if not host or not token:
         return {"success": False, "error": "Databricks host and token required"}
@@ -1585,6 +1714,12 @@ def run_pipeline_on_databricks(
         "schema":         sch,
         "landing_path":   landing_path,
         "workspace_path": ws,
+        "recon_catalog":  recon_catalog,
+        "recon_schema":   recon_schema,
+        "recon_table":    recon_table,
+        "log_catalog":    log_catalog,
+        "log_schema":     log_schema,
+        "log_table":      log_table,
     }
 
     result = connector.run_notebook(

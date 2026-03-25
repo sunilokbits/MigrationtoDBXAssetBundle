@@ -10,3 +10,7 @@ build/
 .vscode/
 *.log
 ~$*
+
+# Sensitive config with credentials
+deployconfig.json
+migration_utility/deployconfig.json

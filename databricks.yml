@@ -1,0 +1,91 @@
+# Databricks Asset Bundle — SQL Server to Databricks Migration
+# ================================================================
+# This bundle declares all Databricks-side resources (notebooks, jobs,
+# pipelines) for the medallion migration pipeline.
+#
+# Usage:
+#   databricks bundle validate          — check YAML syntax
+#   databricks bundle deploy -t dev     — deploy to dev workspace
+#   databricks bundle run -t dev medallion_pipeline  — trigger the pipeline
+#
+# The Flask utility (app.py) remains a standalone orchestration UI and
+# can optionally invoke `databricks bundle run` instead of raw REST calls.
+
+bundle:
+  name: sql-to-databricks-migration
+
+workspace:
+  host: https://adb-878461360323813.13.azuredatabricks.net/
+
+variables:
+  # ── Unity Catalog catalogs ──────────────────────────────────────
+  catalog_bronze:
+    description: Bronze catalog for raw ingestion
+    default: bronze
+  catalog_silver:
+    description: Silver catalog for cleansed data
+    default: silver
+  catalog_admin:
+    description: Admin source catalog for config tables
+    default: admin_source
+  catalog_volumes:
+    description: Volumes catalog for landing zone
+    default: dev_volumes
+  catalog_recon:
+    description: Reconciliation catalog
+    default: reconciliation
+  catalog_logging:
+    description: Logging catalog for execution audit trail
+    default: loggingdetails
+
+  # ── Schemas ─────────────────────────────────────────────────────
+  default_schema:
+    description: Default schema used across catalogs
+    default: hr
+
+  # ── Storage ─────────────────────────────────────────────────────
+  storage_account:
+    description: Azure storage account for ADLS Gen2
+    default: sqltodatabrciksmig
+  container:
+    description: ADLS container
+    default: datalake
+
+  # ── Paths ───────────────────────────────────────────────────────
+  landing_path:
+    description: Landing zone base path (UC Volumes)
+    default: /Volumes/dev_volumes/hr/landing
+  notebook_root:
+    description: Workspace path for deployed notebooks
+    default: /Shared/MetadataPipeline
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+
+  staging:
+    workspace:
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/staging
+    variables:
+      catalog_bronze: bronze_staging
+      catalog_silver: silver_staging
+      catalog_volumes: dev_volumes_staging
+
+  prod:
+    mode: production
+    workspace:
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/prod
+    variables:
+      catalog_bronze: bronze_prod
+      catalog_silver: silver_prod
+      catalog_admin: admin_source_prod
+      catalog_volumes: dev_volumes_prod
+      catalog_recon: reconciliation_prod
+      catalog_logging: loggingdetails_prod
+      storage_account: sqltodatabrciksmigprod
