@@ -4,8 +4,8 @@ Routes for: SP → PySpark conversion, Databricks connection test, Notebook uplo
 """
 
 from flask import Flask, request, jsonify, render_template_string, Response
-import os, sys, json, traceback, time
-from datetime import datetime
+import os, sys, json, traceback, time, uuid, requests
+from datetime import datetime, timedelta, timezone
 
 # Ensure sibling modules are importable regardless of working directory
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -1272,6 +1272,29 @@ def wf_update_job(job_id):
 def wf_delete_job(job_id):
     return jsonify(wfm.delete_job(job_id))
 
+# ── Job History (archived metadata) ──
+@app.route("/api/workflow/jobs/history", methods=["GET"])
+def wf_job_history():
+    """Fetch archived job metadata from wf_job_metadatahis."""
+    table_name = request.args.get("table_name", "").strip()
+    try:
+        if not wfm._metadata_initialized:
+            return jsonify({"success": False, "error": "MetadataFlow not initialized"})
+        where = ""
+        if table_name:
+            where = f" WHERE table_name = {wfm._esc(table_name)}"
+        sql = f"SELECT * FROM {wfm._fqn(wfm.TBL_JOBS_HISTORY)}{where} ORDER BY archived_at DESC"
+        r = wfm._exec_sql(sql)
+        state = r.get("status", {}).get("state", "")
+        if state != "SUCCEEDED":
+            return jsonify({"success": False, "error": "Query failed", "detail": r})
+        cols = [c.get("name", "") for c in r.get("result", {}).get("schema", {}).get("columns", [])]
+        rows = r.get("result", {}).get("data_array", [])
+        history = [dict(zip(cols, row)) for row in rows]
+        return jsonify({"success": True, "history": history, "total": len(history)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 # ── Delete Entire Pipeline Group ──
 @app.route("/api/workflow/pipelines/<group_id>", methods=["DELETE"])
 def wf_delete_pipeline(group_id):
@@ -1360,6 +1383,434 @@ def wf_update_watermark():
 def wf_reset_watermark():
     d = request.get_json() or {}
     return jsonify(wfm.reset_watermark(d.get("table")))
+
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  Job Scheduler                                                               ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+SCHEDULE_PATH = os.path.join(os.path.dirname(__file__), "job_schedules.json")
+
+def _load_schedules_local():
+    """Load from local JSON fallback."""
+    if os.path.isfile(SCHEDULE_PATH):
+        try:
+            with open(SCHEDULE_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"schedules": [], "history": []}
+
+def _save_schedules_local(data):
+    """Save to local JSON as cache."""
+    with open(SCHEDULE_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, default=str)
+
+def _load_schedules():
+    """Load schedules from Databricks (primary), fallback to local JSON."""
+    try:
+        dbx_data = wfm.scheduler_load_all()
+        if dbx_data.get("schedules") or dbx_data.get("history"):
+            # Merge: use DBX as truth, but keep local-only history entries
+            local = _load_schedules_local()
+            # Deduplicate: DBX schedule_ids take priority
+            dbx_sids = {s["schedule_id"] for s in dbx_data.get("schedules", [])}
+            for ls in local.get("schedules", []):
+                if ls.get("schedule_id") not in dbx_sids:
+                    dbx_data["schedules"].append(ls)
+            # Cache locally
+            _save_schedules_local(dbx_data)
+            return dbx_data
+    except Exception:
+        pass
+    return _load_schedules_local()
+
+def _save_schedules(data):
+    """Save to local JSON cache (DBX sync is done per-operation)."""
+    _save_schedules_local(data)
+
+@app.route("/api/scheduler/schedules", methods=["GET"])
+def sch_list_schedules():
+    data = _load_schedules()
+    return jsonify({"success": True, "schedules": data.get("schedules", []), "history": data.get("history", [])})
+
+@app.route("/api/scheduler/tables", methods=["GET"])
+def sch_list_tables():
+    """Return unique tables with their pipeline group info from Databricks metadata."""
+    try:
+        with open(DEPLOY_CONFIG_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except Exception:
+        cfg = {}
+
+    dbx_host  = cfg.get("databricks_host", "").rstrip("/")
+    dbx_token = cfg.get("databricks_token", "")
+
+    if not dbx_host or not dbx_token:
+        return jsonify({"success": False, "tables": [], "error": "Databricks not configured."})
+
+    # Determine metadata catalog & schema
+    catalogs = cfg.get("catalogs", {})
+    meta_cat = "admin_source"
+    meta_sch = "Configtables"
+    for cat_name, cat_cfg in catalogs.items():
+        schemas = cat_cfg.get("schemas", [])
+        if "Configtables" in schemas:
+            meta_cat = cat_name
+            meta_sch = "Configtables"
+            break
+
+    uc = UnityCatalogExecutor(dbx_host, dbx_token, meta_cat, meta_sch)
+    wh_resp = uc.list_warehouses()
+    warehouses = wh_resp.get("warehouses", [])
+    wh_id = next((w["id"] for w in warehouses if w.get("state") == "RUNNING"), None)
+    if not wh_id and warehouses:
+        wh_id = warehouses[0].get("id")
+    if not wh_id:
+        return jsonify({"success": False, "tables": [], "error": "No SQL Warehouse available."})
+
+    fqn = f"`{meta_cat}`.`{meta_sch}`.`wf_job_metadata`"
+    sql = f"SELECT job_id, job_name, stage, group_id, table_schema, table_name, full_table, load_type, job_order FROM {fqn} ORDER BY table_name, job_order"
+    result = uc._execute_statement(sql, wh_id, wait_timeout="30s")
+
+    if result.get("error"):
+        return jsonify({"success": False, "tables": [], "error": result["error"]})
+
+    status = result.get("status", {}).get("state", "")
+    if status in ("PENDING", "RUNNING"):
+        stmt_id = result.get("statement_id", "")
+        if stmt_id:
+            result = uc._poll_statement(stmt_id)
+
+    columns = [c.get("name", "") for c in result.get("manifest", {}).get("schema", {}).get("columns", [])]
+    data_array = result.get("result", {}).get("data_array", [])
+
+    # Group jobs by table_name
+    from collections import OrderedDict
+    table_map = OrderedDict()
+    for row in data_array:
+        obj = {}
+        for i, col in enumerate(columns):
+            obj[col] = row[i] if i < len(row) else None
+        tname = obj.get("table_name", "")
+        if not tname:
+            continue
+        if tname not in table_map:
+            table_map[tname] = {
+                "table_name": tname,
+                "table_schema": obj.get("table_schema", "dbo"),
+                "full_table": obj.get("full_table", ""),
+                "group_id": obj.get("group_id", ""),
+                "load_type": obj.get("load_type", "full"),
+                "jobs": [],
+            }
+        table_map[tname]["jobs"].append({
+            "job_id": obj.get("job_id", ""),
+            "job_name": obj.get("job_name", ""),
+            "stage": obj.get("stage", ""),
+            "load_type": obj.get("load_type", "full"),
+        })
+
+    tables = []
+    for tname, tinfo in table_map.items():
+        tinfo["job_count"] = len(tinfo["jobs"])
+        tables.append(tinfo)
+
+    return jsonify({"success": True, "tables": tables})
+
+@app.route("/api/scheduler/schedules", methods=["POST"])
+def sch_create_schedule():
+    d = request.get_json(force=True)
+    table_name = (d.get("table_name") or "").strip()
+    table_schema = (d.get("table_schema") or "dbo").strip()
+    group_id = (d.get("group_id") or "").strip()
+    sch_type = d.get("type", "cron")
+    cron_expr = (d.get("cron") or "").strip()
+    interval_value = d.get("interval_value")
+    interval_unit = d.get("interval_unit", "hours")
+    once_at = (d.get("once_at") or "").strip()
+
+    if not table_name:
+        return jsonify({"success": False, "error": "Table selection is required"}), 400
+    if sch_type == "cron" and not cron_expr:
+        return jsonify({"success": False, "error": "Cron expression is required"}), 400
+    if sch_type == "interval" and not interval_value:
+        return jsonify({"success": False, "error": "Interval value is required"}), 400
+    if sch_type == "once" and not once_at:
+        return jsonify({"success": False, "error": "Date/time for one-time run is required"}), 400
+
+    # Resolve the group_id from the table_name if not provided
+    if not group_id:
+        for gid, grp in wfm.PIPELINE_GROUPS.items():
+            if grp.get("table_name") == table_name:
+                group_id = gid
+                break
+
+    # Collect job names for display — prefer from request, fallback to in-memory
+    job_names = d.get("job_names", [])
+    if not job_names and group_id:
+        grp = wfm.PIPELINE_GROUPS.get(group_id, {})
+        for jid in grp.get("job_ids", []):
+            job = wfm.JOB_REGISTRY.get(jid, {})
+            if job.get("job_name"):
+                job_names.append(job["job_name"])
+
+    import uuid as _uuid
+    schedule_id = _uuid.uuid4().hex[:10]
+    now = datetime.now(timezone.utc).isoformat()
+
+    if sch_type == "cron":
+        schedule_desc = f"Cron: {cron_expr}"
+    elif sch_type == "interval":
+        schedule_desc = f"Every {interval_value} {interval_unit}"
+    else:
+        schedule_desc = f"Once at {once_at}"
+
+    entry = {
+        "schedule_id": schedule_id,
+        "table_name": table_name,
+        "table_schema": table_schema,
+        "group_id": group_id,
+        "job_names": job_names,
+        "type": sch_type,
+        "cron": cron_expr if sch_type == "cron" else "",
+        "interval_value": int(interval_value) if interval_value else None,
+        "interval_unit": interval_unit if sch_type == "interval" else "",
+        "once_at": once_at if sch_type == "once" else "",
+        "schedule_desc": schedule_desc,
+        "status": "active",
+        "created_at": now,
+        "last_run": None,
+        "next_run": _compute_next_run(sch_type, cron_expr, interval_value, interval_unit, once_at),
+    }
+
+    data = _load_schedules()
+    # Prevent duplicate schedule for same table
+    for existing in data["schedules"]:
+        if existing.get("table_name") == table_name and existing.get("status") == "active":
+            return jsonify({"success": False, "error": f"An active schedule already exists for table '{table_name}'"}), 400
+    data["schedules"].append(entry)
+    _save_schedules(data)
+    # Sync to Databricks
+    wfm.scheduler_upsert_config(entry)
+    return jsonify({"success": True, "schedule": entry})
+
+@app.route("/api/scheduler/schedules/<schedule_id>", methods=["PUT"])
+def sch_update_schedule(schedule_id):
+    d = request.get_json(force=True)
+    data = _load_schedules()
+    for s in data["schedules"]:
+        if s["schedule_id"] == schedule_id:
+            # Status-only update (pause/resume)
+            if "status" in d and len(d) == 1:
+                s["status"] = d["status"]
+            else:
+                # Full schedule edit
+                if "status" in d:
+                    s["status"] = d["status"]
+                if "type" in d:
+                    s["type"] = d["type"]
+                if "cron" in d:
+                    s["cron"] = d["cron"]
+                if "interval_value" in d:
+                    s["interval_value"] = int(d["interval_value"]) if d["interval_value"] else None
+                if "interval_unit" in d:
+                    s["interval_unit"] = d["interval_unit"]
+                if "once_at" in d:
+                    s["once_at"] = d["once_at"]
+                # Rebuild schedule_desc
+                sch_type = s.get("type", "cron")
+                if sch_type == "cron":
+                    s["schedule_desc"] = f"Cron: {s.get('cron', '')}"
+                elif sch_type == "interval":
+                    s["schedule_desc"] = f"Every {s.get('interval_value', '')} {s.get('interval_unit', 'hours')}"
+                else:
+                    s["schedule_desc"] = f"Once at {s.get('once_at', '')}"
+                # Reset last_run on param change so next_run computes fresh from now
+                s["last_run"] = None
+                # Recompute next_run
+                s["next_run"] = _compute_next_run(
+                    s.get("type", "cron"), s.get("cron", ""),
+                    s.get("interval_value"), s.get("interval_unit", "hours"),
+                    s.get("once_at", ""),
+                )
+            _save_schedules(data)
+            # Sync to Databricks
+            wfm.scheduler_upsert_config(s)
+            return jsonify({"success": True, "schedule": s})
+    return jsonify({"success": False, "error": "Schedule not found"}), 404
+
+@app.route("/api/scheduler/schedules/<schedule_id>", methods=["DELETE"])
+def sch_delete_schedule(schedule_id):
+    data = _load_schedules()
+    original_len = len(data["schedules"])
+    data["schedules"] = [s for s in data["schedules"] if s["schedule_id"] != schedule_id]
+    if len(data["schedules"]) == original_len:
+        return jsonify({"success": False, "error": "Schedule not found"}), 404
+    _save_schedules(data)
+    # Sync to Databricks
+    wfm.scheduler_delete_config(schedule_id)
+    return jsonify({"success": True})
+
+@app.route("/api/scheduler/run-now/<schedule_id>", methods=["POST"])
+def sch_run_now(schedule_id):
+    """Run all jobs for a scheduled table on Databricks (via orchestrator notebook)."""
+    data = _load_schedules()
+    schedule = None
+    for s in data["schedules"]:
+        if s["schedule_id"] == schedule_id:
+            schedule = s
+            break
+    if not schedule:
+        return jsonify({"success": False, "error": "Schedule not found"}), 404
+
+    table_name = schedule.get("table_name", "")
+    group_id   = schedule.get("group_id", "")
+
+    # Try in-memory first, then fallback — group_id is stored from schedule creation
+    if not group_id:
+        for gid, grp in wfm.PIPELINE_GROUPS.items():
+            if grp.get("table_name") == table_name:
+                group_id = gid
+                schedule["group_id"] = gid
+                break
+
+    if not group_id:
+        now = datetime.now(timezone.utc).isoformat()
+        fail_entry = {
+            "timestamp": now,
+            "schedule_id": schedule_id,
+            "table_name": table_name,
+            "trigger": "manual",
+            "result": "failed",
+            "details": f"No pipeline group found for table '{table_name}'. Create a pipeline first.",
+        }
+        data.setdefault("history", []).insert(0, fail_entry)
+        data["history"] = data["history"][:200]
+        _save_schedules(data)
+        wfm.scheduler_insert_history(fail_entry)
+        return jsonify({"success": False, "error": f"No pipeline group found for table '{table_name}'"})
+
+    # Load config for Databricks execution
+    try:
+        with open(DEPLOY_CONFIG_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except Exception:
+        cfg = {}
+
+    # Collect the job names — prefer stored in schedule, fallback to in-memory
+    job_names = schedule.get("job_names", [])
+    if not job_names:
+        grp = wfm.PIPELINE_GROUPS.get(group_id, {})
+        for jid in grp.get("job_ids", []):
+            job = wfm.JOB_REGISTRY.get(jid, {})
+            if job.get("job_name"):
+                job_names.append(job["job_name"])
+
+    # Execute via the orchestrator notebook on Databricks
+    result = wfm.run_pipeline_on_databricks(
+        group_id       = group_id,
+        host           = cfg.get("databricks_host", ""),
+        token          = cfg.get("databricks_token", ""),
+        password       = cfg.get("source", {}).get("password", ""),
+        catalog        = cfg.get("metadata_catalog", ""),
+        schema         = cfg.get("metadata_schema", ""),
+        recon_catalog  = cfg.get("reconciliation", {}).get("catalog", "reconciliation"),
+        recon_schema   = cfg.get("reconciliation", {}).get("schema", "hr"),
+        recon_table    = cfg.get("reconciliation", {}).get("table", "ReconcilationDetails"),
+        log_catalog    = cfg.get("logging", {}).get("catalog", "loggingdetails"),
+        log_schema     = cfg.get("logging", {}).get("schema", "hr"),
+        log_table      = cfg.get("logging", {}).get("table", "ExecutionLog"),
+    )
+
+    now = datetime.now(timezone.utc).isoformat()
+    schedule["last_run"] = now
+    # Update next_run for recurring schedules
+    if schedule.get("type") in ("cron", "interval"):
+        schedule["next_run"] = _compute_next_run(
+            schedule["type"], schedule.get("cron", ""),
+            schedule.get("interval_value"), schedule.get("interval_unit", "hours"),
+            schedule.get("once_at", ""), last_run=now,
+        )
+
+    jobs_str = " → ".join(job_names) if job_names else table_name
+    detail_msg = ""
+    if result.get("success"):
+        detail_msg = str(result.get("run_id", result.get("message", "")))
+        if result.get("run_url"):
+            detail_msg += f" | {result['run_url']}"
+    else:
+        detail_msg = str(result.get("error", "Unknown error"))
+
+    history_entry = {
+        "timestamp": now,
+        "schedule_id": schedule_id,
+        "table_name": table_name,
+        "jobs": jobs_str,
+        "trigger": "manual",
+        "result": "started" if result.get("success") else "failed",
+        "details": detail_msg,
+    }
+    data.setdefault("history", []).insert(0, history_entry)
+    data["history"] = data["history"][:200]
+    _save_schedules(data)
+    # Sync to Databricks
+    wfm.scheduler_upsert_config(schedule)
+    wfm.scheduler_insert_history(history_entry)
+    return jsonify({"success": True, "run_result": result})
+
+def _compute_next_run(sch_type, cron_expr, interval_value, interval_unit, once_at, last_run=None):
+    """Compute next run time. For intervals, base on last_run if available."""
+    now = datetime.now(timezone.utc)
+    if sch_type == "once" and once_at:
+        return once_at
+    if sch_type == "interval" and interval_value:
+        val = int(interval_value)
+        # Base on last_run so next_run advances after each execution
+        base = now
+        if last_run:
+            try:
+                base = datetime.fromisoformat(str(last_run).replace("Z", "+00:00"))
+            except (ValueError, TypeError):
+                base = now
+            # If last_run + interval is already in the past, advance from now
+            if interval_unit == "minutes":
+                nxt = base + timedelta(minutes=val)
+            elif interval_unit == "days":
+                nxt = base + timedelta(days=val)
+            else:
+                nxt = base + timedelta(hours=val)
+            # If computed next_run is in the past, fast-forward from now
+            if nxt <= now:
+                if interval_unit == "minutes":
+                    nxt = now + timedelta(minutes=val)
+                elif interval_unit == "days":
+                    nxt = now + timedelta(days=val)
+                else:
+                    nxt = now + timedelta(hours=val)
+        else:
+            if interval_unit == "minutes":
+                nxt = now + timedelta(minutes=val)
+            elif interval_unit == "days":
+                nxt = now + timedelta(days=val)
+            else:
+                nxt = now + timedelta(hours=val)
+        return nxt.isoformat()
+    if sch_type == "cron" and cron_expr:
+        # Simple approximation — show next occurrence roughly
+        parts = cron_expr.split()
+        if len(parts) >= 2:
+            try:
+                minute = int(parts[0]) if parts[0] != "*" else now.minute
+                hour = int(parts[1]) if parts[1] != "*" else now.hour
+                nxt = now.replace(minute=minute, second=0, microsecond=0)
+                if parts[1] != "*":
+                    nxt = nxt.replace(hour=hour)
+                if nxt <= now:
+                    nxt += timedelta(days=1)
+                return nxt.isoformat()
+            except (ValueError, IndexError):
+                pass
+    return now.isoformat()
 
 
 # ╔══════════════════════════════════════════════════════════════════════════════╗
@@ -1533,6 +1984,63 @@ def add_audit_event():
     }
     _append_audit_event(event)
     return jsonify({"success": True, "event": event})
+
+
+@app.route("/api/audit/execution-logs", methods=["GET"])
+def get_audit_execution_logs():
+    """Fetch execution logs from Databricks loggingdetails.hr.ExecutionLog table."""
+    try:
+        with open(DEPLOY_CONFIG_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except Exception:
+        cfg = {}
+
+    dbx_host  = cfg.get("databricks_host", "").rstrip("/")
+    dbx_token = cfg.get("databricks_token", "")
+    if not dbx_host or not dbx_token:
+        return jsonify({"success": False, "logs": [], "error": "Databricks not configured."})
+
+    log_cfg = cfg.get("logging", {})
+    log_cat = log_cfg.get("catalog", "loggingdetails")
+    log_sch = log_cfg.get("schema", "hr")
+    log_tbl = log_cfg.get("table", "ExecutionLog")
+
+    uc = UnityCatalogExecutor(dbx_host, dbx_token, log_cat, log_sch)
+    wh_resp = uc.list_warehouses()
+    warehouses = wh_resp.get("warehouses", [])
+    wh_id = next((w["id"] for w in warehouses if w.get("state") == "RUNNING"), None)
+    if not wh_id and warehouses:
+        wh_id = warehouses[0].get("id")
+    if not wh_id:
+        return jsonify({"success": False, "logs": [], "error": "No SQL Warehouse available."})
+
+    fqn = f"`{log_cat}`.`{log_sch}`.`{log_tbl}`"
+    sql = f"SELECT * FROM {fqn} ORDER BY 1 DESC LIMIT 500"
+    result = uc._execute_statement(sql, wh_id, wait_timeout="30s")
+
+    if result.get("error"):
+        return jsonify({"success": False, "logs": [], "error": result["error"]})
+
+    status = result.get("status", {}).get("state", "")
+    if status in ("PENDING", "RUNNING"):
+        stmt_id = result.get("statement_id", "")
+        if stmt_id:
+            result = uc._poll_statement(stmt_id)
+
+    if result.get("status", {}).get("error"):
+        return jsonify({"success": False, "logs": [], "error": str(result["status"]["error"])})
+
+    columns = [c.get("name", "") for c in result.get("manifest", {}).get("schema", {}).get("columns", [])]
+    data_array = result.get("result", {}).get("data_array", [])
+
+    logs = []
+    for row in data_array:
+        obj = {}
+        for i, col in enumerate(columns):
+            obj[col] = row[i] if i < len(row) else None
+        logs.append(obj)
+
+    return jsonify({"success": True, "logs": logs, "columns": columns, "total": len(logs)})
 
 
 # ╔══════════════════════════════════════════════════════════════════════════════╗
@@ -2016,6 +2524,162 @@ def save_deploy_config():
         with open(DEPLOY_CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(cfg, f, indent=2, ensure_ascii=False)
         return jsonify({"success": True, "message": "Configuration saved to deployconfig.json"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  Clean Metadata — drop tables + purge ADLS table data                        ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+@app.route("/api/settings/clean-metadata", methods=["POST"])
+def clean_metadata():
+    """Drop all UC tables and/or delete ADLS table data files across every catalog/schema."""
+    try:
+        body = request.get_json() or {}
+        clean_adls   = body.get("clean_adls", True)
+        clean_tables = body.get("clean_tables", True)
+
+        if not clean_adls and not clean_tables:
+            return jsonify({"success": False, "error": "Nothing selected to clean."}), 400
+
+        # Load config
+        if not os.path.isfile(DEPLOY_CONFIG_PATH):
+            return jsonify({"success": False, "error": "deployconfig.json not found."}), 400
+        with open(DEPLOY_CONFIG_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+
+        host  = cfg.get("databricks_host", "").rstrip("/")
+        token = cfg.get("databricks_token", "")
+        if not host or not token:
+            return jsonify({"success": False, "error": "Databricks host/token missing in config."}), 400
+
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        sess    = requests.Session()
+        sess.headers.update(headers)
+
+        # Collect all catalog→schemas pairs from config
+        targets = []
+        for cat_name, cat_info in cfg.get("catalogs", {}).items():
+            for sch in cat_info.get("schemas", []):
+                targets.append((cat_name, sch, cat_info.get("location", "")))
+        # Add reconciliation & logging catalogs
+        for key in ("reconciliation", "logging"):
+            info = cfg.get(key, {})
+            if info.get("catalog") and info.get("schema"):
+                targets.append((info["catalog"], info["schema"], info.get("location", "")))
+
+        # Get a running SQL Warehouse
+        uce = UnityCatalogExecutor(host, token)
+        wh_resp = uce.list_warehouses()
+        warehouses = wh_resp.get("warehouses", [])
+        wh = next((w for w in warehouses if w["state"] == "RUNNING"), warehouses[0] if warehouses else None)
+        if not wh:
+            return jsonify({"success": False, "error": "No SQL Warehouse available."}), 400
+        wh_id = wh["id"]
+
+        log = []
+
+        # ── 1. Drop tables ────────────────────────────────────────────────
+        if clean_tables:
+            for cat, sch, _ in targets:
+                try:
+                    show_sql = f"SHOW TABLES IN `{cat}`.`{sch}`"
+                    res = uce._execute_statement(show_sql, wh_id, wait_timeout="30s")
+                    stmt_id = res.get("statement_id")
+                    if stmt_id:
+                        poll = uce._poll_statement(stmt_id)
+                        rows = poll.get("result", {}).get("data_array", [])
+                    else:
+                        rows = res.get("result", {}).get("data_array", [])
+                    if not rows:
+                        log.append(f"[TABLES] {cat}.{sch} — no tables found")
+                        continue
+                    for row in rows:
+                        tbl = row[1] if len(row) > 1 else row[0]
+                        drop_sql = f"DROP TABLE IF EXISTS `{cat}`.`{sch}`.`{tbl}`"
+                        uce._execute_statement(drop_sql, wh_id, wait_timeout="30s")
+                        log.append(f"[TABLES] Dropped {cat}.{sch}.{tbl}")
+                except Exception as ex:
+                    log.append(f"[TABLES] Error in {cat}.{sch}: {str(ex)[:200]}")
+
+        # ── 2. Clean ADLS table data (ADLS Gen2 — Data Lake SDK) ───────────
+        if clean_adls:
+            from azure.storage.filedatalake import DataLakeServiceClient
+            from azure.identity import DefaultAzureCredential
+            from azure.mgmt.storage import StorageManagementClient
+
+            storage_account = cfg.get("storage_account", "")
+            container_name  = cfg.get("container", "")
+            subscription_id = cfg.get("subscription_id", "")
+            resource_group  = cfg.get("resource_group", "")
+
+            if not storage_account or not container_name:
+                log.append("[ADLS] storage_account or container missing in config, skipped")
+            else:
+                try:
+                    # Get storage account key via Azure Management API
+                    credential = DefaultAzureCredential()
+                    mgmt_client = StorageManagementClient(credential, subscription_id)
+                    keys = mgmt_client.storage_accounts.list_keys(resource_group, storage_account)
+                    account_key = keys.keys[0].value
+
+                    datalake_url = f"https://{storage_account}.dfs.core.windows.net"
+                    datalake_client = DataLakeServiceClient(datalake_url, credential=account_key)
+                    fs_client = datalake_client.get_file_system_client(container_name)
+
+                    # Protected names — Unity Catalog internals, never delete
+                    PROTECTED_NAMES = {"_unitystorage", "_delta_log", "_checkpoint", "_SUCCESS"}
+
+                    # Collect all ADLS directory paths to clean
+                    dirs_to_clean = []
+                    for cat, sch, location in targets:
+                        if not location:
+                            continue
+                        if "dfs.core.windows.net" in location:
+                            dir_path = location.split("dfs.core.windows.net/")[-1]
+                        else:
+                            dir_path = location.lstrip("/")
+                        dirs_to_clean.append((cat, dir_path))
+
+                    # Also add landing path
+                    vol_path = cfg.get("volume_path", "")
+                    if vol_path and "dfs.core.windows.net" in vol_path:
+                        landing_dir = vol_path.split("dfs.core.windows.net/")[-1]
+                        dirs_to_clean.append(("landing", landing_dir))
+
+                    for label, dir_path in dirs_to_clean:
+                        cleaned = 0
+                        skipped = 0
+                        try:
+                            # List only immediate children (recursive=False)
+                            paths = fs_client.get_paths(path=dir_path, recursive=False)
+                            for p in paths:
+                                item_name = p.name.rstrip("/").split("/")[-1]
+                                # Skip protected folders
+                                if item_name in PROTECTED_NAMES or item_name.startswith("_unitystorage"):
+                                    log.append(f"[ADLS] Skipped protected: {item_name}")
+                                    skipped += 1
+                                    continue
+                                if p.is_directory:
+                                    # Recursively delete the entire directory (table data)
+                                    dir_client = fs_client.get_directory_client(p.name)
+                                    dir_client.delete_directory()
+                                    log.append(f"[ADLS] Deleted directory: {label}/{item_name}")
+                                    cleaned += 1
+                                else:
+                                    # Delete individual file
+                                    file_client = fs_client.get_file_client(p.name)
+                                    file_client.delete_file()
+                                    log.append(f"[ADLS] Deleted file: {label}/{item_name}")
+                                    cleaned += 1
+                            log.append(f"[ADLS] {label} ({dir_path}) — cleaned {cleaned}, skipped {skipped} protected")
+                        except Exception as ex:
+                            log.append(f"[ADLS] Error cleaning {label} ({dir_path}): {str(ex)[:200]}")
+                except Exception as ex:
+                    log.append(f"[ADLS] Azure connection error: {str(ex)[:300]}")
+
+        return jsonify({"success": True, "log": log,
+                        "summary": f"Cleaned {len([l for l in log if 'Dropped' in l or 'Deleted' in l or 'cleaned' in l])} items across {len(targets)} catalog/schema pairs."})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

@@ -1134,6 +1134,8 @@ select.form-inp { cursor:pointer; }
 .wf-nav-card:hover { transform:translateY(-4px); box-shadow:var(--shadow-md); }
 .wf-nav-card:hover div[style*="box-shadow"] { transform:scale(1.08); }
 .wf-nav-card:hover span { transform:translateX(3px); }
+.dash-cat-btn:hover { filter:brightness(.95); box-shadow:0 1px 4px rgba(0,0,0,.1); }
+.dash-cat-section { transition:all .25s ease; }
 #pane-wf-dashboard.active { flex-direction:column; }
 #pane-wf-metadata.active { flex-direction:column; }
 #pane-wf-pipelines.active { flex-direction:column; }
@@ -1247,11 +1249,22 @@ select.form-inp { cursor:pointer; }
     </div>
   </div>
   <div class="sb-nav">
-    <div class="sb-sec">AI Workflow Manager</div>
+    <!-- Dashboard (always visible) -->
     <button class="nav-btn active wf-child" id="nav-wf-dashboard" onclick="switchTab('wf-dashboard',this)">
       <span class="nav-ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
       Dashboard<span class="nav-badge" id="navBadgeWf">0</span>
     </button>
+    <!-- ── WORKFLOW (8) ── -->
+    <div class="sb-sec" style="display:flex;align-items:center;gap:6px;">
+      <span style="width:3px;height:12px;border-radius:1.5px;background:#3B82F6;display:inline-block;"></span>
+      Workflow
+      <span style="font-size:8px;background:rgba(59,130,246,.25);color:#93C5FD;padding:1px 5px;border-radius:6px;margin-left:auto;font-weight:700;">9</span>
+    </div>
+    <div class="sb-stats" style="margin:4px 8px 8px 8px;">
+      <div class="stat-pill"><div class="n" id="statSP" style="color:var(--sp-c)">0</div><div class="l">SP</div></div>
+      <div class="stat-pill"><div class="n" id="statVW" style="color:var(--vw-c)">0</div><div class="l">Views</div></div>
+      <div class="stat-pill"><div class="n" id="statUDF" style="color:var(--udf-c)">0</div><div class="l">UDFs</div></div>
+    </div>
     <button class="nav-btn wf-child" id="nav-wf-metadata" onclick="switchTab('wf-metadata',this)">
       <span class="nav-ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></span>
       MetadataFlow
@@ -1264,40 +1277,10 @@ select.form-inp { cursor:pointer; }
       <span class="nav-ico"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span>
       Job Manager
     </button>
-    <button class="nav-btn wf-child" id="nav-wf-reports" onclick="switchTab('wf-reports',this)">
-      <span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/><rect x="3" y="3" width="4" height="18" rx="1" opacity="0"/><line x1="18" y1="13" x2="18" y2="21"/><line x1="14" y1="9" x2="14" y2="21"/><line x1="10" y1="11" x2="10" y2="21"/><line x1="6" y1="7" x2="6" y2="21"/></svg></span>
-      Reports
+    <button class="nav-btn wf-child" id="nav-wf-scheduler" onclick="switchTab('wf-scheduler',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
+      Job Scheduler
     </button>
-    <button class="nav-btn wf-child" id="nav-wf-progress" onclick="switchTab('wf-progress',this)">
-      <span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>
-      Progress Tracker
-    </button>
-    <button class="nav-btn wf-child" id="nav-wf-audit" onclick="switchTab('wf-audit',this)">
-      <span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
-      Audit & Compliance
-    </button>
-    <button class="nav-btn wf-child" id="nav-wf-dq" onclick="switchTab('wf-dq',this)">
-      <span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span>
-      Data Quality
-    </button>
-    <button class="nav-btn wf-child" id="nav-wf-schema" onclick="switchTab('wf-schema',this)">
-      <span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.5"/><path d="M20 9.5V12l-8 4.5L4 12V9.5"/><path d="M4 3l8 4.5L20 3"/></svg></span>
-      Schema Comparison
-    </button>
-    <button class="nav-btn wf-child" id="nav-wf-recon" onclick="switchTab('wf-recon',this)">
-      <span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M9 5H2v7l6.29 6.29c.94.94 2.48.94 3.42 0l4.58-4.58c.94-.94.94-2.48 0-3.42L9 5z"/><path d="M6 9h.01"/><path d="M22 5l-4.72 4.72"/></svg></span>
-      Reconciliation Report
-    </button>
-    <button class="nav-btn wf-child" id="nav-wf-settings" onclick="switchTab('wf-settings',this)">
-      <span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg></span>
-      Settings
-    </button>
-    <div class="sb-sec">Workflow</div>
-    <div class="sb-stats" style="margin:4px 8px 8px 8px;">
-      <div class="stat-pill"><div class="n" id="statSP" style="color:var(--sp-c)">0</div><div class="l">SP</div></div>
-      <div class="stat-pill"><div class="n" id="statVW" style="color:var(--vw-c)">0</div><div class="l">Views</div></div>
-      <div class="stat-pill"><div class="n" id="statUDF" style="color:var(--udf-c)">0</div><div class="l">UDFs</div></div>
-    </div>
     <button class="nav-btn" id="nav-convert" onclick="switchTab('convert',this)">
       <span class="nav-ico"><svg viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg></span>
       Convert to PySpark<span class="nav-badge">0</span>
@@ -1318,9 +1301,49 @@ select.form-inp { cursor:pointer; }
       <span class="nav-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/><path d="M2 12h20"/></svg></span>
       Medallion Arch<span class="nav-badge">0</span>
     </button>
+    <!-- ── ANALYTICS (5) ── -->
+    <div class="sb-sec" style="display:flex;align-items:center;gap:6px;">
+      <span style="width:3px;height:12px;border-radius:1.5px;background:#0EA5E9;display:inline-block;"></span>
+      Analytics
+      <span style="font-size:8px;background:rgba(14,165,233,.25);color:#7DD3FC;padding:1px 5px;border-radius:6px;margin-left:auto;font-weight:700;">5</span>
+    </div>
+    <button class="nav-btn wf-child" id="nav-wf-reports" onclick="switchTab('wf-reports',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/><rect x="3" y="3" width="4" height="18" rx="1" opacity="0"/><line x1="18" y1="13" x2="18" y2="21"/><line x1="14" y1="9" x2="14" y2="21"/><line x1="10" y1="11" x2="10" y2="21"/><line x1="6" y1="7" x2="6" y2="21"/></svg></span>
+      Reports
+    </button>
+    <button class="nav-btn wf-child" id="nav-wf-progress" onclick="switchTab('wf-progress',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>
+      Progress Tracker
+    </button>
+    <button class="nav-btn wf-child" id="nav-wf-schema" onclick="switchTab('wf-schema',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.5"/><path d="M20 9.5V12l-8 4.5L4 12V9.5"/><path d="M4 3l8 4.5L20 3"/></svg></span>
+      Schema Comparison
+    </button>
+    <button class="nav-btn wf-child" id="nav-wf-recon" onclick="switchTab('wf-recon',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M9 5H2v7l6.29 6.29c.94.94 2.48.94 3.42 0l4.58-4.58c.94-.94.94-2.48 0-3.42L9 5z"/><path d="M6 9h.01"/><path d="M22 5l-4.72 4.72"/></svg></span>
+      Reconciliation Report
+    </button>
+    <button class="nav-btn wf-child" id="nav-wf-dq" onclick="switchTab('wf-dq',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span>
+      Data Quality
+    </button>
+    <!-- ── MONITOR (3) ── -->
+    <div class="sb-sec" style="display:flex;align-items:center;gap:6px;">
+      <span style="width:3px;height:12px;border-radius:1.5px;background:#8B5CF6;display:inline-block;"></span>
+      Monitor
+      <span style="font-size:8px;background:rgba(139,92,246,.25);color:#C4B5FD;padding:1px 5px;border-radius:6px;margin-left:auto;font-weight:700;">3</span>
+    </div>
     <button class="nav-btn" id="nav-healer" onclick="switchTab('healer',this)">
       <span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M19.69 14a6.9 6.9 0 00.31-2 6.9 6.9 0 00-.31-2l2.15-1.68a.51.51 0 00.12-.64l-2.04-3.53a.51.51 0 00-.61-.22l-2.54 1.02a6.76 6.76 0 00-3.46-2l-.39-2.7a.5.5 0 00-.49-.42h-4.08a.5.5 0 00-.49.42l-.39 2.7a6.76 6.76 0 00-3.46 2L1.73 3.93a.5.5 0 00-.61.22L.09 7.68a.5.5 0 00.12.64L2.36 10a6.9 6.9 0 000 4L.21 15.68a.51.51 0 00-.12.64l2.04 3.53c.12.22.39.3.61.22l2.54-1.02a6.76 6.76 0 003.46 2l.39 2.7c.04.24.25.42.49.42h4.08c.24 0 .45-.18.49-.42l.39-2.7a6.76 6.76 0 003.46-2l2.54 1.02c.22.08.49 0 .61-.22l2.04-3.53a.51.51 0 00-.12-.64L19.69 14zM12 15.5A3.5 3.5 0 1115.5 12 3.5 3.5 0 0112 15.5z"/></svg></span>
       Self-Healing Bot<span class="nav-badge">0</span>
+    </button>
+    <button class="nav-btn wf-child" id="nav-wf-audit" onclick="switchTab('wf-audit',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+      Audit & Compliance
+    </button>
+    <button class="nav-btn wf-child" id="nav-wf-settings" onclick="switchTab('wf-settings',this)">
+      <span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg></span>
+      Settings
     </button>
   </div>
   <div class="sb-footer">
@@ -1384,24 +1407,24 @@ select.form-inp { cursor:pointer; }
             <span class="src-conn-chv open" id="srcConnChv">▾</span>
           </div>
           <div class="src-conn-body" id="srcConnBody">
-            <div class="form-grp">
-              <label class="form-lbl">Source Type</label>
-              <div class="src-select-wrap">
-                <select id="srcType" class="src-select">
-                  <option value="sqlserver">SQL Server — On-premises &amp; self-hosted</option>
-                  <option value="azuresql">Azure SQL — Azure SQL Database (PaaS)</option>
-                  <option value="synapse">Synapse SQL — Azure Synapse Analytics</option>
-                  <option value="sqlmi">SQL Managed Instance — Near-100% compat</option>
-                </select>
+            <!-- Hidden fields auto-populated from deployconfig.json -->
+            <input type="hidden" id="srcType" value="azuresql">
+            <input type="hidden" id="srcServer" value="">
+            <input type="hidden" id="srcDb" value="">
+            <input type="hidden" id="srcUser" value="">
+            <input type="hidden" id="srcPass" value="">
+            <!-- Config info bar -->
+            <div id="srcCfgInfo" style="background:linear-gradient(135deg,#F0FDF4,#DCFCE7);border:1px solid rgba(34,197,94,.25);border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:#16A34A;fill:none;stroke-width:2;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <span style="font-size:11px;font-weight:700;color:#15803D;">Connection from deployconfig.json</span>
               </div>
-            </div>
-            <div class="form-row-2">
-              <div class="form-grp"><label class="form-lbl">Server / Host</label><input id="srcServer" class="form-inp" placeholder="server.database.windows.net"></div>
-              <div class="form-grp"><label class="form-lbl">Database</label><input id="srcDb" class="form-inp" placeholder="my_database"></div>
-            </div>
-            <div class="form-row-2">
-              <div class="form-grp"><label class="form-lbl">Username</label><input id="srcUser" class="form-inp" placeholder="sa"></div>
-              <div class="form-grp"><label class="form-lbl">Password</label><input id="srcPass" class="form-inp" type="password" placeholder="••••••••"></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:10.5px;">
+                <div><span style="color:var(--t4);font-weight:600;">Server:</span> <span id="srcCfgServer" style="color:var(--t1);font-weight:500;">—</span></div>
+                <div><span style="color:var(--t4);font-weight:600;">Database:</span> <span id="srcCfgDb" style="color:var(--t1);font-weight:500;">—</span></div>
+                <div><span style="color:var(--t4);font-weight:600;">Type:</span> <span id="srcCfgType" style="color:var(--t1);font-weight:500;">—</span></div>
+                <div><span style="color:var(--t4);font-weight:600;">User:</span> <span id="srcCfgUser" style="color:var(--t1);font-weight:500;">—</span></div>
+              </div>
             </div>
             <div style="display:flex;gap:8px;">
               <button type="button" class="btn btn-ghost btn-sm" style="flex:1" id="btnTestSrc" onclick="testSourceConn()">
@@ -1538,8 +1561,20 @@ select.form-inp { cursor:pointer; }
             <div class="card-title">Credentials</div>
           </div>
           <div style="display:flex;flex-direction:column;gap:12px;">
-            <div class="form-grp"><label class="form-lbl">Workspace Host</label><input id="dbHost" class="form-inp" type="text" placeholder="https://adb-xxxx.azuredatabricks.net"></div>
-            <div class="form-grp"><label class="form-lbl">Personal Access Token</label><input id="dbToken" class="form-inp" type="password" placeholder="dapi…"></div>
+            <!-- Hidden fields auto-populated from deployconfig.json -->
+            <input type="hidden" id="dbHost" value="">
+            <input type="hidden" id="dbToken" value="">
+            <!-- Config info bar -->
+            <div id="dbrCfgInfo" style="background:linear-gradient(135deg,#F0FDF4,#DCFCE7);border:1px solid rgba(34,197,94,.25);border-radius:10px;padding:10px 12px;">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:#16A34A;fill:none;stroke-width:2;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <span style="font-size:11px;font-weight:700;color:#15803D;">Connection from deployconfig.json</span>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr;gap:4px;font-size:10.5px;">
+                <div><span style="color:var(--t4);font-weight:600;">Host:</span> <span id="dbrCfgHost" style="color:var(--t1);font-weight:500;">—</span></div>
+                <div><span style="color:var(--t4);font-weight:600;">Token:</span> <span id="dbrCfgToken" style="color:var(--t1);font-weight:500;">—</span></div>
+              </div>
+            </div>
             <button class="btn btn-primary btn-full" onclick="testConn()">
               <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
               Test Connection
@@ -2160,8 +2195,32 @@ select.form-inp { cursor:pointer; }
         </div>
       </div>
 
-      <!-- Navigation Cards — All 10 in 5-col compact grid -->
-      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
+      <!-- ══ Category Toggle Bar ══ -->
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button class="dash-cat-btn" onclick="dashCatToggle('all',this)" data-cat-color="var(--accent-primary)" style="padding:5px 14px;border-radius:20px;border:1px solid transparent;background:var(--accent-primary);color:white;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:5px;">
+          <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> All
+        </button>
+        <button class="dash-cat-btn" onclick="dashCatToggle('workflow',this)" data-cat-color="#3B82F6" style="padding:5px 14px;border-radius:20px;border:1px solid var(--border);background:white;color:var(--t2);font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:5px;">
+          <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> Workflow <span style="background:rgba(59,130,246,.15);color:#3B82F6;font-size:9px;padding:1px 5px;border-radius:6px;margin-left:2px;">8</span>
+        </button>
+        <button class="dash-cat-btn" onclick="dashCatToggle('analytics',this)" data-cat-color="#0EA5E9" style="padding:5px 14px;border-radius:20px;border:1px solid var(--border);background:white;color:var(--t2);font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:5px;">
+          <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> Analytics <span style="background:rgba(14,165,233,.15);color:#0EA5E9;font-size:9px;padding:1px 5px;border-radius:6px;margin-left:2px;">5</span>
+        </button>
+        <button class="dash-cat-btn" onclick="dashCatToggle('monitor',this)" data-cat-color="#8B5CF6" style="padding:5px 14px;border-radius:20px;border:1px solid var(--border);background:white;color:var(--t2);font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:5px;">
+          <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Monitor <span style="background:rgba(139,92,246,.15);color:#8B5CF6;font-size:9px;padding:1px 5px;border-radius:6px;margin-left:2px;">3</span>
+        </button>
+      </div>
+      <script>function dashCatToggle(cat,btn){document.querySelectorAll('.dash-cat-section').forEach(function(s){s.style.display=(cat==='all'||s.id==='dash-cat-'+cat)?'':'none';});document.querySelectorAll('.dash-cat-btn').forEach(function(b){var a=b===btn;b.style.background=a?(b.dataset.catColor||'var(--accent-primary)'):'white';b.style.color=a?'white':'var(--t2)';b.style.borderColor=a?'transparent':'var(--border)';});}</script>
+
+      <!-- ══ WORKFLOW Category (9 cards) ══ -->
+      <div id="dash-cat-workflow" class="dash-cat-section">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <div style="width:4px;height:18px;border-radius:2px;background:#3B82F6;"></div>
+        <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#3B82F6;">Workflow</span>
+        <span style="font-size:9px;background:#3B82F6;color:white;padding:1px 7px;border-radius:8px;font-weight:700;">9</span>
+        <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(59,130,246,.3),transparent);"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
         <!-- MetadataFlow -->
         <div class="card wf-nav-card" onclick="switchTab('wf-metadata',G('nav-wf-metadata'))" style="cursor:pointer;transition:all .28s;border:1px solid var(--border);overflow:hidden;padding:0;">
           <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--blue),#60A5FA);border-radius:var(--r-lg) var(--r-lg) 0 0;"></div>
@@ -2198,102 +2257,18 @@ select.form-inp { cursor:pointer; }
             <div style="margin-top:8px;font-size:10px;font-weight:700;color:var(--amber);">Manage Jobs &rarr;</div>
           </div>
         </div>
-        <!-- Reports -->
-        <div class="card wf-nav-card" onclick="switchTab('wf-reports',G('nav-wf-reports'))" style="cursor:pointer;transition:all .28s;border:1px solid var(--border);overflow:hidden;padding:0;">
-          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#0EA5E9,#38BDF8);border-radius:var(--r-lg) var(--r-lg) 0 0;"></div>
-          <div style="text-align:center;padding:14px 10px 12px;">
-            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#F0F9FF,#E0F2FE);border:1px solid rgba(14,165,233,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 8px;">
-              <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:#0EA5E9;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-            </div>
-            <div style="font-weight:700;font-size:13px;color:var(--t1);margin-bottom:4px;">Reports</div>
-            <div style="font-size:10px;color:var(--t3);line-height:1.4;">Migration analytics, execution stats &amp; summary reports</div>
-            <div style="margin-top:8px;font-size:10px;font-weight:700;color:#0EA5E9;">View Reports &rarr;</div>
-          </div>
-        </div>
-        <!-- Progress Tracker -->
-        <div class="card wf-nav-card" onclick="switchTab('wf-progress',G('nav-wf-progress'))" style="cursor:pointer;transition:all .28s;border:1px solid var(--border);overflow:hidden;padding:0;">
-          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#F97316,#FB923C);border-radius:var(--r-lg) var(--r-lg) 0 0;"></div>
-          <div style="text-align:center;padding:14px 10px 12px;">
-            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#FFF7ED,#FFEDD5);border:1px solid rgba(249,115,22,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 8px;">
-              <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:#F97316;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-            </div>
-            <div style="font-weight:700;font-size:13px;color:var(--t1);margin-bottom:4px;">Progress Tracker</div>
-            <div style="font-size:10px;color:var(--t3);line-height:1.4;">Track migration milestones &amp; overall progress</div>
-            <div style="margin-top:8px;font-size:10px;font-weight:700;color:#F97316;">Track &rarr;</div>
-          </div>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
-        <!-- Audit & Compliance -->
-        <div class="card wf-nav-card" onclick="switchTab('wf-audit',G('nav-wf-audit'))" style="cursor:pointer;transition:all .28s;border:1px solid var(--border);overflow:hidden;padding:0;">
-          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#8B5CF6,#A78BFA);border-radius:var(--r-lg) var(--r-lg) 0 0;"></div>
-          <div style="text-align:center;padding:14px 10px 12px;">
-            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#F5F3FF,#EDE9FE);border:1px solid rgba(139,92,246,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 8px;">
-              <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:#8B5CF6;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            </div>
-            <div style="font-weight:700;font-size:13px;color:var(--t1);margin-bottom:4px;">Audit &amp; Compliance</div>
-            <div style="font-size:10px;color:var(--t3);line-height:1.4;">Security audit trail &amp; compliance monitoring</div>
-            <div style="margin-top:8px;font-size:10px;font-weight:700;color:#8B5CF6;">Audit &rarr;</div>
-          </div>
-        </div>
-        <!-- Data Quality -->
-        <div class="card wf-nav-card" onclick="switchTab('wf-dq',G('nav-wf-dq'))" style="cursor:pointer;transition:all .28s;border:1px solid var(--border);overflow:hidden;padding:0;">
-          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#14B8A6,#2DD4BF);border-radius:var(--r-lg) var(--r-lg) 0 0;"></div>
-          <div style="text-align:center;padding:14px 10px 12px;">
-            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#F0FDFA,#CCFBF1);border:1px solid rgba(20,184,166,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 8px;">
-              <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:#14B8A6;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-            </div>
-            <div style="font-weight:700;font-size:13px;color:var(--t1);margin-bottom:4px;">Data Quality</div>
-            <div style="font-size:10px;color:var(--t3);line-height:1.4;">Validate data integrity &amp; quality checks</div>
-            <div style="margin-top:8px;font-size:10px;font-weight:700;color:#14B8A6;">Check Quality &rarr;</div>
-          </div>
-        </div>
-        <!-- Schema Comparison -->
-        <div class="card wf-nav-card" onclick="switchTab('wf-schema',G('nav-wf-schema'))" style="cursor:pointer;transition:all .28s;border:1px solid var(--border);overflow:hidden;padding:0;">
-          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--blue),#818CF8);border-radius:var(--r-lg) var(--r-lg) 0 0;"></div>
+        <!-- Job Scheduler -->
+        <div class="card wf-nav-card" onclick="switchTab('wf-scheduler',G('nav-wf-scheduler'))" style="cursor:pointer;transition:all .28s;border:1px solid var(--border);overflow:hidden;padding:0;">
+          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#6366F1,#818CF8);border-radius:var(--r-lg) var(--r-lg) 0 0;"></div>
           <div style="text-align:center;padding:14px 10px 12px;">
             <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#EEF2FF,#E0E7FF);border:1px solid rgba(99,102,241,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 8px;">
-              <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:#6366F1;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.5"/><path d="M20 9.5V12l-8 4.5L4 12V9.5"/><path d="M4 3l8 4.5L20 3"/></svg>
+              <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:#6366F1;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             </div>
-            <div style="font-weight:700;font-size:13px;color:var(--t1);margin-bottom:4px;">Schema Comparison</div>
-            <div style="font-size:10px;color:var(--t3);line-height:1.4;">Compare source vs target column-level schemas</div>
-            <div style="margin-top:8px;font-size:10px;font-weight:700;color:#6366F1;">Compare &rarr;</div>
+            <div style="font-weight:700;font-size:13px;color:var(--t1);margin-bottom:4px;">Job Scheduler</div>
+            <div style="font-size:10px;color:var(--t3);line-height:1.4;">Schedule jobs with cron, interval or one-time triggers</div>
+            <div style="margin-top:8px;font-size:10px;font-weight:700;color:#6366F1;">Schedule &rarr;</div>
           </div>
         </div>
-        <!-- Reconciliation Report -->
-        <div class="card wf-nav-card" onclick="switchTab('wf-recon',G('nav-wf-recon'))" style="cursor:pointer;transition:all .28s;border:1px solid var(--border);overflow:hidden;padding:0;">
-          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#EC4899,#F472B6);border-radius:var(--r-lg) var(--r-lg) 0 0;"></div>
-          <div style="text-align:center;padding:14px 10px 12px;">
-            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#FDF2F8,#FCE7F3);border:1px solid rgba(236,72,153,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 8px;">
-              <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:#EC4899;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M9 5H2v7l6.29 6.29c.94.94 2.48.94 3.42 0l4.58-4.58c.94-.94.94-2.48 0-3.42L9 5z"/><path d="M6 9h.01"/></svg>
-            </div>
-            <div style="font-weight:700;font-size:13px;color:var(--t1);margin-bottom:4px;">Reconciliation</div>
-            <div style="font-size:10px;color:var(--t3);line-height:1.4;">Row count reconciliation between source &amp; target</div>
-            <div style="margin-top:8px;font-size:10px;font-weight:700;color:#EC4899;">View Report &rarr;</div>
-          </div>
-        </div>
-        <!-- Settings -->
-        <div class="card wf-nav-card" onclick="switchTab('wf-settings',G('nav-wf-settings'))" style="cursor:pointer;transition:all .28s;border:1px solid var(--border);overflow:hidden;padding:0;">
-          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#7C3AED,#A78BFA);border-radius:var(--r-lg) var(--r-lg) 0 0;"></div>
-          <div style="text-align:center;padding:14px 10px 12px;">
-            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#F5F3FF,#EDE9FE);border:1px solid rgba(124,58,237,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 8px;">
-              <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:#7C3AED;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-            </div>
-            <div style="font-weight:700;font-size:13px;color:var(--t1);margin-bottom:4px;">Settings</div>
-            <div style="font-size:10px;color:var(--t3);line-height:1.4;">Azure infra, Storage, Access Connector &amp; deploy config</div>
-            <div style="margin-top:8px;font-size:10px;font-weight:700;color:#7C3AED;">Configure &rarr;</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Workflow Section Label -->
-      <div style="display:flex;align-items:center;gap:8px;margin:0;">
-        <span style="font-size:9px;font-weight:800;color:var(--t4);text-transform:uppercase;letter-spacing:.14em;">Workflow</span>
-        <div style="flex:1;height:1px;background:linear-gradient(90deg,var(--border),transparent);"></div>
-      </div>
-
-      <!-- Workflow Navigation Cards — 6-col compact grid -->
-      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;">
         <!-- Convert to PySpark -->
         <div class="card wf-nav-card" onclick="switchTab('convert',G('nav-convert'))" style="cursor:pointer;transition:all .28s;border:1px solid var(--border);overflow:hidden;padding:0;">
           <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent-primary),#FF7A56);border-radius:var(--r-lg) var(--r-lg) 0 0;"></div>
@@ -2354,6 +2329,90 @@ select.form-inp { cursor:pointer; }
             <div style="margin-top:6px;font-size:9.5px;font-weight:700;color:var(--blue);">View &rarr;</div>
           </div>
         </div>
+      </div>
+      </div>
+
+      <!-- ══ ANALYTICS Category (5 cards) ══ -->
+      <div id="dash-cat-analytics" class="dash-cat-section">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <div style="width:4px;height:18px;border-radius:2px;background:#0EA5E9;"></div>
+        <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#0EA5E9;">Analytics</span>
+        <span style="font-size:9px;background:#0EA5E9;color:white;padding:1px 7px;border-radius:8px;font-weight:700;">5</span>
+        <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(14,165,233,.3),transparent);"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
+        <!-- Reports -->
+        <div class="card wf-nav-card" onclick="switchTab('wf-reports',G('nav-wf-reports'))" style="cursor:pointer;transition:all .28s;border:1px solid var(--border);overflow:hidden;padding:0;">
+          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#0EA5E9,#38BDF8);border-radius:var(--r-lg) var(--r-lg) 0 0;"></div>
+          <div style="text-align:center;padding:14px 10px 12px;">
+            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#F0F9FF,#E0F2FE);border:1px solid rgba(14,165,233,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 8px;">
+              <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:#0EA5E9;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            </div>
+            <div style="font-weight:700;font-size:13px;color:var(--t1);margin-bottom:4px;">Reports</div>
+            <div style="font-size:10px;color:var(--t3);line-height:1.4;">Migration analytics, execution stats &amp; summary reports</div>
+            <div style="margin-top:8px;font-size:10px;font-weight:700;color:#0EA5E9;">View Reports &rarr;</div>
+          </div>
+        </div>
+        <!-- Progress Tracker -->
+        <div class="card wf-nav-card" onclick="switchTab('wf-progress',G('nav-wf-progress'))" style="cursor:pointer;transition:all .28s;border:1px solid var(--border);overflow:hidden;padding:0;">
+          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#F97316,#FB923C);border-radius:var(--r-lg) var(--r-lg) 0 0;"></div>
+          <div style="text-align:center;padding:14px 10px 12px;">
+            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#FFF7ED,#FFEDD5);border:1px solid rgba(249,115,22,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 8px;">
+              <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:#F97316;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            </div>
+            <div style="font-weight:700;font-size:13px;color:var(--t1);margin-bottom:4px;">Progress Tracker</div>
+            <div style="font-size:10px;color:var(--t3);line-height:1.4;">Track migration milestones &amp; overall progress</div>
+            <div style="margin-top:8px;font-size:10px;font-weight:700;color:#F97316;">Track &rarr;</div>
+          </div>
+        </div>
+        <!-- Schema Comparison -->
+        <div class="card wf-nav-card" onclick="switchTab('wf-schema',G('nav-wf-schema'))" style="cursor:pointer;transition:all .28s;border:1px solid var(--border);overflow:hidden;padding:0;">
+          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--blue),#818CF8);border-radius:var(--r-lg) var(--r-lg) 0 0;"></div>
+          <div style="text-align:center;padding:14px 10px 12px;">
+            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#EEF2FF,#E0E7FF);border:1px solid rgba(99,102,241,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 8px;">
+              <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:#6366F1;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.5"/><path d="M20 9.5V12l-8 4.5L4 12V9.5"/><path d="M4 3l8 4.5L20 3"/></svg>
+            </div>
+            <div style="font-weight:700;font-size:13px;color:var(--t1);margin-bottom:4px;">Schema Comparison</div>
+            <div style="font-size:10px;color:var(--t3);line-height:1.4;">Compare source vs target column-level schemas</div>
+            <div style="margin-top:8px;font-size:10px;font-weight:700;color:#6366F1;">Compare &rarr;</div>
+          </div>
+        </div>
+        <!-- Reconciliation Report -->
+        <div class="card wf-nav-card" onclick="switchTab('wf-recon',G('nav-wf-recon'))" style="cursor:pointer;transition:all .28s;border:1px solid var(--border);overflow:hidden;padding:0;">
+          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#EC4899,#F472B6);border-radius:var(--r-lg) var(--r-lg) 0 0;"></div>
+          <div style="text-align:center;padding:14px 10px 12px;">
+            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#FDF2F8,#FCE7F3);border:1px solid rgba(236,72,153,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 8px;">
+              <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:#EC4899;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M9 5H2v7l6.29 6.29c.94.94 2.48.94 3.42 0l4.58-4.58c.94-.94.94-2.48 0-3.42L9 5z"/><path d="M6 9h.01"/></svg>
+            </div>
+            <div style="font-weight:700;font-size:13px;color:var(--t1);margin-bottom:4px;">Reconciliation</div>
+            <div style="font-size:10px;color:var(--t3);line-height:1.4;">Row count reconciliation between source &amp; target</div>
+            <div style="margin-top:8px;font-size:10px;font-weight:700;color:#EC4899;">View Report &rarr;</div>
+          </div>
+        </div>
+        <!-- Data Quality -->
+        <div class="card wf-nav-card" onclick="switchTab('wf-dq',G('nav-wf-dq'))" style="cursor:pointer;transition:all .28s;border:1px solid var(--border);overflow:hidden;padding:0;">
+          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#14B8A6,#2DD4BF);border-radius:var(--r-lg) var(--r-lg) 0 0;"></div>
+          <div style="text-align:center;padding:14px 10px 12px;">
+            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#F0FDFA,#CCFBF1);border:1px solid rgba(20,184,166,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 8px;">
+              <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:#14B8A6;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+            </div>
+            <div style="font-weight:700;font-size:13px;color:var(--t1);margin-bottom:4px;">Data Quality</div>
+            <div style="font-size:10px;color:var(--t3);line-height:1.4;">Validate data integrity &amp; quality checks</div>
+            <div style="margin-top:8px;font-size:10px;font-weight:700;color:#14B8A6;">Check Quality &rarr;</div>
+          </div>
+        </div>
+      </div>
+      </div>
+
+      <!-- ══ MONITOR Category (3 cards) ══ -->
+      <div id="dash-cat-monitor" class="dash-cat-section">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <div style="width:4px;height:18px;border-radius:2px;background:#8B5CF6;"></div>
+        <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#8B5CF6;">Monitor</span>
+        <span style="font-size:9px;background:#8B5CF6;color:white;padding:1px 7px;border-radius:8px;font-weight:700;">3</span>
+        <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(139,92,246,.3),transparent);"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
         <!-- Self-Healing Bot -->
         <div class="card wf-nav-card" onclick="switchTab('healer',G('nav-healer'))" style="cursor:pointer;transition:all .28s;border:1px solid var(--border);overflow:hidden;padding:0;">
           <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#14B8A6,#2DD4BF);border-radius:var(--r-lg) var(--r-lg) 0 0;"></div>
@@ -2366,8 +2425,32 @@ select.form-inp { cursor:pointer; }
             <div style="margin-top:6px;font-size:9.5px;font-weight:700;color:#14B8A6;">Heal &rarr;</div>
           </div>
         </div>
+        <!-- Audit & Compliance -->
+        <div class="card wf-nav-card" onclick="switchTab('wf-audit',G('nav-wf-audit'))" style="cursor:pointer;transition:all .28s;border:1px solid var(--border);overflow:hidden;padding:0;">
+          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#8B5CF6,#A78BFA);border-radius:var(--r-lg) var(--r-lg) 0 0;"></div>
+          <div style="text-align:center;padding:14px 10px 12px;">
+            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#F5F3FF,#EDE9FE);border:1px solid rgba(139,92,246,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 8px;">
+              <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:#8B5CF6;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <div style="font-weight:700;font-size:13px;color:var(--t1);margin-bottom:4px;">Audit &amp; Compliance</div>
+            <div style="font-size:10px;color:var(--t3);line-height:1.4;">Security audit trail &amp; compliance monitoring</div>
+            <div style="margin-top:8px;font-size:10px;font-weight:700;color:#8B5CF6;">Audit &rarr;</div>
+          </div>
+        </div>
+        <!-- Settings -->
+        <div class="card wf-nav-card" onclick="switchTab('wf-settings',G('nav-wf-settings'))" style="cursor:pointer;transition:all .28s;border:1px solid var(--border);overflow:hidden;padding:0;">
+          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#7C3AED,#A78BFA);border-radius:var(--r-lg) var(--r-lg) 0 0;"></div>
+          <div style="text-align:center;padding:14px 10px 12px;">
+            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#F5F3FF,#EDE9FE);border:1px solid rgba(124,58,237,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 8px;">
+              <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:#7C3AED;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            </div>
+            <div style="font-weight:700;font-size:13px;color:var(--t1);margin-bottom:4px;">Settings</div>
+            <div style="font-size:10px;color:var(--t3);line-height:1.4;">Azure infra, Storage, Access Connector &amp; deploy config</div>
+            <div style="margin-top:8px;font-size:10px;font-weight:700;color:#7C3AED;">Configure &rarr;</div>
+          </div>
+        </div>
       </div>
-
+      </div>
       <!-- Quick Pipeline Groups Overview (compact) -->
       <div class="card card-lb card-lb-green" style="padding:12px 16px;">
         <div style="display:flex;align-items:center;gap:8px;">
@@ -2701,6 +2784,37 @@ dev/uc-managed/silver"></textarea>
         </div>
         <pre id="cfgJsonPreview" style="background:#1e1e2e;color:#cdd6f4;border-radius:var(--r-sm);padding:14px;font-family:var(--font-mono);font-size:11px;max-height:300px;overflow:auto;margin:0;white-space:pre-wrap;">Click &ldquo;Refresh Preview&rdquo; to see the JSON that will be saved.</pre>
       </div>
+
+      <!-- Clean Metadata -->
+      <div class="card" style="margin-bottom:16px;border-left:3px solid #ef4444;">
+        <div class="card-hd">
+          <div class="card-ico" style="color:#ef4444;">
+            <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+          </div>
+          <div class="card-title" style="color:#ef4444;">Clean Metadata</div>
+        </div>
+        <div style="font-size:11px;color:var(--t3);margin-bottom:12px;">
+          Remove all migrated table data from ADLS and drop all Unity Catalog tables across every catalog &amp; schema defined in your config.
+          Master folders are preserved so jobs can still run after cleanup.
+          <strong style="color:#ef4444;">This action is irreversible.</strong>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--t2);cursor:pointer;">
+            <input type="checkbox" id="cleanChkAdls" checked style="accent-color:#ef4444;"> Clean ADLS table data files (preserves master folders)
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--t2);cursor:pointer;">
+            <input type="checkbox" id="cleanChkTables" checked style="accent-color:#ef4444;"> Drop all tables in all catalogs / schemas
+          </label>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <input type="text" id="cleanConfirmInput" placeholder='Type "CLEAN" to confirm' style="flex:1;max-width:240px;padding:6px 10px;border:1px solid rgba(239,68,68,.4);border-radius:var(--r-sm);background:var(--bg2);color:var(--t1);font-size:11px;font-family:var(--font-mono);">
+          <button class="btn btn-xs" id="btnCleanMeta" onclick="cfgCleanMetadata()" style="background:#ef4444;color:#fff;padding:6px 16px;font-weight:600;">
+            <svg viewBox="0 0 24 24" style="width:13px;height:13px;margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Clean Metadata
+          </button>
+        </div>
+        <pre id="cleanMetaLogs" style="display:none;background:#1e1e2e;color:#cdd6f4;border-radius:var(--r-sm);padding:14px;font-family:var(--font-mono);font-size:11px;max-height:300px;overflow:auto;margin:0;white-space:pre-wrap;"></pre>
+      </div>
     </div>
 
     <!-- ═══════════ AI WORKFLOW MANAGER — METADATAFLOW ═══════════ -->
@@ -2791,7 +2905,7 @@ dev/uc-managed/silver"></textarea>
         <!-- Metadata Tables Info (shown after init) -->
         <div id="wfMetaTablesInfo" style="display:none;margin-top:12px;padding:10px;background:var(--surface-2);border-radius:var(--r-sm);border:1px solid var(--border);">
           <div style="font-size:11px;font-weight:600;color:var(--t2);margin-bottom:8px;">📋 Metadata Delta Tables</div>
-          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;" id="wfMetaTableGrid">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;" id="wfMetaTableGrid">
             <div class="wf-meta-tbl" style="padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xs);text-align:center;">
               <div style="font-size:10px;font-weight:600;color:var(--blue);">wf_pipeline_metadata</div>
               <div style="font-size:18px;font-weight:800;color:var(--t1);margin:4px 0;" id="wfMetaTblPipelines">—</div>
@@ -2801,6 +2915,11 @@ dev/uc-managed/silver"></textarea>
               <div style="font-size:10px;font-weight:600;color:var(--green);">wf_job_metadata</div>
               <div style="font-size:18px;font-weight:800;color:var(--t1);margin:4px 0;" id="wfMetaTblJobs">—</div>
               <div style="font-size:9px;color:var(--t4);">Jobs</div>
+            </div>
+            <div class="wf-meta-tbl" style="padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xs);text-align:center;">
+              <div style="font-size:10px;font-weight:600;color:var(--amber);">wf_job_metadatahis</div>
+              <div style="font-size:18px;font-weight:800;color:var(--t1);margin:4px 0;" id="wfMetaTblJobHis">—</div>
+              <div style="font-size:9px;color:var(--t4);">Job History</div>
             </div>
             <div class="wf-meta-tbl" style="padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xs);text-align:center;">
               <div style="font-size:10px;font-weight:600;color:var(--amber);">wf_run_history</div>
@@ -2816,6 +2935,16 @@ dev/uc-managed/silver"></textarea>
               <div style="font-size:10px;font-weight:600;color:var(--red);">wf_source_tables</div>
               <div style="font-size:18px;font-weight:800;color:var(--t1);margin:4px 0;" id="wfMetaTblSrc">—</div>
               <div style="font-size:9px;color:var(--t4);">Source Tables</div>
+            </div>
+            <div class="wf-meta-tbl" style="padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xs);text-align:center;">
+              <div style="font-size:10px;font-weight:600;color:var(--blue);">wf_scheduler_config</div>
+              <div style="font-size:18px;font-weight:800;color:var(--t1);margin:4px 0;" id="wfMetaTblSchCfg">—</div>
+              <div style="font-size:9px;color:var(--t4);">Schedules</div>
+            </div>
+            <div class="wf-meta-tbl" style="padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xs);text-align:center;">
+              <div style="font-size:10px;font-weight:600;color:var(--amber);">wf_scheduler_history</div>
+              <div style="font-size:18px;font-weight:800;color:var(--t1);margin:4px 0;" id="wfMetaTblSchHis">—</div>
+              <div style="font-size:9px;color:var(--t4);">Sch. History</div>
             </div>
           </div>
         </div>
@@ -3388,6 +3517,40 @@ dev/uc-managed/silver"></textarea>
               </table>
             </div>
           </div>
+
+          <!-- Job Audit History (archived metadata) -->
+          <div class="card" style="min-height:150px;">
+            <div class="card-hd" style="flex-wrap:wrap;gap:8px;">
+              <div class="card-ico" style="color:var(--amber);"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
+              <div class="card-title">Job Audit History</div>
+              <div style="margin-left:auto;display:flex;gap:6px;align-items:center;">
+                <input class="inp" id="wfAuditFilterTable" placeholder="Filter by table name…" style="width:160px;font-size:11px;" onkeyup="if(event.key==='Enter')wfRefreshAuditHistory()">
+                <button class="btn btn-ghost btn-xs" onclick="wfRefreshAuditHistory()">
+                  <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+                </button>
+              </div>
+            </div>
+            <div style="overflow-x:auto;">
+              <table style="width:100%;border-collapse:collapse;font-size:12px;" id="wfAuditTable">
+                <thead>
+                  <tr style="background:var(--surface-2);border-bottom:2px solid var(--border);">
+                    <th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Job Name</th>
+                    <th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Table</th>
+                    <th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Stage</th>
+                    <th style="padding:8px 10px;text-align:center;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Load Type</th>
+                    <th style="padding:8px 10px;text-align:center;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Status</th>
+                    <th style="padding:8px 10px;text-align:center;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Runs</th>
+                    <th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Created</th>
+                    <th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Archived</th>
+                    <th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Reason</th>
+                  </tr>
+                </thead>
+                <tbody id="wfAuditTbody">
+                  <tr><td colspan="9" style="padding:24px;text-align:center;color:var(--t4);">No archived jobs yet — history appears when load types are changed</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
         <div class="r-col">
           <!-- Job Run Logs -->
@@ -3730,27 +3893,6 @@ dev/uc-managed/silver"></textarea>
           </div>
         </div>
 
-        <!-- ETA + Estimated Completion -->
-        <div class="card" style="flex-shrink:0;">
-          <div class="card-hd">
-            <div class="card-ico" style="color:var(--amber);"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-            <div class="card-title">Estimated Completion</div>
-          </div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;">
-            <div style="text-align:center;padding:12px;background:var(--surface-2);border-radius:var(--r);">
-              <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:var(--t4);letter-spacing:.05em;">Tables Remaining</div>
-              <div style="font-size:22px;font-weight:800;color:var(--t1);margin:4px 0;" id="mptRemaining">0</div>
-            </div>
-            <div style="text-align:center;padding:12px;background:var(--surface-2);border-radius:var(--r);">
-              <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:var(--t4);letter-spacing:.05em;">Avg Time per Table</div>
-              <div style="font-size:22px;font-weight:800;color:var(--t1);margin:4px 0;" id="mptAvgTime">—</div>
-            </div>
-            <div style="text-align:center;padding:12px;background:var(--green-light);border-radius:var(--r);border:1px solid var(--green-border);">
-              <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:var(--green-fg);letter-spacing:.05em;">Est. Completion</div>
-              <div style="font-size:22px;font-weight:800;color:var(--green-fg);margin:4px 0;" id="mptETA">—</div>
-            </div>
-          </div>
-        </div>
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════════════════
@@ -3884,6 +4026,7 @@ dev/uc-managed/silver"></textarea>
             <table style="width:100%;border-collapse:collapse;font-size:12px;" id="auditLogTable">
               <thead style="position:sticky;top:0;z-index:1;">
                 <tr style="background:var(--surface-2);border-bottom:2px solid var(--border);">
+                  <th style="padding:8px 10px;text-align:center;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;width:30px;"></th>
                   <th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;width:150px;">Timestamp</th>
                   <th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Event</th>
                   <th style="padding:8px 10px;text-align:center;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;width:100px;">Category</th>
@@ -3893,7 +4036,217 @@ dev/uc-managed/silver"></textarea>
                 </tr>
               </thead>
               <tbody id="auditLogBody">
-                <tr><td colspan="6" style="padding:32px;text-align:center;color:var(--t4);">Click Refresh to load audit events</td></tr>
+                <tr><td colspan="7" style="padding:32px;text-align:center;color:var(--t4);">Click Refresh to load audit events</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Databricks Execution Logs Card -->
+        <div class="card card-lb card-lb-indigo">
+          <div class="card-hd" style="flex-wrap:wrap;gap:8px;">
+            <div class="card-ico" style="color:var(--purple,#8b5cf6);"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+            <div class="card-title">Databricks Execution Logs</div>
+            <div style="margin-left:auto;display:flex;gap:6px;align-items:center;">
+              <button class="btn btn-primary btn-xs" onclick="auditFetchDbxLogs()" id="btnFetchDbxLogs">
+                <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> Fetch Databricks Logs
+              </button>
+            </div>
+          </div>
+          <div id="dbxExecLogStatus" style="font-size:11px;color:var(--t4);margin-bottom:8px;">Click "Fetch Databricks Logs" to load execution logs from the ExecutionLog table.</div>
+          <div style="overflow-x:auto;max-height:400px;overflow-y:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;display:none;" id="dbxExecLogTable">
+              <thead style="position:sticky;top:0;z-index:1;" id="dbxExecLogHead">
+              </thead>
+              <tbody id="dbxExecLogBody">
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Full Log Detail Panel (hidden by default) -->
+        <div id="auditDetailPanel" style="display:none;position:fixed;top:0;right:0;width:520px;height:100vh;background:var(--surface-1);border-left:2px solid var(--border);box-shadow:-4px 0 20px rgba(0,0,0,.15);z-index:1000;flex-direction:column;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);background:var(--surface-2);">
+            <span style="font-weight:700;font-size:14px;color:var(--t1);">Event Detail</span>
+            <button class="btn btn-ghost btn-xs" onclick="auditCloseDetail()" style="padding:4px 8px;">
+              <svg viewBox="0 0 24 24" style="width:16px;height:16px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div id="auditDetailContent" style="flex:1;overflow-y:auto;padding:20px;"></div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         JOB SCHEDULER PANE
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <div id="pane-wf-scheduler" class="tab-pane" style="flex-direction:column;">
+        <!-- Breadcrumb -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+          <button class="btn btn-ghost btn-xs" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'))" style="padding:4px 8px;">
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <div style="font-size:11px;color:var(--t4);">
+            <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">AI Workflow Manager</a>
+            <span style="margin:0 4px;">/</span>
+            <span style="color:var(--t1);font-weight:600;">Job Scheduler</span>
+          </div>
+        </div>
+
+        <!-- KPI Cards -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;">
+          <div class="kpi-card kpi-indigo">
+            <div class="kpi-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+            <div class="kpi-label">Total Schedules</div>
+            <div class="kpi-value" id="schTotalCount">0</div>
+            <div class="kpi-sub">Configured</div>
+          </div>
+          <div class="kpi-card kpi-green">
+            <div class="kpi-icon"><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+            <div class="kpi-label">Active</div>
+            <div class="kpi-value" id="schActiveCount">0</div>
+            <div class="kpi-sub">Running on schedule</div>
+          </div>
+          <div class="kpi-card kpi-amber">
+            <div class="kpi-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+            <div class="kpi-label">Paused</div>
+            <div class="kpi-value" id="schPausedCount">0</div>
+            <div class="kpi-sub">Temporarily stopped</div>
+          </div>
+          <div class="kpi-card kpi-blue">
+            <div class="kpi-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+            <div class="kpi-label">Next Run</div>
+            <div class="kpi-value" id="schNextRun" style="font-size:14px;">—</div>
+            <div class="kpi-sub">Upcoming</div>
+          </div>
+        </div>
+
+        <!-- Create Schedule Card -->
+        <div class="card card-lb card-lb-blue">
+          <div class="card-hd">
+            <div class="card-ico" style="color:var(--blue);"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+            <div class="card-title">Create New Schedule</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label class="lbl">Select Table</label>
+              <select class="inp" id="schTableSelect" style="width:100%;">
+                <option value="">— Select a table —</option>
+              </select>
+              <div id="schTableJobs" style="font-size:10px;color:var(--t3);margin-top:4px;"></div>
+            </div>
+            <div>
+              <label class="lbl">Schedule Type</label>
+              <select class="inp" id="schType" style="width:100%;" onchange="schToggleTypeFields()">
+                <option value="cron">Cron Expression</option>
+                <option value="interval">Interval</option>
+                <option value="once">One-Time</option>
+              </select>
+            </div>
+            <!-- Cron fields -->
+            <div id="schCronFields" style="grid-column:1/-1;">
+              <label class="lbl">Cron Expression</label>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <input class="inp" id="schCronExpr" placeholder="0 */6 * * *" style="flex:1;">
+                <div style="display:flex;gap:4px;">
+                  <button class="btn btn-ghost btn-xs" onclick="G('schCronExpr').value='0 * * * *'" title="Every hour">Hourly</button>
+                  <button class="btn btn-ghost btn-xs" onclick="G('schCronExpr').value='0 0 * * *'" title="Every day at midnight">Daily</button>
+                  <button class="btn btn-ghost btn-xs" onclick="G('schCronExpr').value='0 0 * * 1'" title="Every Monday">Weekly</button>
+                  <button class="btn btn-ghost btn-xs" onclick="G('schCronExpr').value='0 */6 * * *'" title="Every 6 hours">6h</button>
+                </div>
+              </div>
+              <div style="font-size:10px;color:var(--t4);margin-top:4px;">Format: minute hour day-of-month month day-of-week</div>
+            </div>
+            <!-- Interval fields -->
+            <div id="schIntervalFields" style="grid-column:1/-1;display:none;">
+              <label class="lbl">Run Every</label>
+              <div style="display:flex;gap:8px;">
+                <input class="inp" id="schIntervalValue" type="number" min="1" value="1" style="width:80px;">
+                <select class="inp" id="schIntervalUnit" style="width:120px;">
+                  <option value="minutes">Minutes</option>
+                  <option value="hours" selected>Hours</option>
+                  <option value="days">Days</option>
+                </select>
+              </div>
+            </div>
+            <!-- One-Time fields -->
+            <div id="schOnceFields" style="grid-column:1/-1;display:none;">
+              <label class="lbl">Run At (Date & Time)</label>
+              <input class="inp" id="schOnceAt" type="datetime-local" style="width:260px;">
+            </div>
+            <div style="grid-column:1/-1;display:flex;gap:8px;">
+              <button class="btn btn-primary" id="schSubmitBtn" onclick="schCreateSchedule()">
+                <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span id="schSubmitLabel">Create Schedule</span>
+              </button>
+              <button class="btn btn-ghost" id="schCancelEditBtn" onclick="schCancelEdit()" style="display:none;">
+                <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                Cancel Edit
+              </button>
+              <button class="btn btn-ghost" onclick="schLoadTables()">
+                <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+                Refresh Tables
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Scheduled Jobs Table -->
+        <div class="card card-lb card-lb-green">
+          <div class="card-hd" style="flex-wrap:wrap;gap:8px;">
+            <div class="card-ico" style="color:var(--green);"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+            <div class="card-title">Scheduled Jobs</div>
+            <div style="margin-left:auto;display:flex;gap:6px;align-items:center;">
+              <select class="inp" id="schFilterStatus" style="width:110px;font-size:11px;" onchange="schRenderTable()">
+                <option value="">All Status</option>
+                <option value="active">Active</option>
+                <option value="paused">Paused</option>
+              </select>
+              <button class="btn btn-ghost btn-xs" onclick="schRefresh()">
+                <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> Refresh
+              </button>
+            </div>
+          </div>
+          <div style="overflow-x:auto;max-height:400px;overflow-y:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;" id="schTable">
+              <thead style="position:sticky;top:0;z-index:1;">
+                <tr style="background:var(--surface-2);border-bottom:2px solid var(--border);">
+                  <th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Table</th>
+                  <th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Jobs</th>
+                  <th style="padding:8px 10px;text-align:center;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Type</th>
+                  <th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Schedule</th>
+                  <th style="padding:8px 10px;text-align:center;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Status</th>
+                  <th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Next Run</th>
+                  <th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Last Run</th>
+                  <th style="padding:8px 10px;text-align:center;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="schTableBody">
+                <tr><td colspan="8" style="padding:32px;text-align:center;color:var(--t4);">No schedules configured yet. Select a table and create one above.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Schedule History -->
+        <div class="card card-lb card-lb-purple">
+          <div class="card-hd">
+            <div class="card-ico" style="color:var(--purple,#8b5cf6);"><svg viewBox="0 0 24 24"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg></div>
+            <div class="card-title">Schedule Execution History</div>
+          </div>
+          <div style="overflow-x:auto;max-height:300px;overflow-y:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead style="position:sticky;top:0;z-index:1;">
+                <tr style="background:var(--surface-2);border-bottom:2px solid var(--border);">
+                  <th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Time</th>
+                  <th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Table</th>
+                  <th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Jobs Executed</th>
+                  <th style="padding:8px 10px;text-align:center;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Trigger</th>
+                  <th style="padding:8px 10px;text-align:center;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Result</th>
+                  <th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;">Details</th>
+                </tr>
+              </thead>
+              <tbody id="schHistoryBody">
+                <tr><td colspan="6" style="padding:24px;text-align:center;color:var(--t4);">No execution history yet.</td></tr>
               </tbody>
             </table>
           </div>
@@ -4378,6 +4731,7 @@ const TAB_META={
   'wf-metadata':{title:'MetadataFlow',sub:'Configure Databricks connection & provision Delta metadata tables',step:7},
   'wf-pipelines':{title:'Pipeline Studio',sub:'Connect data sources, create & manage medallion pipelines',step:7},
   'wf-jobs':{title:'Job Manager',sub:'Create workflow jobs, monitor runs & track watermarks',step:7},
+  'wf-scheduler':{title:'Job Scheduler',sub:'Schedule migration jobs with cron, interval or one-time triggers',step:7},
   'wf-reports':{title:'Reports & Analytics',sub:'Interactive dashboards, charts & exportable reports for migration pipeline',step:7},
   'wf-progress':{title:'Migration Progress Tracker',sub:'Track overall migration completion — tables, stages, blockers & ETA',step:7},
   'wf-audit':{title:'Audit & Compliance Log',sub:'Track every migration action, config change & security event with full compliance scoring',step:7},
@@ -4438,7 +4792,7 @@ function switchTab(id,btn){
     // Auto-sync hidden wfDbr* fields from Settings / deployconfig
     _wfSyncHiddenFields();
     if(id==='wf-dashboard'||id==='wf-pipelines') wfRefreshAll();
-    if(id==='wf-jobs') wfRefreshJobs();
+    if(id==='wf-jobs') wfRefreshJobs(),wfRefreshAuditHistory();
     if(id==='wf-settings') loadDeployConfig();
     if(id==='wf-progress' && typeof mptRefresh==='function') mptRefresh();
     if(id==='wf-audit' && typeof auditRefresh==='function') auditRefresh();
@@ -4579,6 +4933,30 @@ const IDD_OPTS = {
 // toggleIDD / pickSrcType no longer needed — native <select> handles it
 function toggleIDD(){}
 function pickSrcType(){}
+
+/* Auto-populate source connection hidden fields from deployconfig.json */
+async function _srcSyncFromConfig(){
+  const cfg=await _ensureDeployConfig();
+  const src=cfg.source||{};
+  G('srcType').value=src.source_type||'azuresql';
+  G('srcServer').value=src.server||'';
+  G('srcDb').value=src.database||'';
+  G('srcUser').value=src.username||'';
+  G('srcPass').value=src.password||'';
+  // Update info bar
+  if(G('srcCfgServer'))G('srcCfgServer').textContent=src.server||'—';
+  if(G('srcCfgDb'))G('srcCfgDb').textContent=src.database||'—';
+  if(G('srcCfgType'))G('srcCfgType').textContent=(IDD_OPTS[src.source_type]||{}).label||src.source_type||'—';
+  if(G('srcCfgUser'))G('srcCfgUser').textContent=src.username||'—';
+}
+
+async function _dbrSyncFromConfig(){
+  const cfg=await _ensureDeployConfig();
+  G('dbHost').value=cfg.databricks_host||'';
+  G('dbToken').value=cfg.databricks_token||'';
+  if(G('dbrCfgHost'))G('dbrCfgHost').textContent=cfg.databricks_host||'—';
+  if(G('dbrCfgToken'))G('dbrCfgToken').textContent=cfg.databricks_token?'Configured ✓':'—';
+}
 
 function toggleSrcConn(){
   const body=G('srcConnBody'),chv=G('srcConnChv');
@@ -5748,6 +6126,10 @@ async function hlRefreshStats(){
       hlLoadRules();
       hlLoadRps();
     }
+    if(id==='wf-scheduler'){
+      if(typeof schLoadJobs==='function') schLoadJobs();
+      if(typeof schRefresh==='function') schRefresh();
+    }
   };
 })();
 
@@ -5906,7 +6288,7 @@ async function wfCheckMetaStatus(){
       if(G('wfNotebookCard'))G('wfNotebookCard').style.display='';
       // Update table counts
       const tbls=d.tables||{};
-      const m={wf_pipeline_metadata:'wfMetaTblPipelines',wf_job_metadata:'wfMetaTblJobs',wf_run_history:'wfMetaTblRuns',wf_watermark_metadata:'wfMetaTblWm',wf_source_tables:'wfMetaTblSrc'};
+      const m={wf_pipeline_metadata:'wfMetaTblPipelines',wf_job_metadata:'wfMetaTblJobs',wf_job_metadatahis:'wfMetaTblJobHis',wf_run_history:'wfMetaTblRuns',wf_watermark_metadata:'wfMetaTblWm',wf_source_tables:'wfMetaTblSrc',wf_scheduler_config:'wfMetaTblSchCfg',wf_scheduler_history:'wfMetaTblSchHis'};
       for(const[t,info]of Object.entries(tbls)){
         const el=G(m[t]);
         if(el){
@@ -6603,7 +6985,10 @@ async function wfQuickCreate(){
       body:JSON.stringify({tables:tables,source_config:_wfSourceConfig(),target_config:_wfTargetConfig(),pipeline_mode:(G('wfNbPipelineMode')||{}).value||'standard',cdc_mode:(G('cfgCdcMode')||{}).value||'watermark',primary_keys:(G('cfgPrimaryKeys')||{}).value?G('cfgPrimaryKeys').value.split(',').map(s=>s.trim()).filter(Boolean):[]})});
     const d=await r.json();
     if(!d.success)throw new Error(d.error||'Failed');
-    toast('Created '+d.created+' pipeline(s) with '+d.total_jobs+' jobs','tok');
+    const archCount=(d.groups||[]).reduce((s,g)=>(s+(g.archived_jobs||[]).length),0);
+    let msg='Created '+d.created+' pipeline(s) with '+d.total_jobs+' jobs';
+    if(archCount>0) msg+=' ('+archCount+' old job(s) archived to history)';
+    toast(msg,'tok');
     wfQClearAll();
     G('wfQLoadType').value='full';
     wfRefreshAll();
@@ -6670,6 +7055,7 @@ async function wfRefreshAll(){
   wfRefreshPipelines();
   wfRefreshJobs();
   wfRefreshHistory();
+  wfRefreshAuditHistory();
   wfRefreshWatermarks();
   if(!_wfClustersLoaded)wfFetchClusters();
   // Re-render open layer detail if any
@@ -7082,6 +7468,39 @@ async function wfRefreshHistory(){
       </tr>`;
     }).join('');
   }catch(e){console.error('wfRefreshHistory',e);}
+}
+
+async function wfRefreshAuditHistory(){
+  try{
+    const tbl=(G('wfAuditFilterTable')||{}).value||'';
+    let url='/api/workflow/jobs/history';
+    if(tbl)url+='?table_name='+encodeURIComponent(tbl);
+    const r=await fetch(url);const d=await r.json();
+    if(!d.success){console.error('audit history',d.error);return;}
+    const tb=G('wfAuditTbody');
+    const rows=d.history||[];
+    if(!rows.length){
+      tb.innerHTML='<tr><td colspan="9" style="padding:24px;text-align:center;color:var(--t4);">No archived jobs yet</td></tr>';
+      return;
+    }
+    tb.innerHTML=rows.map(h=>{
+      const created=h.created_at?new Date(h.created_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+      const archived=h.archived_at?new Date(h.archived_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+      const lt=h.load_type==='incremental'?'<span style="background:#dbeafe;color:#1d4ed8;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;">INCREMENTAL</span>':'<span style="background:#e0e7ff;color:#4338ca;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;">FULL</span>';
+      const st=WF_STATUS_BADGES[h.status]||h.status||'—';
+      return `<tr style="border-bottom:1px solid var(--border);transition:background .15s;" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">
+        <td style="padding:6px 10px;font-weight:600;font-size:11px;">${h.job_name||'—'}</td>
+        <td style="padding:6px 10px;font-size:11px;">${h.full_table||h.table_name||'—'}</td>
+        <td style="padding:6px 10px;font-size:11px;">${WF_STAGE_LABELS[h.stage]||h.stage||'—'}</td>
+        <td style="padding:6px 10px;text-align:center;">${lt}</td>
+        <td style="padding:6px 10px;text-align:center;">${st}</td>
+        <td style="padding:6px 10px;text-align:center;font-size:11px;">${h.run_count||0}</td>
+        <td style="padding:6px 10px;font-size:10px;color:var(--t3);">${created}</td>
+        <td style="padding:6px 10px;font-size:10px;color:var(--t3);">${archived}</td>
+        <td style="padding:6px 10px;font-size:10px;color:var(--amber);">${h.archive_reason||'—'}</td>
+      </tr>`;
+    }).join('');
+  }catch(e){console.error('wfRefreshAuditHistory',e);}
 }
 
 async function wfViewRunLog(runId){
@@ -7627,6 +8046,36 @@ function cfgPreview(){
   G('cfgJsonPreview').textContent=JSON.stringify(_collectConfig(),null,2);
 }
 
+async function cfgCleanMetadata(){
+  const inp=G('cleanConfirmInput');
+  if(!inp||inp.value.trim()!=='CLEAN'){
+    toast('Type "CLEAN" in the confirmation box to proceed','terr');return;
+  }
+  const cleanAdls=G('cleanChkAdls')?.checked??true;
+  const cleanTables=G('cleanChkTables')?.checked??true;
+  if(!cleanAdls&&!cleanTables){toast('Select at least one option','terr');return;}
+  const btn=G('btnCleanMeta');
+  const logsEl=G('cleanMetaLogs');
+  btn.disabled=true;btn.textContent='Cleaning…';
+  logsEl.style.display='block';logsEl.textContent='Starting metadata cleanup…\n';
+  try{
+    const r=await fetch('/api/settings/clean-metadata',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({clean_adls:cleanAdls,clean_tables:cleanTables})
+    });
+    const d=await r.json();
+    if(!d.success) throw new Error(d.error||'Cleanup failed');
+    logsEl.textContent=(d.log||[]).join('\n')+'\n\n✅ '+d.summary;
+    toast('Metadata cleaned successfully','tok');
+  }catch(e){
+    logsEl.textContent+='\n❌ Error: '+e.message;
+    toast(e.message,'terr');
+  }finally{
+    btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" style="width:13px;height:13px;margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> Clean Metadata';
+    inp.value='';
+  }
+}
+
 async function saveDeployConfig(){
   const cfg=_collectConfig();
   if(!cfg.subscription_id){toast('Subscription ID is required','terr');return;}
@@ -7808,6 +8257,10 @@ async function loadDeployConfig(){
   }else{
     switchTab('wf-dashboard',G('nav-wf-dashboard'));
   }
+  // Auto-populate source connection from deployconfig.json
+  _srcSyncFromConfig();
+  // Auto-populate Databricks credentials from deployconfig.json
+  _dbrSyncFromConfig();
 })();
 
 </script>
@@ -8307,7 +8760,7 @@ async function mptRefresh(){
     const tables = {};
     jobsArr.forEach(j=>{
       const name = j.table_name || j.name || j.job_name || 'unknown';
-      if(!tables[name]) tables[name]={name, extract:false, bronze:false, silver:false, failed:false, last_updated:null, blocker:null};
+      if(!tables[name]) tables[name]={name, extract:false, bronze:false, silver:false, failed:false, last_updated:null, first_seen:null, silver_at:null, blocker:null};
       const stage = (j.pipeline_stage||j.stage||'').toLowerCase();
       const status = (j.status||j.state||'').toLowerCase();
       if(status==='completed'||status==='success'||status==='succeeded'){
@@ -8319,14 +8772,19 @@ async function mptRefresh(){
         tables[name].failed=true;
         tables[name].blocker=j.error||j.message||'Migration failed';
       }
-      if(j.updated_at||j.end_time||j.timestamp){
-        const ts=j.updated_at||j.end_time||j.timestamp;
+      // Track timestamps for ETA calculation
+      const ts=j.updated_at||j.end_time||j.timestamp||j.created_at||j.started_at||j.last_run_at;
+      if(ts){
         if(!tables[name].last_updated||ts>tables[name].last_updated) tables[name].last_updated=ts;
+        if(!tables[name].first_seen||ts<tables[name].first_seen) tables[name].first_seen=ts;
+        if(stage.includes('silver')&&(status==='completed'||status==='success'||status==='succeeded')){
+          if(!tables[name].silver_at||ts>tables[name].silver_at) tables[name].silver_at=ts;
+        }
       }
     });
     runsArr.forEach(r=>{
       const name = r.table_name||r.name||r.job_name||'unknown';
-      if(!tables[name]) tables[name]={name, extract:false, bronze:false, silver:false, failed:false, last_updated:null, blocker:null};
+      if(!tables[name]) tables[name]={name, extract:false, bronze:false, silver:false, failed:false, last_updated:null, first_seen:null, silver_at:null, blocker:null};
       const stage = (r.pipeline_stage||r.stage||'').toLowerCase();
       const status = (r.status||r.state||r.result_state||'').toLowerCase();
       if(status==='completed'||status==='success'||status==='succeeded'){
@@ -8338,9 +8796,13 @@ async function mptRefresh(){
         tables[name].failed=true;
         tables[name].blocker=r.error||r.message||'Run failed';
       }
-      if(r.updated_at||r.end_time||r.timestamp){
-        const ts=r.updated_at||r.end_time||r.timestamp;
+      const ts=r.updated_at||r.end_time||r.timestamp||r.created_at||r.started_at;
+      if(ts){
         if(!tables[name].last_updated||ts>tables[name].last_updated) tables[name].last_updated=ts;
+        if(!tables[name].first_seen||ts<tables[name].first_seen) tables[name].first_seen=ts;
+        if(stage.includes('silver')&&(status==='completed'||status==='success'||status==='succeeded')){
+          if(!tables[name].silver_at||ts>tables[name].silver_at) tables[name].silver_at=ts;
+        }
       }
     });
 
@@ -8366,29 +8828,6 @@ async function mptRefresh(){
     G('mptSilverBar').style.width=Math.round(silvered/total*100)+'%';
     G('mptFailedCount').textContent=failed;
     G('mptBlockers').textContent=failed>0?failed+' table(s) have issues':'No blockers';
-
-    // ETA card
-    const remaining=total-silvered;
-    G('mptRemaining').textContent=remaining;
-    if(silvered>0){
-      const completedTimes=mptAllRows.filter(t=>t.silver&&t.last_updated).map(t=>new Date(t.last_updated).getTime());
-      if(completedTimes.length>=2){
-        const sorted=completedTimes.sort((a,b)=>a-b);
-        const diffs=[];for(let i=1;i<sorted.length;i++) diffs.push(sorted[i]-sorted[i-1]);
-        const avgMs=diffs.reduce((a,b)=>a+b,0)/diffs.length;
-        const avgMin=Math.round(avgMs/60000);
-        G('mptAvgTime').textContent=avgMin>60?Math.round(avgMin/60)+'h '+avgMin%60+'m':avgMin+'m';
-        const etaMs=remaining*avgMs;
-        const etaDate=new Date(Date.now()+etaMs);
-        G('mptETA').textContent=etaDate.toLocaleDateString()+' '+etaDate.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-      } else {
-        G('mptAvgTime').textContent='\u2014';
-        G('mptETA').textContent=remaining===0?'Complete!':'\u2014';
-      }
-    } else {
-      G('mptAvgTime').textContent='\u2014';
-      G('mptETA').textContent='\u2014';
-    }
 
     // Funnel chart
     mptRenderFunnel(total, extracted, bronzed, silvered, failed);
@@ -8734,17 +9173,160 @@ function auditCategoryBadge(cat){
 function auditRenderLog(events){
   const tbody=G('auditLogBody');
   if(!events.length){
-    tbody.innerHTML='<tr><td colspan="6" style="padding:32px;text-align:center;color:var(--t4);">No audit events found</td></tr>';
+    tbody.innerHTML='<tr><td colspan="7" style="padding:32px;text-align:center;color:var(--t4);">No audit events found</td></tr>';
     return;
   }
-  tbody.innerHTML=events.slice(0,200).map(e=>`<tr style="border-bottom:1px solid var(--border);">
+  tbody.innerHTML=events.slice(0,200).map((e,i)=>{
+    const sevColor=e.severity==='error'||e.severity==='critical'?'var(--red)':e.severity==='warning'?'var(--amber)':'transparent';
+    return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;border-left:3px solid ${sevColor};" onclick="auditShowDetail(${i})" title="Click for full details">
+    <td style="padding:8px 6px;text-align:center;color:var(--t4);font-size:10px;"><svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;"><polyline points="9 18 15 12 9 6"/></svg></td>
     <td style="padding:8px 10px;color:var(--t3);font-size:11px;white-space:nowrap;">${new Date(e.timestamp).toLocaleString()}</td>
     <td style="padding:8px 10px;color:var(--t1);font-weight:500;">${escHtml(e.event)}</td>
     <td style="padding:8px 10px;text-align:center;">${auditCategoryBadge(e.category)}</td>
     <td style="padding:8px 10px;text-align:center;">${auditSeverityBadge(e.severity)}</td>
     <td style="padding:8px 10px;color:var(--t2);font-size:11px;">${escHtml(e.user)}</td>
     <td style="padding:8px 10px;color:var(--t3);font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(e.details)}">${escHtml(e.details)}</td>
-  </tr>`).join('');
+  </tr>`;
+  }).join('');
+}
+
+function auditShowDetail(idx){
+  const e=auditAllEvents[idx];
+  if(!e)return;
+  const panel=G('auditDetailPanel');
+  const content=G('auditDetailContent');
+  const sevColors={info:['#EFF6FF','#1E40AF','#BFDBFE'],warning:['#FFFBEB','#92400E','#FDE68A'],error:['#FEF2F2','#991B1B','#FECACA'],critical:['#FEF2F2','#7F1D1D','#FCA5A5']};
+  const sc=sevColors[e.severity]||sevColors.info;
+  let extra='';
+  // Show all extra fields beyond standard ones
+  const stdKeys=new Set(['timestamp','event','category','severity','user','details']);
+  const extraFields=Object.entries(e).filter(([k])=>!stdKeys.has(k)&&e[k]);
+  if(extraFields.length){
+    extra=`<div style="margin-top:16px;"><div style="font-weight:600;font-size:12px;color:var(--t2);margin-bottom:8px;">Additional Fields</div>
+      <div style="display:grid;grid-template-columns:140px 1fr;gap:4px 8px;font-size:11px;">
+        ${extraFields.map(([k,v])=>`<div style="color:var(--t4);font-weight:600;">${escHtml(k)}</div><div style="color:var(--t1);word-break:break-all;">${escHtml(String(v))}</div>`).join('')}
+      </div></div>`;
+  }
+  content.innerHTML=`
+    <div style="background:${sc[0]};border:1px solid ${sc[2]};border-radius:10px;padding:14px 16px;margin-bottom:16px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        ${auditSeverityBadge(e.severity)} ${auditCategoryBadge(e.category)}
+      </div>
+      <div style="font-size:15px;font-weight:700;color:${sc[1]};margin-top:8px;">${escHtml(e.event)}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:100px 1fr;gap:8px 12px;font-size:12px;margin-bottom:16px;">
+      <div style="color:var(--t4);font-weight:600;">Timestamp</div><div style="color:var(--t1);">${new Date(e.timestamp).toLocaleString()}</div>
+      <div style="color:var(--t4);font-weight:600;">User / Source</div><div style="color:var(--t1);">${escHtml(e.user)}</div>
+      <div style="color:var(--t4);font-weight:600;">Category</div><div style="color:var(--t1);">${e.category}</div>
+      <div style="color:var(--t4);font-weight:600;">Severity</div><div style="color:var(--t1);">${e.severity}</div>
+    </div>
+    <div style="margin-bottom:16px;">
+      <div style="font-weight:600;font-size:12px;color:var(--t2);margin-bottom:6px;">Full Details</div>
+      <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;color:var(--t1);white-space:pre-wrap;word-break:break-word;max-height:300px;overflow-y:auto;font-family:'Fira Code',monospace;line-height:1.6;">${escHtml(e.details||'No additional details available.')}</div>
+    </div>
+    ${extra}
+  `;
+  panel.style.display='flex';
+}
+
+function auditCloseDetail(){
+  G('auditDetailPanel').style.display='none';
+}
+
+async function auditFetchDbxLogs(){
+  const btn=G('btnFetchDbxLogs');
+  const statusEl=G('dbxExecLogStatus');
+  const origHTML=btn.innerHTML;
+  btn.disabled=true;btn.innerHTML='<div class="spin"></div> Fetching…';
+  statusEl.innerHTML='<div class="alert a-info"><span class="spin" style="border-top-color:var(--blue-fg)"></span> Querying Databricks ExecutionLog table…</div>';
+  try{
+    const r=await fetch('/api/audit/execution-logs');
+    const d=await r.json();
+    if(d.success){
+      const logs=d.logs||[];
+      const cols=d.columns||[];
+      statusEl.innerHTML=`<div class="alert a-ok"><span class="a-ico">✓</span> Loaded ${logs.length} execution log entries from Databricks.</div>`;
+      const tbl=G('dbxExecLogTable');
+      tbl.style.display='table';
+      // Render header
+      G('dbxExecLogHead').innerHTML=`<tr style="background:var(--surface-2);border-bottom:2px solid var(--border);">
+        ${cols.map(c=>`<th style="padding:8px 10px;text-align:left;font-weight:600;color:var(--t3);font-size:10px;text-transform:uppercase;white-space:nowrap;">${escHtml(c)}</th>`).join('')}
+      </tr>`;
+      // Render body
+      const tbody=G('dbxExecLogBody');
+      if(!logs.length){
+        tbody.innerHTML=`<tr><td colspan="${cols.length}" style="padding:24px;text-align:center;color:var(--t4);">No execution logs found in the table.</td></tr>`;
+      }else{
+        tbody.innerHTML=logs.map(log=>{
+          const status=(log.Status||log.status||log.result_state||'').toLowerCase();
+          const isErr=status==='failed'||status==='error';
+          return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;${isErr?'background:rgba(239,68,68,.04);border-left:3px solid var(--red);':''}" onclick="auditShowDbxLogDetail(this)" data-log='${escAttr(JSON.stringify(log))}'>
+            ${cols.map(c=>{
+              const v=log[c]??'';
+              if(c.toLowerCase().includes('status')||c.toLowerCase().includes('state')){
+                const sc=String(v).toLowerCase()==='success'||String(v).toLowerCase()==='succeeded'?'color:#059669;font-weight:600;':String(v).toLowerCase()==='failed'?'color:#DC2626;font-weight:600;':'color:var(--t1);';
+                return `<td style="padding:8px 10px;font-size:11px;${sc}">${escHtml(String(v))}</td>`;
+              }
+              return `<td style="padding:8px 10px;color:var(--t2);font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(String(v))}">${escHtml(String(v))}</td>`;
+            }).join('')}
+          </tr>`;
+        }).join('');
+      }
+      // Also merge into audit events
+      logs.forEach(log=>{
+        const status=(log.Status||log.status||log.result_state||'').toLowerCase();
+        auditAllEvents.push({
+          timestamp:log.StartTime||log.start_time||log.Timestamp||log.timestamp||new Date().toISOString(),
+          event:`Execution: ${log.TableName||log.table_name||log.JobName||log.job_name||'unknown'} — ${status||'completed'}`,
+          category:status==='failed'?'error':'migration',
+          severity:status==='failed'?'error':'info',
+          user:log.User||log.user||'databricks',
+          details:Object.entries(log).map(([k,v])=>`${k}: ${v}`).join(' | '),
+          ...log
+        });
+      });
+      showToast(`Loaded ${logs.length} Databricks execution logs`,'success');
+    }else{
+      statusEl.innerHTML=`<div class="alert a-err"><span class="a-ico">✕</span> ${escHtml(d.error||'Failed to fetch logs')}</div>`;
+      showToast('Failed: '+(d.error||'Unknown error'),'error');
+    }
+  }catch(e){
+    statusEl.innerHTML=`<div class="alert a-err"><span class="a-ico">✕</span> ${escHtml(e.message)}</div>`;
+    showToast('Error: '+e.message,'error');
+  }finally{
+    btn.disabled=false;btn.innerHTML=origHTML;
+  }
+}
+
+function escAttr(s){return (s||'').replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function auditShowDbxLogDetail(tr){
+  try{
+    const log=JSON.parse(tr.dataset.log);
+    const panel=G('auditDetailPanel');
+    const content=G('auditDetailContent');
+    const status=(log.Status||log.status||log.result_state||'').toLowerCase();
+    const isErr=status==='failed'||status==='error';
+    const headerBg=isErr?'#FEF2F2':'#F0FDF4';
+    const headerBorder=isErr?'#FECACA':'#BBF7D0';
+    const headerColor=isErr?'#991B1B':'#166534';
+    content.innerHTML=`
+      <div style="background:${headerBg};border:1px solid ${headerBorder};border-radius:10px;padding:14px 16px;margin-bottom:16px;">
+        <div style="font-size:15px;font-weight:700;color:${headerColor};">
+          ${escHtml(log.TableName||log.table_name||log.JobName||log.job_name||'Execution Log Entry')}
+          <span style="font-size:12px;font-weight:600;margin-left:8px;padding:2px 10px;border-radius:99px;background:${isErr?'#FCA5A5':'#BBF7D0'};color:${headerColor};">${escHtml(status||'unknown')}</span>
+        </div>
+      </div>
+      <div style="font-weight:600;font-size:12px;color:var(--t2);margin-bottom:8px;">All Fields</div>
+      <div style="display:grid;grid-template-columns:160px 1fr;gap:6px 12px;font-size:12px;">
+        ${Object.entries(log).map(([k,v])=>`
+          <div style="color:var(--t4);font-weight:600;padding:4px 0;">${escHtml(k)}</div>
+          <div style="color:var(--t1);padding:4px 0;word-break:break-all;${k.toLowerCase().includes('error')||k.toLowerCase().includes('message')?'background:#FEF2F2;border-radius:6px;padding:6px 8px;font-family:monospace;font-size:11px;white-space:pre-wrap;':''}">${escHtml(String(v??'—'))}</div>
+        `).join('')}
+      </div>
+    `;
+    panel.style.display='flex';
+  }catch(e){console.error('auditShowDbxLogDetail',e);}
 }
 
 function escHtml(s){
@@ -8777,6 +9359,306 @@ function auditExportJSON(){
   const blob=new Blob([JSON.stringify(auditAllEvents,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='audit_log_'+new Date().toISOString().slice(0,10)+'.json';a.click();
   showToast('Audit JSON exported','success');
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   JOB SCHEDULER
+   ══════════════════════════════════════════════════════════════════ */
+let schAllSchedules=[], schAllHistory=[];
+
+function schToggleTypeFields(){
+  const t=G('schType').value;
+  G('schCronFields').style.display=t==='cron'?'':'none';
+  G('schIntervalFields').style.display=t==='interval'?'':'none';
+  G('schOnceFields').style.display=t==='once'?'':'none';
+}
+
+async function schLoadTables(){
+  try{
+    const r=await fetch('/api/scheduler/tables');
+    const d=await r.json();
+    if(!d.success){showToast(d.error||'Failed to load tables','error');return;}
+    const tables=d.tables||[];
+    const sel=G('schTableSelect');
+    sel.innerHTML='<option value="">— Select a table —</option>';
+    tables.forEach(t=>{
+      const opt=document.createElement('option');
+      opt.value=t.table_name;
+      opt.textContent=t.full_table+' ('+t.job_count+' jobs — '+t.load_type+')';
+      opt.dataset.tableName=t.table_name;
+      opt.dataset.tableSchema=t.table_schema;
+      opt.dataset.groupId=t.group_id;
+      opt.dataset.jobs=JSON.stringify(t.jobs);
+      sel.appendChild(opt);
+    });
+    sel.onchange=function(){
+      const o=sel.options[sel.selectedIndex];
+      const jInfo=G('schTableJobs');
+      if(!o||!o.dataset.jobs){jInfo.innerHTML='';return;}
+      try{
+        const jobs=JSON.parse(o.dataset.jobs);
+        jInfo.innerHTML='<b>Pipeline jobs (execute in order):</b><br>'+jobs.map((j,i)=>
+          '<span style="color:var(--blue);">'+(i+1)+'. </span>'+escHtml(j.job_name)+' <span style="color:var(--t4);">('+j.stage+')</span>'
+        ).join('<br>');
+      }catch(e){jInfo.innerHTML='';}
+    };
+    showToast('Loaded '+tables.length+' tables','success');
+  }catch(e){showToast('Failed to load tables: '+e.message,'error');}
+}
+// Keep schLoadJobs as alias for backward compat
+function schLoadJobs(){schLoadTables();}
+
+let _schEditingId=null; // schedule_id being edited, null = create mode
+
+function schEditSchedule(scheduleId){
+  const s=schAllSchedules.find(x=>x.schedule_id===scheduleId);
+  if(!s){showToast('Schedule not found','error');return;}
+  _schEditingId=scheduleId;
+
+  // Select the table in dropdown (or add it if not loaded)
+  const sel=G('schTableSelect');
+  let found=false;
+  for(let i=0;i<sel.options.length;i++){
+    if(sel.options[i].value===s.table_name){sel.selectedIndex=i;found=true;break;}
+  }
+  if(!found){
+    const opt=document.createElement('option');
+    opt.value=s.table_name;
+    opt.textContent=s.table_name;
+    opt.dataset.tableName=s.table_name;
+    opt.dataset.tableSchema=s.table_schema||'dbo';
+    opt.dataset.groupId=s.group_id||'';
+    opt.dataset.jobs=JSON.stringify([]);
+    sel.appendChild(opt);
+    sel.value=s.table_name;
+  }
+  sel.disabled=true; // Can't change table when editing
+  sel.dispatchEvent(new Event('change'));
+
+  // Set type
+  G('schType').value=s.type||'cron';
+  schToggleTypeFields();
+
+  // Fill fields
+  if(s.type==='cron') G('schCronExpr').value=s.cron||'';
+  if(s.type==='interval'){
+    G('schIntervalValue').value=s.interval_value||1;
+    G('schIntervalUnit').value=s.interval_unit||'hours';
+  }
+  if(s.type==='once') G('schOnceAt').value=s.once_at||'';
+
+  // Switch button to Update mode
+  G('schSubmitLabel').textContent='Update Schedule';
+  G('schSubmitBtn').classList.remove('btn-primary');
+  G('schSubmitBtn').classList.add('btn-primary');
+  G('schSubmitBtn').style.background='var(--amber)';
+  G('schCancelEditBtn').style.display='';
+
+  // Scroll to form
+  G('schTableSelect').closest('.card')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function schCancelEdit(){
+  _schEditingId=null;
+  G('schTableSelect').disabled=false;
+  G('schTableSelect').value='';
+  G('schTableJobs').innerHTML='';
+  G('schType').value='cron';
+  schToggleTypeFields();
+  G('schCronExpr').value='0 */6 * * *';
+  G('schIntervalValue').value=1;
+  G('schIntervalUnit').value='hours';
+  G('schOnceAt').value='';
+  G('schSubmitLabel').textContent='Create Schedule';
+  G('schSubmitBtn').style.background='';
+  G('schCancelEditBtn').style.display='none';
+}
+
+async function schCreateSchedule(){
+  const sel=G('schTableSelect');
+  const tableName=sel.value;
+  if(!tableName){showToast('Please select a table','error');return;}
+  const opt=sel.options[sel.selectedIndex];
+  const tableSchema=opt.dataset.tableSchema||'dbo';
+  const groupId=opt.dataset.groupId||'';
+  const schType=G('schType').value;
+
+  const body={
+    table_name:tableName,
+    table_schema:tableSchema,
+    group_id:groupId,
+    type:schType,
+  };
+  // Pass job_names so backend doesn't rely on in-memory state
+  try{
+    const jobs=JSON.parse(opt.dataset.jobs||'[]');
+    body.job_names=jobs.map(j=>j.job_name);
+  }catch(e){body.job_names=[];}
+  if(schType==='cron'){
+    body.cron=G('schCronExpr').value.trim();
+    if(!body.cron){showToast('Cron expression required','error');return;}
+  }else if(schType==='interval'){
+    body.interval_value=G('schIntervalValue').value;
+    body.interval_unit=G('schIntervalUnit').value;
+    if(!body.interval_value){showToast('Interval value required','error');return;}
+  }else{
+    body.once_at=G('schOnceAt').value;
+    if(!body.once_at){showToast('Date/time required','error');return;}
+  }
+
+  try{
+    let r, d;
+    if(_schEditingId){
+      // Update existing schedule
+      r=await fetch('/api/scheduler/schedules/'+_schEditingId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      d=await r.json();
+      if(d.success){
+        showToast('Schedule updated for table '+tableName,'success');
+        schCancelEdit();
+        schRefresh();
+      }else{showToast(d.error||'Update failed','error');}
+    }else{
+      // Create new schedule
+      r=await fetch('/api/scheduler/schedules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      d=await r.json();
+      if(d.success){
+        showToast('Schedule created for table '+tableName+' — all jobs will run in order on Databricks','success');
+        schRefresh();
+      }else{showToast(d.error||'Failed','error');}
+    }
+  }catch(e){showToast('Error: '+e.message,'error');}
+}
+
+async function schRefresh(){
+  try{
+    const r=await fetch('/api/scheduler/schedules');
+    const d=await r.json();
+    if(d.success){
+      schAllSchedules=d.schedules||[];
+      schAllHistory=d.history||[];
+      schRenderTable();
+      schRenderHistory();
+      schUpdateKPIs();
+    }
+  }catch(e){showToast('Failed to load schedules','error');}
+}
+
+function schUpdateKPIs(){
+  const active=schAllSchedules.filter(s=>s.status==='active').length;
+  const paused=schAllSchedules.filter(s=>s.status==='paused').length;
+  G('schTotalCount').textContent=schAllSchedules.length;
+  G('schActiveCount').textContent=active;
+  G('schPausedCount').textContent=paused;
+  const activeSch=schAllSchedules.filter(s=>s.status==='active'&&s.next_run);
+  if(activeSch.length){
+    activeSch.sort((a,b)=>new Date(a.next_run)-new Date(b.next_run));
+    const nxt=new Date(activeSch[0].next_run);
+    G('schNextRun').textContent=nxt.toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  }else{
+    G('schNextRun').textContent='—';
+  }
+}
+
+function schRenderTable(){
+  const filter=G('schFilterStatus').value;
+  let list=schAllSchedules;
+  if(filter) list=list.filter(s=>s.status===filter);
+
+  const tbody=G('schTableBody');
+  if(!list.length){
+    tbody.innerHTML='<tr><td colspan="8" style="padding:24px;text-align:center;color:var(--t4);">No schedules found.</td></tr>';
+    return;
+  }
+  tbody.innerHTML=list.map(s=>{
+    const isActive=s.status==='active';
+    const statusBadge=isActive
+      ?'<span style="padding:2px 10px;border-radius:99px;font-size:10px;font-weight:700;background:var(--green-light);color:var(--green-fg);border:1px solid var(--green-border);">Active</span>'
+      :'<span style="padding:2px 10px;border-radius:99px;font-size:10px;font-weight:700;background:var(--amber-light);color:var(--amber-fg);border:1px solid var(--amber-border);">Paused</span>';
+    const typeBadge=`<span style="padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;background:var(--surface-3);color:var(--t2);text-transform:capitalize;">${s.type}</span>`;
+    const jobsList=(s.job_names||[]).join(' → ')||'—';
+    return `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px 10px;color:var(--t1);font-weight:600;font-size:12px;">${escHtml(s.table_name)}</td>
+      <td style="padding:8px 10px;color:var(--t3);font-size:10px;max-width:250px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escHtml(jobsList)}">${escHtml(jobsList)}</td>
+      <td style="padding:8px 10px;text-align:center;">${typeBadge}</td>
+      <td style="padding:8px 10px;color:var(--t2);font-size:11px;font-family:monospace;">${escHtml(s.schedule_desc)}</td>
+      <td style="padding:8px 10px;text-align:center;">${statusBadge}</td>
+      <td style="padding:8px 10px;color:var(--t3);font-size:11px;">${s.next_run?new Date(s.next_run).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}</td>
+      <td style="padding:8px 10px;color:var(--t3);font-size:11px;">${s.last_run?new Date(s.last_run).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'Never'}</td>
+      <td style="padding:8px 10px;text-align:center;">
+        <div style="display:flex;gap:4px;justify-content:center;">
+          <button class="btn btn-ghost btn-xs" onclick="schEditSchedule('${s.schedule_id}')" title="Edit schedule" style="padding:3px 6px;">
+            <svg viewBox="0 0 24 24" style="width:12px;height:12px;" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <button class="btn btn-ghost btn-xs" onclick="schRunNow('${s.schedule_id}')" title="Run all jobs for ${escHtml(s.table_name)} on Databricks" style="padding:3px 6px;">
+            <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          </button>
+          <button class="btn btn-ghost btn-xs" onclick="schToggleStatus('${s.schedule_id}','${isActive?'paused':'active'}')" title="${isActive?'Pause':'Resume'}" style="padding:3px 6px;">
+            ${isActive?'<svg viewBox="0 0 24 24" style="width:12px;height:12px;"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>':'<svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>'}
+          </button>
+          <button class="btn btn-ghost btn-xs" onclick="schDelete('${s.schedule_id}')" title="Delete" style="padding:3px 6px;color:var(--red);">
+            <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+          </button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function schRenderHistory(){
+  const tbody=G('schHistoryBody');
+  if(!schAllHistory.length){
+    tbody.innerHTML='<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--t4);">No execution history yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML=schAllHistory.slice(0,50).map(h=>{
+    const isOk=h.result==='started'||h.result==='success';
+    const resBadge=isOk
+      ?'<span style="padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;background:var(--green-light);color:var(--green-fg);">Success</span>'
+      :'<span style="padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;background:var(--red-light);color:var(--red-fg);">Failed</span>';
+    return `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px 10px;color:var(--t3);font-size:11px;">${new Date(h.timestamp).toLocaleString()}</td>
+      <td style="padding:8px 10px;color:var(--t1);font-weight:500;font-size:12px;">${escHtml(h.table_name||h.job_name||'—')}</td>
+      <td style="padding:8px 10px;color:var(--t3);font-size:10px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escHtml(h.jobs||'')}">${escHtml(h.jobs||'—')}</td>
+      <td style="padding:8px 10px;text-align:center;"><span style="padding:2px 8px;border-radius:99px;font-size:10px;background:var(--surface-3);color:var(--t2);">${h.trigger}</span></td>
+      <td style="padding:8px 10px;text-align:center;">${resBadge}</td>
+      <td style="padding:8px 10px;color:var(--t3);font-size:11px;">${escHtml(h.details||'—')}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function schRunNow(scheduleId){
+  if(!confirm('Run all jobs for this table on Databricks now?'))return;
+  try{
+    showToast('Submitting pipeline to Databricks…','info');
+    const r=await fetch('/api/scheduler/run-now/'+scheduleId,{method:'POST'});
+    const d=await r.json();
+    if(d.success&&d.run_result?.success){
+      showToast('Pipeline submitted to Databricks! Run ID: '+(d.run_result.run_id||''),'success');
+      schRefresh();
+    }else{showToast(d.run_result?.error||d.error||'Failed','error');schRefresh();}
+  }catch(e){showToast('Error: '+e.message,'error');}
+}
+
+async function schToggleStatus(scheduleId, newStatus){
+  try{
+    const r=await fetch('/api/scheduler/schedules/'+scheduleId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:newStatus})});
+    const d=await r.json();
+    if(d.success){showToast('Schedule '+newStatus,'success');schRefresh();}
+  }catch(e){showToast('Error: '+e.message,'error');}
+}
+
+async function schDelete(scheduleId){
+  if(!confirm('Delete this schedule?'))return;
+  try{
+    const r=await fetch('/api/scheduler/schedules/'+scheduleId,{method:'DELETE'});
+    const d=await r.json();
+    if(d.success){showToast('Schedule deleted','success');schRefresh();}
+  }catch(e){showToast('Error: '+e.message,'error');}
+}
+
+// Auto-load scheduler data
+if(G('pane-wf-scheduler') && G('pane-wf-scheduler').style.display!=='none' && G('pane-wf-scheduler').classList.contains('active')){
+  schLoadTables(); schRefresh();
 }
 
 /* ══════════════════════════════════════════════════════════════════

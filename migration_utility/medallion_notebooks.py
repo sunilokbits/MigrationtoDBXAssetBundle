@@ -485,13 +485,19 @@ def load_bronze_{safe}_raw():
 dbutils.widgets.text("catalog", "{catalog}", "Target Catalog")
 dbutils.widgets.text("schema", "{schema}", "Target Schema")
 dbutils.widgets.text("landing_path", "{landing_path}", "Landing Base Path")
-dbutils.widgets.text("mode", "standard", "Execution Mode (dlt / standard)")
 
 CATALOG      = dbutils.widgets.get("catalog").strip()
 SCHEMA       = dbutils.widgets.get("schema").strip()
 LANDING_PATH = dbutils.widgets.get("landing_path").strip()
-EXEC_MODE    = dbutils.widgets.get("mode").strip().lower()
 
+# Auto-detect DLT runtime — the dlt module is only importable inside a DLT pipeline
+try:
+    import dlt
+    _IS_DLT = True
+except ImportError:
+    _IS_DLT = False
+
+EXEC_MODE = "dlt" if _IS_DLT else "standard"
 print(f"🔧 Catalog      : {{CATALOG}}")
 print(f"🔧 Schema       : {{SCHEMA}}")
 print(f"🔧 Landing Path : {{LANDING_PATH}}")
@@ -556,8 +562,7 @@ def validate_bronze_table(catalog, schema, table_name):
 # COMMAND ----------
 
 # ── DLT Mode: Delta Live Tables definitions ──────────────────────────────────
-if EXEC_MODE == "dlt":
-    import dlt
+if _IS_DLT:
 {dlt_block}
 
 # COMMAND ----------
@@ -577,7 +582,7 @@ if EXEC_MODE == "dlt":
 
 # COMMAND ----------
 
-if EXEC_MODE != "dlt":
+if not _IS_DLT:
     print("\\n" + "="*60)
     print("🥉 BRONZE LAYER PIPELINE — Standard Mode")
     print("="*60)
@@ -620,6 +625,7 @@ if EXEC_MODE != "dlt":
     dbutils.notebook.exit(exit_payload)
 else:
     print("ℹ️ Running in DLT mode — tables are managed by Delta Live Tables engine.")
+    print(f"   📋 {{len(TABLE_NAMES)}} Bronze streaming table(s) registered in pipeline graph.")
 '''
 
 
@@ -872,14 +878,20 @@ dbutils.widgets.text("catalog", "{catalog}", "Silver Catalog")
 dbutils.widgets.text("schema", "{schema}", "Silver Schema")
 dbutils.widgets.text("bronze_catalog", "{br_catalog}", "Bronze Catalog")
 dbutils.widgets.text("bronze_schema", "{br_schema}", "Bronze Schema")
-dbutils.widgets.text("mode", "standard", "Execution Mode (dlt / standard)")
 
 CATALOG        = dbutils.widgets.get("catalog").strip()
 SCHEMA         = dbutils.widgets.get("schema").strip()
 BRONZE_CATALOG = dbutils.widgets.get("bronze_catalog").strip()
 BRONZE_SCHEMA  = dbutils.widgets.get("bronze_schema").strip()
-EXEC_MODE      = dbutils.widgets.get("mode").strip().lower()
 
+# Auto-detect DLT runtime — the dlt module is only importable inside a DLT pipeline
+try:
+    import dlt
+    _IS_DLT = True
+except ImportError:
+    _IS_DLT = False
+
+EXEC_MODE = "dlt" if _IS_DLT else "standard"
 print(f"🔧 Silver Catalog  : {{CATALOG}}.{{SCHEMA}}")
 print(f"🔧 Bronze Catalog  : {{BRONZE_CATALOG}}.{{BRONZE_SCHEMA}}")
 print(f"🔧 Mode           : {{EXEC_MODE}}")
@@ -983,8 +995,7 @@ def validate_silver_table(catalog, schema, table_name):
 
 # COMMAND ----------
 
-if EXEC_MODE == "dlt":
-    import dlt
+if _IS_DLT:
 {dlt_block}
 {cdc_block}
 
@@ -1004,7 +1015,7 @@ if EXEC_MODE == "dlt":
 
 # COMMAND ----------
 
-if EXEC_MODE != "dlt":
+if not _IS_DLT:
     print("\\n" + "="*60)
     print("🥈 SILVER LAYER PIPELINE — Standard Mode")
     print("="*60)
@@ -1060,6 +1071,7 @@ if EXEC_MODE != "dlt":
     dbutils.notebook.exit(exit_payload)
 else:
     print("ℹ️ Running in DLT mode — tables are managed by Delta Live Tables engine.")
+    print(f"   📋 {{len(TABLE_NAMES)}} Silver table(s) registered in pipeline graph.")
 
 # COMMAND ----------
 

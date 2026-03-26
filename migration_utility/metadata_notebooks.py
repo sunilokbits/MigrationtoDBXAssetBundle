@@ -2598,28 +2598,31 @@ silver_relocated = 0
 silver_failed    = 0
 
 if dlt_status == "COMPLETED":
-    # Determine the silver catalog from target_config
+    # Determine the silver catalog AND schema from target_config
     SILVER_CATALOG = ""
+    SILVER_SCHEMA  = ""
     try:
         _tgt_row = spark.sql(f"""
             SELECT target_config FROM `{{CATALOG}}`.`{{SCHEMA}}`.wf_job_metadata
             WHERE target_config IS NOT NULL AND LENGTH(TRIM(target_config)) > 2
+              AND target_config LIKE '%silver_catalog%'
             LIMIT 1
         """).first()
         if _tgt_row:
             _tgt = json.loads(_tgt_row[0] or "{{}}")
             SILVER_CATALOG = _tgt.get("silver_catalog", "")
+            SILVER_SCHEMA  = _tgt.get("target_schema", "") or DLT_SCHEMA
     except Exception:
         pass
 
     if SILVER_CATALOG and SILVER_CATALOG != DLT_CATALOG:
-        print(f"🔄 Relocating silver tables: {{DLT_CATALOG}}.{{DLT_SCHEMA}} → {{SILVER_CATALOG}}.{{DLT_SCHEMA}}")
+        print(f"🔄 Relocating silver tables: {{DLT_CATALOG}}.{{DLT_SCHEMA}} → {{SILVER_CATALOG}}.{{SILVER_SCHEMA}}")
 
         # Ensure silver schema exists
         try:
-            spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{{SILVER_CATALOG}}`.`{{DLT_SCHEMA}}`")
+            spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{{SILVER_CATALOG}}`.`{{SILVER_SCHEMA}}`")
         except Exception as se:
-            print(f"⚠️ Could not create schema {{SILVER_CATALOG}}.{{DLT_SCHEMA}}: {{se}}")
+            print(f"⚠️ Could not create schema {{SILVER_CATALOG}}.{{SILVER_SCHEMA}}: {{se}}")
 
         # Find all silver_* tables created by DLT in the bronze catalog
         try:
@@ -2632,7 +2635,7 @@ if dlt_status == "COMPLETED":
         for stbl in silver_tables:
             try:
                 src_full = f"`{{DLT_CATALOG}}`.`{{DLT_SCHEMA}}`.`{{stbl}}`"
-                dst_full = f"`{{SILVER_CATALOG}}`.`{{DLT_SCHEMA}}`.`{{stbl}}`"
+                dst_full = f"`{{SILVER_CATALOG}}`.`{{SILVER_SCHEMA}}`.`{{stbl}}`"
                 print(f"  📋 {{src_full}} → {{dst_full}}")
 
                 # DLT creates silver as materialized views — use CTAS instead of DEEP CLONE

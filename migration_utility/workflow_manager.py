@@ -95,11 +95,14 @@ def _restore_from_deploy_config():
 _restore_from_deploy_config()
 
 # ── Table names ──
-TBL_PIPELINES = "wf_pipeline_metadata"
-TBL_JOBS      = "wf_job_metadata"
-TBL_RUNS      = "wf_run_history"
-TBL_WATERMARKS = "wf_watermark_metadata"
-TBL_SOURCES   = "wf_source_tables"
+TBL_PIPELINES    = "wf_pipeline_metadata"
+TBL_JOBS         = "wf_job_metadata"
+TBL_JOBS_HISTORY = "wf_job_metadatahis"
+TBL_RUNS         = "wf_run_history"
+TBL_WATERMARKS   = "wf_watermark_metadata"
+TBL_SOURCES      = "wf_source_tables"
+TBL_SCH_CONFIG   = "wf_scheduler_config"
+TBL_SCH_HISTORY  = "wf_scheduler_history"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -272,7 +275,37 @@ def init_metadata_flow(host: str, token: str, catalog: str = "main",
         ) USING DELTA
         COMMENT 'Watermark tracking for incremental loads'""",
 
-        # 5. Source tables
+        # 5a. Job metadata history (archive)
+        f"""CREATE TABLE IF NOT EXISTS {_fqn(TBL_JOBS_HISTORY)} (
+            history_id       STRING NOT NULL,
+            job_id           STRING NOT NULL,
+            job_name         STRING,
+            stage            STRING,
+            group_id         STRING,
+            table_schema     STRING,
+            table_name       STRING,
+            full_table       STRING,
+            load_type        STRING,
+            watermark_column STRING,
+            status           STRING,
+            last_run_id      STRING,
+            last_run_at      TIMESTAMP,
+            last_status      STRING,
+            run_count        INT,
+            fail_count       INT,
+            enabled          BOOLEAN,
+            job_order        INT,
+            source_config    STRING,
+            target_config    STRING,
+            created_at       TIMESTAMP,
+            updated_at       TIMESTAMP,
+            archived_at      TIMESTAMP,
+            archive_reason   STRING
+        ) USING DELTA
+        COMMENT 'Archived job metadata — audit history for job changes'
+        TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')""",
+
+        # 6. Source tables
         f"""CREATE TABLE IF NOT EXISTS {_fqn(TBL_SOURCES)} (
             source_id        STRING NOT NULL,
             source_type      STRING,
@@ -286,6 +319,40 @@ def init_metadata_flow(host: str, token: str, catalog: str = "main",
             discovered_at    TIMESTAMP
         ) USING DELTA
         COMMENT 'Discovered source tables from SQL Server'""",
+
+        # 7. Scheduler configuration
+        f"""CREATE TABLE IF NOT EXISTS {_fqn(TBL_SCH_CONFIG)} (
+            schedule_id      STRING NOT NULL,
+            table_name       STRING,
+            table_schema     STRING,
+            group_id         STRING,
+            job_names        STRING,
+            type             STRING,
+            cron             STRING,
+            interval_value   INT,
+            interval_unit    STRING,
+            once_at          STRING,
+            schedule_desc    STRING,
+            status           STRING,
+            created_at       TIMESTAMP,
+            last_run         TIMESTAMP,
+            next_run         TIMESTAMP
+        ) USING DELTA
+        COMMENT 'Job scheduler configuration — one schedule per table'
+        TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')""",
+
+        # 8. Scheduler execution history
+        f"""CREATE TABLE IF NOT EXISTS {_fqn(TBL_SCH_HISTORY)} (
+            history_id       STRING NOT NULL,
+            schedule_id      STRING,
+            table_name       STRING,
+            jobs             STRING,
+            trigger_type     STRING,
+            result           STRING,
+            details          STRING,
+            executed_at      TIMESTAMP
+        ) USING DELTA
+        COMMENT 'Scheduler execution history — audit log for all scheduled runs'""",
     ]
 
     results = []
@@ -312,11 +379,11 @@ def init_metadata_flow(host: str, token: str, catalog: str = "main",
 
     return {
         "success": True,
-        "message": f"MetadataFlow created — 5 Delta tables provisioned in {_dbr_catalog}.{_dbr_schema}",
+        "message": f"MetadataFlow created — 8 Delta tables provisioned in {_dbr_catalog}.{_dbr_schema}",
         "catalog": _dbr_catalog,
         "schema": _dbr_schema,
         "warehouse_id": _dbr_warehouse_id,
-        "tables": [TBL_PIPELINES, TBL_JOBS, TBL_RUNS, TBL_WATERMARKS, TBL_SOURCES],
+        "tables": [TBL_PIPELINES, TBL_JOBS, TBL_JOBS_HISTORY, TBL_RUNS, TBL_WATERMARKS, TBL_SOURCES, TBL_SCH_CONFIG, TBL_SCH_HISTORY],
     }
 
 
@@ -329,7 +396,7 @@ def get_metadata_status() -> dict:
         return {"success": True, "initialized": False, "message": "Databricks not connected"}
 
     tables_status = {}
-    for tbl in [TBL_PIPELINES, TBL_JOBS, TBL_RUNS, TBL_WATERMARKS, TBL_SOURCES]:
+    for tbl in [TBL_PIPELINES, TBL_JOBS, TBL_JOBS_HISTORY, TBL_RUNS, TBL_WATERMARKS, TBL_SOURCES, TBL_SCH_CONFIG, TBL_SCH_HISTORY]:
         r = _exec_sql(f"SELECT COUNT(*) AS cnt FROM {_fqn(tbl)}")
         state = r.get("status", {}).get("state", "")
         if state == "SUCCEEDED":
@@ -685,6 +752,183 @@ def _job_name(stage: str, table_name: str, target_config: dict = None) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  SCHEDULER — DATABRICKS CRUD
+# ─────────────────────────────────────────────────────────────────────────────
+def scheduler_upsert_config(entry: dict):
+    """Insert or update a schedule in wf_scheduler_config."""
+    if not _metadata_initialized:
+        return
+    sid = entry.get("schedule_id", "")
+    job_names_str = json.dumps(entry.get("job_names", []))
+    sql = f"""
+    MERGE INTO {_fqn(TBL_SCH_CONFIG)} AS t
+    USING (SELECT {_esc(sid)} AS schedule_id) AS s
+    ON t.schedule_id = s.schedule_id
+    WHEN MATCHED THEN UPDATE SET
+        type           = {_esc(entry.get('type'))},
+        cron           = {_esc(entry.get('cron'))},
+        interval_value = {_esc(entry.get('interval_value'))},
+        interval_unit  = {_esc(entry.get('interval_unit'))},
+        once_at        = {_esc(entry.get('once_at'))},
+        schedule_desc  = {_esc(entry.get('schedule_desc'))},
+        status         = {_esc(entry.get('status'))},
+        last_run       = {_esc(entry.get('last_run'))},
+        next_run       = {_esc(entry.get('next_run'))}
+    WHEN NOT MATCHED THEN INSERT (
+        schedule_id, table_name, table_schema, group_id, job_names,
+        type, cron, interval_value, interval_unit, once_at,
+        schedule_desc, status, created_at, last_run, next_run
+    ) VALUES (
+        {_esc(sid)}, {_esc(entry.get('table_name'))},
+        {_esc(entry.get('table_schema'))}, {_esc(entry.get('group_id'))},
+        {_esc(job_names_str)},
+        {_esc(entry.get('type'))}, {_esc(entry.get('cron'))},
+        {_esc(entry.get('interval_value'))}, {_esc(entry.get('interval_unit'))},
+        {_esc(entry.get('once_at'))},
+        {_esc(entry.get('schedule_desc'))}, {_esc(entry.get('status'))},
+        {_esc(entry.get('created_at'))}, {_esc(entry.get('last_run'))},
+        {_esc(entry.get('next_run'))}
+    )
+    """
+    _exec_sql(sql)
+
+
+def scheduler_delete_config(schedule_id: str):
+    """Delete a schedule from wf_scheduler_config."""
+    if not _metadata_initialized:
+        return
+    _exec_sql(f"DELETE FROM {_fqn(TBL_SCH_CONFIG)} WHERE schedule_id = {_esc(schedule_id)}")
+
+
+def scheduler_insert_history(entry: dict):
+    """Insert a scheduler execution history record."""
+    if not _metadata_initialized:
+        return
+    import uuid as _uuid
+    hid = _uuid.uuid4().hex[:12]
+    sql = f"""INSERT INTO {_fqn(TBL_SCH_HISTORY)}
+    (history_id, schedule_id, table_name, jobs, trigger_type, result, details, executed_at)
+    VALUES (
+        {_esc(hid)}, {_esc(entry.get('schedule_id'))},
+        {_esc(entry.get('table_name'))}, {_esc(entry.get('jobs'))},
+        {_esc(entry.get('trigger'))}, {_esc(entry.get('result'))},
+        {_esc(entry.get('details'))}, {_esc(entry.get('timestamp'))}
+    )"""
+    _exec_sql(sql)
+
+
+def scheduler_load_all() -> dict:
+    """Load all schedules and history from Databricks tables. Returns {schedules:[], history:[]}."""
+    if not _metadata_initialized:
+        return {"schedules": [], "history": []}
+
+    result = {"schedules": [], "history": []}
+
+    # Load schedules
+    r = _exec_sql(f"SELECT * FROM {_fqn(TBL_SCH_CONFIG)} ORDER BY created_at DESC")
+    state = r.get("status", {}).get("state", "")
+    if state == "SUCCEEDED":
+        columns = [c.get("name", "") for c in r.get("manifest", {}).get("schema", {}).get("columns", [])]
+        for row in r.get("result", {}).get("data_array", []):
+            obj = {}
+            for i, col in enumerate(columns):
+                obj[col] = row[i] if i < len(row) else None
+            # Parse job_names back from JSON string
+            try:
+                obj["job_names"] = json.loads(obj.get("job_names") or "[]")
+            except (json.JSONDecodeError, TypeError):
+                obj["job_names"] = []
+            # Convert interval_value to int if present
+            if obj.get("interval_value"):
+                try:
+                    obj["interval_value"] = int(obj["interval_value"])
+                except (ValueError, TypeError):
+                    pass
+            result["schedules"].append(obj)
+
+    # Load history
+    r2 = _exec_sql(f"SELECT * FROM {_fqn(TBL_SCH_HISTORY)} ORDER BY executed_at DESC LIMIT 200")
+    state2 = r2.get("status", {}).get("state", "")
+    if state2 == "SUCCEEDED":
+        columns2 = [c.get("name", "") for c in r2.get("manifest", {}).get("schema", {}).get("columns", [])]
+        for row in r2.get("result", {}).get("data_array", []):
+            obj = {}
+            for i, col in enumerate(columns2):
+                obj[col] = row[i] if i < len(row) else None
+            # Map column names to what the frontend expects
+            obj["timestamp"] = obj.pop("executed_at", obj.get("timestamp"))
+            obj["trigger"] = obj.pop("trigger_type", obj.get("trigger"))
+            result["history"].append(obj)
+
+    return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  ARCHIVE EXISTING JOBS FOR A TABLE (before upsert)
+# ─────────────────────────────────────────────────────────────────────────────
+def _archive_existing_jobs(table_name: str, reason: str = "load_type_change") -> list:
+    """
+    Archive all existing jobs for a given table_name into wf_job_metadatahis,
+    then delete them from wf_job_metadata. Returns list of archived job_ids.
+    Also removes from in-memory JOB_REGISTRY and PIPELINE_GROUPS.
+    """
+    archived = []
+    if not _metadata_initialized:
+        return archived
+
+    try:
+        # 1. Copy matching rows from wf_job_metadata → wf_job_metadatahis
+        archive_sql = f"""
+        INSERT INTO {_fqn(TBL_JOBS_HISTORY)}
+        SELECT
+            uuid() AS history_id,
+            job_id, job_name, stage, group_id, table_schema, table_name,
+            full_table, load_type, watermark_column, status, last_run_id,
+            last_run_at, last_status, run_count, fail_count, enabled,
+            job_order, source_config, target_config, created_at, updated_at,
+            current_timestamp() AS archived_at,
+            {_esc(reason)} AS archive_reason
+        FROM {_fqn(TBL_JOBS)}
+        WHERE table_name = {_esc(table_name)}
+        """
+        _exec_sql(archive_sql)
+
+        # 2. Get the job_ids + group_ids being removed (for in-memory cleanup)
+        fetch_sql = f"""
+        SELECT job_id, group_id FROM {_fqn(TBL_JOBS)}
+        WHERE table_name = {_esc(table_name)}
+        """
+        r = _exec_sql(fetch_sql)
+        rows = r.get("result", {}).get("data_array", [])
+        old_job_ids = set()
+        old_group_ids = set()
+        for row in rows:
+            old_job_ids.add(row[0])
+            old_group_ids.add(row[1])
+
+        # 3. Delete from wf_job_metadata in Databricks
+        _exec_sql(f"DELETE FROM {_fqn(TBL_JOBS)} WHERE table_name = {_esc(table_name)}")
+
+        # 4. Clean in-memory registries
+        with _lock:
+            for jid in old_job_ids:
+                JOB_REGISTRY.pop(jid, None)
+                archived.append(jid)
+            for gid in old_group_ids:
+                PIPELINE_GROUPS.pop(gid, None)
+            # Also clean pipeline metadata table
+        for gid in old_group_ids:
+            try:
+                _exec_sql(f"DELETE FROM {_fqn(TBL_PIPELINES)} WHERE group_id = {_esc(gid)}")
+            except Exception:
+                pass
+
+    except Exception:
+        pass
+    return archived
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  CREATE PIPELINE GROUP FOR A TABLE
 # ─────────────────────────────────────────────────────────────────────────────
 def create_pipeline_for_table(
@@ -705,8 +949,15 @@ def create_pipeline_for_table(
     CDC Mode:
       watermark        — classic incremental via watermark column
       change_tracking  — SQL Server Change Tracking via CHANGETABLE()
+
+    If jobs already exist for this table_name, the old records are archived
+    to wf_job_metadatahis before new jobs are created (one active set per table).
     """
     full_table = f"{table_schema}.{table_name}"
+
+    # ── Deduplicate: archive existing jobs for this table ──
+    archived_ids = _archive_existing_jobs(table_name, reason="load_type_change")
+
     group_id = uuid.uuid4().hex[:12]
     ts = datetime.now().isoformat()
 
@@ -791,10 +1042,11 @@ def create_pipeline_for_table(
         _sync_watermark_to_dbr(full_table, WATERMARKS[full_table])
 
     return {
-        "success":   True,
-        "group_id":  group_id,
-        "group":     group,
-        "jobs":      jobs,
+        "success":       True,
+        "group_id":      group_id,
+        "group":         group,
+        "jobs":          jobs,
+        "archived_jobs": archived_ids,
     }
 
 
@@ -828,7 +1080,7 @@ def create_pipelines_bulk(
     return {
         "success":    True,
         "created":    len(results),
-        "groups":     [r["group"] for r in results],
+        "groups":     [{**r["group"], "archived_jobs": r.get("archived_jobs", [])} for r in results],
         "total_jobs": sum(len(r["jobs"]) for r in results),
     }
 
