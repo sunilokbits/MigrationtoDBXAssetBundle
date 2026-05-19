@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQL → Databricks Migration Studio — Access Requirements</title>
+<style>
+  :root {
+    --bg: #f8fafc; --card: #ffffff; --border: #e2e8f0; --t1: #0f172a; --t2: #334155;
+    --t3: #64748b; --blue: #2563eb; --green: #059669; --amber: #d97706; --red: #dc2626;
+    --purple: #7c3aed; --indigo: #4f46e5; --cyan: #0891b2;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--t1); line-height: 1.6; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+
+  /* Header */
+  .header { text-align: center; margin-bottom: 40px; }
+  .header h1 { font-size: 28px; font-weight: 800; background: linear-gradient(135deg, var(--blue), var(--purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 6px; }
+  .header p { font-size: 14px; color: var(--t3); }
+  .header .badge { display: inline-block; margin-top: 10px; padding: 4px 14px; border-radius: 20px; font-size: 11px; font-weight: 700; background: linear-gradient(135deg, #eff6ff, #f0e7ff); color: var(--indigo); border: 1px solid #c7d2fe; }
+
+  /* Architecture Banner */
+  .arch-banner { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 36px; padding: 18px 24px; background: linear-gradient(135deg, #f0f9ff, #faf5ff, #fff7ed); border-radius: 12px; border: 1px solid var(--border); }
+  .arch-node { text-align: center; padding: 12px 20px; border-radius: 10px; font-size: 13px; font-weight: 700; min-width: 140px; }
+  .arch-node.source { background: linear-gradient(135deg, #dbeafe, #bfdbfe); color: #1e40af; border: 1px solid #93c5fd; }
+  .arch-node.app { background: linear-gradient(135deg, #f3e8ff, #e9d5ff); color: #6b21a8; border: 1px solid #c4b5fd; }
+  .arch-node.dest { background: linear-gradient(135deg, #d1fae5, #a7f3d0); color: #065f46; border: 1px solid #6ee7b7; }
+  .arch-node.storage { background: linear-gradient(135deg, #fef3c7, #fde68a); color: #92400e; border: 1px solid #fcd34d; }
+  .arch-arrow { font-size: 20px; color: var(--t3); font-weight: 700; }
+  .arch-node small { display: block; font-size: 10px; font-weight: 500; margin-top: 2px; opacity: 0.8; }
+
+  /* Section */
+  .section { margin-bottom: 32px; }
+  .section-hdr { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
+  .section-hdr .icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; color: #fff; flex-shrink: 0; }
+  .section-hdr h2 { font-size: 17px; font-weight: 700; }
+  .section-hdr .tag { margin-left: auto; font-size: 10px; padding: 3px 10px; border-radius: 12px; font-weight: 600; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; background: var(--card); border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  thead th { background: #f1f5f9; padding: 10px 14px; text-align: left; font-weight: 700; color: var(--t2); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; border-bottom: 2px solid var(--border); }
+  tbody td { padding: 9px 14px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+  tbody tr:hover { background: #f8fafc; }
+  tbody tr:last-child td { border-bottom: none; }
+
+  /* Pills */
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+  .pill-blue { background: #dbeafe; color: #1e40af; }
+  .pill-green { background: #d1fae5; color: #065f46; }
+  .pill-purple { background: #f3e8ff; color: #6b21a8; }
+  .pill-amber { background: #fef3c7; color: #92400e; }
+  .pill-red { background: #fee2e2; color: #991b1b; }
+  .pill-cyan { background: #cffafe; color: #155e75; }
+  .pill-gray { background: #f1f5f9; color: #475569; }
+
+  /* Shortcut card */
+  .shortcut { margin-top: 36px; padding: 20px 24px; background: linear-gradient(135deg, #eff6ff, #faf5ff); border-radius: 12px; border: 1px solid #c7d2fe; }
+  .shortcut h3 { font-size: 15px; font-weight: 700; color: var(--indigo); margin-bottom: 10px; }
+  .shortcut .one-role { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #fff; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 10px; }
+  .shortcut .one-role .r-name { font-weight: 800; font-size: 14px; color: var(--blue); }
+  .shortcut .one-role .r-scope { font-size: 12px; color: var(--t3); }
+  .shortcut .one-role .r-covers { font-size: 11px; color: var(--green); font-weight: 600; }
+
+  /* Commands */
+  .cmd-block { margin-top: 20px; background: #1e293b; border-radius: 10px; overflow: hidden; }
+  .cmd-block .cmd-hdr { padding: 8px 16px; background: #0f172a; font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; }
+  .cmd-block pre { padding: 14px 16px; margin: 0; font-size: 12px; color: #e2e8f0; font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace; line-height: 1.7; overflow-x: auto; white-space: pre-wrap; }
+  .cmd-block .cm { color: #64748b; }
+  .cmd-block .kw { color: #7dd3fc; }
+  .cmd-block .str { color: #86efac; }
+  .cmd-block .flag { color: #c4b5fd; }
+
+  /* Network table special */
+  .dir { font-weight: 700; font-size: 11px; }
+
+  /* Footer */
+  .footer { margin-top: 40px; text-align: center; font-size: 11px; color: var(--t3); padding-top: 16px; border-top: 1px solid var(--border); }
+
+  @media print { body { background: #fff; } .container { padding: 16px; } }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>SQL → Databricks Migration Studio</h1>
+    <p>Complete Access & Resource Requirements for Deployment</p>
+    <div class="badge">Azure SQL (Source) → App Service (Migration Engine) → Databricks + ADLS (Destination)</div>
+  </div>
+
+  <!-- Architecture Flow -->
+  <div class="arch-banner">
+    <div class="arch-node source">☁️ Azure SQL<small>Source Database</small></div>
+    <div class="arch-arrow">→</div>
+    <div class="arch-node app">⚙️ App Service<small>Migration Studio</small></div>
+    <div class="arch-arrow">→</div>
+    <div class="arch-node storage">📦 ADLS Gen2<small>Landing / Managed</small></div>
+    <div class="arch-arrow">→</div>
+    <div class="arch-node dest">🔷 Databricks<small>Unity Catalog</small></div>
+  </div>
+
+  <!-- ─── SECTION 1: Source ─── -->
+  <div class="section">
+    <div class="section-hdr">
+      <div class="icon" style="background:linear-gradient(135deg,#2563eb,#3b82f6);">🗄</div>
+      <h2>1. Source — Azure SQL Server / Database</h2>
+      <span class="tag pill-blue">Data Origin</span>
+    </div>
+    <table>
+      <thead><tr><th style="width:22%">Resource</th><th style="width:28%">Access / Role</th><th style="width:15%">Level</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>Azure SQL Server</td><td><span class="pill pill-blue">SQL Login</span> username + password</td><td>Server</td><td>Authenticate to the SQL Server instance</td></tr>
+        <tr><td>Azure SQL Database</td><td><span class="pill pill-green">db_datareader</span></td><td>Database</td><td>Read tables, views, schemas, row counts</td></tr>
+        <tr><td>Azure SQL Database</td><td><span class="pill pill-amber">VIEW CHANGE TRACKING</span></td><td>Database</td><td>CDC / incremental loads via Change Tracking <em>(optional)</em></td></tr>
+        <tr><td>SQL Server Firewall</td><td><span class="pill pill-gray">Allow Azure Services = ON</span></td><td>Server</td><td>App Service can connect from Azure network</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─── SECTION 2: Destination ─── -->
+  <div class="section">
+    <div class="section-hdr">
+      <div class="icon" style="background:linear-gradient(135deg,#059669,#10b981);">🔷</div>
+      <h2>2. Destination — Azure Databricks</h2>
+      <span class="tag pill-green">Data Target</span>
+    </div>
+    <table>
+      <thead><tr><th style="width:22%">Resource</th><th style="width:28%">Access / Role</th><th style="width:15%">Level</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>Databricks Workspace</td><td><span class="pill pill-purple">Personal Access Token (PAT)</span></td><td>Workspace</td><td>All REST API calls — notebooks, jobs, Unity Catalog</td></tr>
+        <tr><td>Databricks Workspace</td><td><span class="pill pill-purple">Workspace Admin</span> or <span class="pill pill-purple">Can Manage</span></td><td>Workspace</td><td>Upload notebooks, create/run jobs, DLT pipelines</td></tr>
+        <tr><td>Unity Catalog</td><td><span class="pill pill-green">Catalog Owner</span> on target catalogs</td><td>Metastore</td><td>Create schemas, tables, volumes, external locations</td></tr>
+        <tr><td>Compute Cluster</td><td><span class="pill pill-cyan">Can Attach To</span></td><td>Cluster</td><td>Run extract / bronze / silver pipeline jobs</td></tr>
+        <tr><td>SQL Warehouse</td><td><span class="pill pill-cyan">Can Use</span></td><td>Warehouse</td><td>Execute DDL, metadata queries, reconciliation</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─── SECTION 3: Storage ─── -->
+  <div class="section">
+    <div class="section-hdr">
+      <div class="icon" style="background:linear-gradient(135deg,#d97706,#f59e0b);">📦</div>
+      <h2>3. Storage — Azure Data Lake (ADLS Gen2)</h2>
+      <span class="tag pill-amber">External Storage</span>
+    </div>
+    <table>
+      <thead><tr><th style="width:22%">Resource</th><th style="width:28%">Access / Role</th><th style="width:15%">Assigned To</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>ADLS Storage Account</td><td><span class="pill pill-amber">Storage Blob Data Owner</span></td><td>Access Connector (MI)</td><td>Read/write landing, bronze, silver, volumes data</td></tr>
+        <tr><td>Access Connector</td><td>Linked as <span class="pill pill-purple">Storage Credential</span></td><td>Unity Catalog</td><td>Bridge between Databricks UC and ADLS storage</td></tr>
+        <tr><td>External Location</td><td>Created by <span class="pill pill-green">Catalog Owner</span></td><td>Unity Catalog</td><td>Map ADLS paths for managed tables &amp; volumes</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─── SECTION 4: Deployment ─── -->
+  <div class="section">
+    <div class="section-hdr">
+      <div class="icon" style="background:linear-gradient(135deg,#7c3aed,#8b5cf6);">🚀</div>
+      <h2>4. Deployment — Azure App Service + Container Registry</h2>
+      <span class="tag pill-purple">Infrastructure</span>
+    </div>
+    <table>
+      <thead><tr><th style="width:22%">Resource</th><th style="width:28%">Access / Role</th><th style="width:15%">Who</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>Subscription</td><td><span class="pill pill-red">Register Microsoft.Web</span></td><td><strong>Owner</strong></td><td>Enable App Service resource provider</td></tr>
+        <tr><td>Subscription</td><td><span class="pill pill-red">Register Microsoft.ContainerRegistry</span></td><td><strong>Owner</strong></td><td>Enable Container Registry resource provider</td></tr>
+        <tr><td>Resource Group</td><td><span class="pill pill-blue">Contributor</span></td><td>Deployer</td><td>Create ACR, App Service Plan, Web App</td></tr>
+        <tr><td>Container Registry</td><td><span class="pill pill-cyan">AcrPush</span> <em>(included in Contributor)</em></td><td>Deployer</td><td>Build &amp; push Docker images</td></tr>
+        <tr><td>App Service Plan</td><td><em>Created by</em> <span class="pill pill-blue">Contributor</span></td><td>Deployer</td><td>Linux B1 plan to host the Web App</td></tr>
+        <tr><td>Web App</td><td><em>Created by</em> <span class="pill pill-blue">Contributor</span></td><td>Deployer</td><td>Run SQL → Databricks Migration Studio container</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─── SECTION 5: Network ─── -->
+  <div class="section">
+    <div class="section-hdr">
+      <div class="icon" style="background:linear-gradient(135deg,#0891b2,#06b6d4);">🌐</div>
+      <h2>5. Network / Firewall Rules</h2>
+      <span class="tag pill-cyan">Connectivity</span>
+    </div>
+    <table>
+      <thead><tr><th style="width:30%">Direction</th><th style="width:10%">Port</th><th style="width:12%">Protocol</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td class="dir">App Service → Azure SQL</td><td>1433</td><td>TCP</td><td>Source data extraction &amp; discovery</td></tr>
+        <tr><td class="dir">App Service → Databricks</td><td>443</td><td>HTTPS</td><td>REST API — notebooks, jobs, Unity Catalog</td></tr>
+        <tr><td class="dir">App Service → ADLS</td><td>443</td><td>HTTPS</td><td>Landing zone file operations</td></tr>
+        <tr><td class="dir">Browser → App Service</td><td>443</td><td>HTTPS</td><td>User accesses Migration Studio UI</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─── SINGLE ROLE SHORTCUT ─── -->
+  <div class="shortcut">
+    <h3>⚡ Simplest Access — One Role That Covers Everything</h3>
+    <p style="font-size:12px;color:var(--t3);margin-bottom:12px;">If you want to avoid configuring multiple granular roles, a single <strong>Contributor</strong> role on the Resource Group covers all deployment actions:</p>
+
+    <div class="one-role">
+      <div>
+        <div class="r-name">Contributor</div>
+        <div class="r-scope">Scope: Resource Group <code>rg-westus3-t1-services-sandbox-Rakesh-001</code></div>
+      </div>
+      <div style="margin-left:auto;">
+        <div class="r-covers">✅ Creates ACR &nbsp; ✅ Pushes Images &nbsp; ✅ Creates App Plan &nbsp; ✅ Creates Web App &nbsp; ✅ Configures Container</div>
+      </div>
+    </div>
+
+    <p style="font-size:11px;color:var(--t3);margin-top:8px;"><strong>Still required separately:</strong> Subscription Owner must register the 2 resource providers (one-time action).</p>
+  </div>
+
+  <!-- ─── COMMANDS ─── -->
+  <div class="cmd-block" style="margin-top:28px;">
+    <div class="cmd-hdr">Commands for Subscription Owner (one-time setup)</div>
+    <pre><span class="cm"># Step 1: Set the target subscription</span>
+<span class="kw">az</span> account set <span class="flag">--subscription</span> <span class="str">"15ea86a2-d638-44be-a600-6dc6321ccd08"</span>
+
+<span class="cm"># Step 2: Register resource providers</span>
+<span class="kw">az</span> provider register <span class="flag">--namespace</span> <span class="str">Microsoft.Web</span>
+<span class="kw">az</span> provider register <span class="flag">--namespace</span> <span class="str">Microsoft.ContainerRegistry</span>
+
+<span class="cm"># Step 3: Grant Contributor to deployer</span>
+<span class="kw">az</span> role assignment create \
+  <span class="flag">--assignee</span> <span class="str">"Sunil.Kumar@insight.com"</span> \
+  <span class="flag">--role</span> <span class="str">"Contributor"</span> \
+  <span class="flag">--scope</span> <span class="str">"/subscriptions/15ea86a2-d638-44be-a600-6dc6321ccd08/resourceGroups/rg-westus3-t1-services-sandbox-Rakesh-001"</span></pre>
+  </div>
+
+  <div class="cmd-block" style="margin-top:16px;">
+    <div class="cmd-hdr">Verify Provider Registration</div>
+    <pre><span class="kw">az</span> provider show <span class="flag">--namespace</span> <span class="str">Microsoft.Web</span> <span class="flag">--query</span> <span class="str">"registrationState"</span> <span class="flag">-o</span> tsv
+<span class="kw">az</span> provider show <span class="flag">--namespace</span> <span class="str">Microsoft.ContainerRegistry</span> <span class="flag">--query</span> <span class="str">"registrationState"</span> <span class="flag">-o</span> tsv
+<span class="cm"># Both should return: Registered</span></pre>
+  </div>
+
+  <!-- ─── RESOURCES CREATED ─── -->
+  <div class="section" style="margin-top:28px;">
+    <div class="section-hdr">
+      <div class="icon" style="background:linear-gradient(135deg,#4f46e5,#6366f1);">📋</div>
+      <h2>6. Resources Created After Deployment</h2>
+      <span class="tag pill-gray">Inventory</span>
+    </div>
+    <table>
+      <thead><tr><th>Resource</th><th>Name</th><th>Type</th><th>SKU</th><th>Region</th><th>Est. Cost/Month</th></tr></thead>
+      <tbody>
+        <tr><td>Container Registry</td><td><code>sqltodbxacr</code></td><td>Microsoft.ContainerRegistry</td><td>Basic</td><td>West US 3</td><td>~$5</td></tr>
+        <tr><td>App Service Plan</td><td><code>sqltodbx-plan</code></td><td>Microsoft.Web/serverfarms</td><td>B1 (Linux)</td><td>West US 3</td><td>~$13</td></tr>
+        <tr><td>Web App</td><td><code>SQLtoDBX</code></td><td>Microsoft.Web/sites</td><td>Custom Container</td><td>West US 3</td><td>—</td></tr>
+        <tr><td colspan="5" style="text-align:right;font-weight:700;">Total Estimated</td><td style="font-weight:700;color:var(--green);">~$18/mo</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    SQL → Databricks Migration Studio &nbsp;|&nbsp; Access Requirements Document &nbsp;|&nbsp; Generated May 2026
+  </div>
+
+</div>
+</body>
+</html>

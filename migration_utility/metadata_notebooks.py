@@ -232,15 +232,22 @@ print(f"🔧 Catalog : {{CATALOG}}.{{SCHEMA}}")
 
 # COMMAND ----------
 
-import json
+import json, re as _re
 from pyspark.sql import functions as F
 from datetime import datetime
+
+def _sql_esc(val):
+    """Escape a value for safe SQL string interpolation."""
+    if val is None:
+        return "NULL"
+    s = str(val).replace("\\x00", "").replace("'", "''").replace("\\n", " ").replace("\\r", " ")
+    return s[:500]
 
 job_tbl = f"`{{CATALOG}}`.`{{SCHEMA}}`.wf_job_metadata"
 wm_tbl  = f"`{{CATALOG}}`.`{{SCHEMA}}`.wf_watermark_metadata"
 run_tbl = f"`{{CATALOG}}`.`{{SCHEMA}}`.wf_run_history"
 
-job_df = spark.sql(f"SELECT * FROM {{job_tbl}} WHERE job_id = '{{JOB_ID}}'")
+job_df = spark.sql(f"SELECT * FROM {{job_tbl}} WHERE job_id = '{{_sql_esc(JOB_ID)}}'")
 if job_df.count() == 0:
     dbutils.notebook.exit(json.dumps({{"status": "FAILED", "error": f"Job {{JOB_ID}} not found in metadata"}}))
 
@@ -298,15 +305,20 @@ else:
     _host, _port = SERVER, "1433"
 print(f"🔧 JDBC target: {{_host}}:{{_port}}")
 
-jdbc_url = f"jdbc:sqlserver://{{_host}}:{{_port}};databaseName={{DATABASE}};encrypt={{encrypt}};trustServerCertificate={{trust}}"
+jdbc_url = (
+    f"jdbc:sqlserver://{{_host}}:{{_port}};databaseName={{DATABASE}};"
+    f"encrypt={{encrypt}};trustServerCertificate={{trust}};"
+    f"loginTimeout=60;socketTimeout=0;selectMethod=cursor"
+)
 
 jdbc_props = {{
     "user":     USERNAME,
     "password": PASSWORD,
     "driver":   "com.microsoft.sqlserver.jdbc.SQLServerDriver",
     "fetchsize": "10000",
-    "loginTimeout": "30",
-    "socketTimeout": "300",
+    "queryTimeout": "0",
+    "loginTimeout": "60",
+    "socketTimeout": "0",
 }}
 
 # Verify JDBC connectivity
@@ -322,7 +334,7 @@ except Exception as e:
             MERGE INTO {{run_tbl}} AS t
             USING (SELECT '{{RUN_ID}}' AS run_id) AS s ON t.run_id = s.run_id
             WHEN MATCHED THEN UPDATE SET t.status = 'failed',
-                t.error_message = '{{str(e).replace("'","''")[:500]}}',
+                t.error_message = '{{_sql_esc(e)}}',
                 t.completed_at = current_timestamp()
         """)
     except Exception:
@@ -363,14 +375,36 @@ landing_dest = f"{{LANDING_PATH}}/{{TABLE_NAME}}"
 
 # Build query
 if use_incremental and watermark:
-    query = f"(SELECT * FROM [{{TABLE_SCHEMA}}].[{{TABLE_NAME}}] WHERE [{{WM_COL}}] > '{{watermark}}') AS q"
-    print(f"📥 Incremental extract: {{WM_COL}} > '{{watermark}}'")
+    _esc_wm = _sql_esc(watermark)
+    query = f"(SELECT * FROM [{{TABLE_SCHEMA}}].[{{TABLE_NAME}}] WHERE [{{WM_COL}}] > '{{_esc_wm}}') AS q"
+    print(f"📥 Incremental extract: {{WM_COL}} > '{{_esc_wm}}'")
 else:
     query = f"[{{TABLE_SCHEMA}}].[{{TABLE_NAME}}]"
     print(f"📥 Full extract from [{{TABLE_SCHEMA}}].[{{TABLE_NAME}}]")
 
 # Read from source
 try:
+    # For large tables (>100K rows), use partitioned JDBC read to avoid
+    # driver memory pressure.  We estimate row count first with a fast
+    # COUNT query, then use numPartitions if it's a big table.
+    _est_count = 0
+    try:
+        _cnt_q = f"(SELECT COUNT(1) AS cnt FROM [{{TABLE_SCHEMA}}].[{{TABLE_NAME}}]) AS cq"
+        _est_count = spark.read.jdbc(jdbc_url, _cnt_q, properties=jdbc_props).collect()[0][0]
+        print(f"📊 Estimated row count: {{_est_count:,}}")
+    except Exception:
+        pass
+
+    _num_partitions = 1
+    if _est_count > 500000:
+        _num_partitions = 8
+    elif _est_count > 100000:
+        _num_partitions = 4
+
+    if _num_partitions > 1:
+        jdbc_props["numPartitions"] = str(_num_partitions)
+        print(f"📊 Using {{_num_partitions}} JDBC partitions for large table")
+
     df = spark.read.jdbc(jdbc_url, query, properties=jdbc_props)
 
     # Add audit columns
@@ -385,13 +419,27 @@ try:
     row_count = df.count()
     print(f"📊 Rows extracted: {{row_count:,}}")
 
+    # Pre-compute watermark BEFORE writing so we capture the exact max
+    # from this batch.  Saved AFTER write succeeds to avoid data gaps.
+    new_wm = None
+    if use_incremental and WM_COL and row_count > 0:
+        try:
+            new_wm = df.agg(F.max(F.col(WM_COL)).cast("string")).collect()[0][0]
+            if new_wm:
+                print(f"📏 Pre-computed watermark: {{WM_COL}} → {{new_wm}}")
+        except Exception as wm_err:
+            print(f"⚠️ Watermark pre-compute failed (will skip update): {{wm_err}}")
+
     # Write to landing zone
     if LOAD_TYPE == "full" or not (use_incremental and watermark):
         df.write.mode("overwrite").option("overwriteSchema", "true").parquet(landing_dest)
         print(f"✅ Written to {{landing_dest}} (overwrite)")
     else:
-        df.write.mode("append").parquet(landing_dest)
-        print(f"✅ Appended to {{landing_dest}}")
+        # Overwrite landing even for incremental — watermark guarantees we
+        # only pull new rows, so landing is a transient staging area.
+        # Appending would cause duplication when Bronze reads all files.
+        df.write.mode("overwrite").option("overwriteSchema", "true").parquet(landing_dest)
+        print(f"✅ Written to {{landing_dest}} (overwrite — watermark controls incrementality)")
 
 except Exception as e:
     msg = f"❌ Extract failed: {{e}}"
@@ -401,7 +449,7 @@ except Exception as e:
             MERGE INTO {{run_tbl}} AS t
             USING (SELECT '{{RUN_ID}}' AS run_id) AS s ON t.run_id = s.run_id
             WHEN MATCHED THEN UPDATE SET t.status = 'failed',
-                t.error_message = '{{str(e).replace("'","''")[:500]}}',
+                t.error_message = '{{_sql_esc(e)}}',
                 t.completed_at = current_timestamp()
         """)
     except Exception:
@@ -415,19 +463,17 @@ except Exception as e:
 
 # COMMAND ----------
 
-# Update watermark if incremental
-if use_incremental and WM_COL and row_count > 0:
+# Update watermark if incremental (using pre-computed value)
+if use_incremental and WM_COL and row_count > 0 and new_wm:
     try:
-        new_wm = df.agg(F.max(F.col(WM_COL)).cast("string")).collect()[0][0]
-        if new_wm:
-            spark.sql(f"""
-                MERGE INTO {{wm_tbl}} AS t
-                USING (SELECT '{{FULL_TABLE}}' AS table_name, '{{new_wm}}' AS last_value, '{{WM_COL}}' AS watermark_column, current_timestamp() AS updated_at) AS s
-                ON t.table_name = s.table_name
-                WHEN MATCHED THEN UPDATE SET t.last_value = s.last_value, t.updated_at = s.updated_at
-                WHEN NOT MATCHED THEN INSERT *
-            """)
-            print(f"💾 Watermark updated: {{WM_COL}} → {{new_wm}}")
+        spark.sql(f"""
+            MERGE INTO {{wm_tbl}} AS t
+            USING (SELECT '{{FULL_TABLE}}' AS table_name, '{{new_wm}}' AS last_value, '{{WM_COL}}' AS watermark_column, current_timestamp() AS updated_at) AS s
+            ON t.table_name = s.table_name
+            WHEN MATCHED THEN UPDATE SET t.last_value = s.last_value, t.updated_at = s.updated_at
+            WHEN NOT MATCHED THEN INSERT *
+        """)
+        print(f"💾 Watermark updated: {{WM_COL}} → {{new_wm}}")
     except Exception as e:
         print(f"⚠️ Watermark update failed: {{e}}")
 
@@ -519,9 +565,16 @@ LANDING_PATH = dbutils.widgets.get("landing_path").strip()
 
 # COMMAND ----------
 
-import json
+import json, re as _re
 from pyspark.sql import functions as F
 from datetime import datetime
+
+def _sql_esc(val):
+    """Escape a value for safe SQL string interpolation."""
+    if val is None:
+        return "NULL"
+    s = str(val).replace("\\x00", "").replace("'", "''").replace("\\n", " ").replace("\\r", " ")
+    return s[:500]
 
 job_tbl = f"`{{CATALOG}}`.`{{SCHEMA}}`.wf_job_metadata"
 run_tbl = f"`{{CATALOG}}`.`{{SCHEMA}}`.wf_run_history"
@@ -540,6 +593,30 @@ target_config = json.loads(job.get("target_config", "{{}}") or "{{}}")
 VOLUMES_CATALOG = target_config.get("volumes_catalog", "")
 BRONZE_CATALOG  = target_config.get("bronze_catalog", "")
 TGT_SCHEMA      = target_config.get("target_schema", "")
+
+# ─── Auto-derive bronze_catalog if missing ────────────────────────────────────
+if not BRONZE_CATALOG:
+    BRONZE_CATALOG = "bronze"
+    print(f"⚠️  bronze_catalog not set — defaulting to '{{BRONZE_CATALOG}}'")
+try:
+    spark.sql(f"CREATE CATALOG IF NOT EXISTS `{{BRONZE_CATALOG}}`")
+    if TGT_SCHEMA:
+        spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{{BRONZE_CATALOG}}`.`{{TGT_SCHEMA}}`")
+except Exception as _ce:
+    _ce_msg = f"Could not auto-create bronze catalog/schema '{{BRONZE_CATALOG}}': {{_ce}}"
+    print(f"❌ {{_ce_msg}}")
+    # Verify the catalog exists — if not, fail fast instead of hiding the error
+    try:
+        _cat_check = spark.sql(f"SHOW CATALOGS LIKE '{{BRONZE_CATALOG}}'").count()
+        if _cat_check == 0:
+            dbutils.notebook.exit(json.dumps({{
+                "status": "FAILED",
+                "stage": "catalog_validation",
+                "error": _ce_msg[:500]
+            }}))
+    except Exception:
+        pass  # If we can't even check, continue and let downstream fail with clearer error
+
 MULTI_CATALOG   = bool(VOLUMES_CATALOG and BRONZE_CATALOG and TGT_SCHEMA)
 
 if MULTI_CATALOG:
@@ -547,11 +624,25 @@ if MULTI_CATALOG:
     TARGET_SCHEMA  = TGT_SCHEMA
     TABLE_PREFIX   = ""
     LANDING_PATH   = f"/Volumes/{{VOLUMES_CATALOG}}/{{TGT_SCHEMA}}/landing"
-    spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{{BRONZE_CATALOG}}`.`{{TGT_SCHEMA}}`")
-    print(f"📦 Multi-catalog mode: {{VOLUMES_CATALOG}} → {{BRONZE_CATALOG}}.{{TGT_SCHEMA}}")
+    print(f"✅ Multi-catalog medallion: {{VOLUMES_CATALOG}} → {{BRONZE_CATALOG}}.{{TGT_SCHEMA}} (no prefix)")
 else:
-    TARGET_CATALOG = target_config.get("catalog", CATALOG)
-    TARGET_SCHEMA  = target_config.get("schema", SCHEMA)
+    _fallback_cat = target_config.get("catalog", "")
+    _meta_cat = target_config.get("metadata_catalog", CATALOG)
+    if _fallback_cat and _fallback_cat != _meta_cat and _fallback_cat != CATALOG:
+        TARGET_CATALOG = _fallback_cat
+    elif BRONZE_CATALOG:
+        TARGET_CATALOG = BRONZE_CATALOG
+    else:
+        TARGET_CATALOG = CATALOG
+        print(f"⚠️ WARNING: No bronze_catalog — falling back to metadata catalog {{CATALOG}}")
+    _fallback_sch = target_config.get("schema", "")
+    _meta_sch = target_config.get("metadata_schema", SCHEMA)
+    if _fallback_sch and _fallback_sch != _meta_sch and _fallback_sch != SCHEMA:
+        TARGET_SCHEMA = _fallback_sch
+    elif TGT_SCHEMA:
+        TARGET_SCHEMA = TGT_SCHEMA
+    else:
+        TARGET_SCHEMA = SCHEMA
     TABLE_PREFIX   = "bronze_"
 
 print(f"📋 Job: {{job['job_name']}}")
@@ -580,7 +671,7 @@ except Exception as e:
             MERGE INTO {{run_tbl}} AS t
             USING (SELECT '{{RUN_ID}}' AS run_id) AS s ON t.run_id = s.run_id
             WHEN MATCHED THEN UPDATE SET t.status = 'failed',
-                t.error_message = '{{str(e).replace("'","''")[:500]}}',
+                t.error_message = '{{_sql_esc(e)}}',
                 t.completed_at = current_timestamp()
         """)
     except Exception:
@@ -748,7 +839,7 @@ except Exception as e:
             MERGE INTO {{run_tbl}} AS t
             USING (SELECT '{{RUN_ID}}' AS run_id) AS s ON t.run_id = s.run_id
             WHEN MATCHED THEN UPDATE SET t.status = 'failed',
-                t.error_message = '{{str(e).replace("'","''")[:500]}}',
+                t.error_message = '{{_sql_esc(e)}}',
                 t.completed_at = current_timestamp()
         """)
     except Exception:
@@ -830,14 +921,21 @@ SCHEMA  = dbutils.widgets.get("schema").strip()
 
 # COMMAND ----------
 
-import json
+import json, re as _re
 from pyspark.sql import functions as F
 from datetime import datetime
+
+def _sql_esc(val):
+    \"\"\"Escape a value for safe SQL string interpolation.\"\"\"
+    if val is None:
+        return "NULL"
+    s = str(val).replace("\\x00", "").replace("'", "''").replace("\\n", " ").replace("\\r", " ")
+    return s[:500]
 
 job_tbl = f"`{{CATALOG}}`.`{{SCHEMA}}`.wf_job_metadata"
 run_tbl = f"`{{CATALOG}}`.`{{SCHEMA}}`.wf_run_history"
 
-job_df = spark.sql(f"SELECT * FROM {{job_tbl}} WHERE job_id = '{{JOB_ID}}'")
+job_df = spark.sql(f"SELECT * FROM {{job_tbl}} WHERE job_id = '{{_sql_esc(JOB_ID)}}'")
 if job_df.count() == 0:
     dbutils.notebook.exit(json.dumps({{"status": "FAILED", "error": f"Job {{JOB_ID}} not found"}}))
 
@@ -850,18 +948,54 @@ target_config = json.loads(job.get("target_config", "{{}}") or "{{}}")
 BRONZE_CATALOG = target_config.get("bronze_catalog", "")
 SILVER_CATALOG = target_config.get("silver_catalog", "")
 TGT_SCHEMA     = target_config.get("target_schema", "")
-MULTI_CATALOG  = bool(BRONZE_CATALOG and SILVER_CATALOG and TGT_SCHEMA)
+
+# ─── Auto-derive silver_catalog if missing/duplicate (medallion separation) ───
+def _derive_silver_catalog(bronze_cat: str) -> str:
+    if not bronze_cat:
+        return "silver"
+    low = bronze_cat.lower()
+    if "bronze" in low:
+        return bronze_cat.replace("bronze", "silver").replace("BRONZE", "SILVER").replace("Bronze", "Silver")
+    return "silver"
+
+if not SILVER_CATALOG or SILVER_CATALOG == BRONZE_CATALOG:
+    SILVER_CATALOG = _derive_silver_catalog(BRONZE_CATALOG)
+    print(f"⚠️  silver_catalog auto-derived as '{{SILVER_CATALOG}}' to keep silver SEPARATE from bronze.")
+try:
+    spark.sql(f"CREATE CATALOG IF NOT EXISTS `{{SILVER_CATALOG}}`")
+    if TGT_SCHEMA:
+        spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{{SILVER_CATALOG}}`.`{{TGT_SCHEMA}}`")
+except Exception as _ce:
+    print(f"⚠️  Could not auto-create silver catalog/schema: {{_ce}}")
+
+MULTI_CATALOG  = bool(BRONZE_CATALOG and SILVER_CATALOG and TGT_SCHEMA and BRONZE_CATALOG != SILVER_CATALOG)
 
 if MULTI_CATALOG:
     bronze_table = f"`{{BRONZE_CATALOG}}`.`{{TGT_SCHEMA}}`.`{{TABLE_NAME}}`"
     silver_table = f"`{{SILVER_CATALOG}}`.`{{TGT_SCHEMA}}`.`{{TABLE_NAME}}`"
     DQ_CATALOG   = SILVER_CATALOG
     DQ_SCHEMA    = TGT_SCHEMA
-    spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{{SILVER_CATALOG}}`.`{{TGT_SCHEMA}}`")
-    print(f"📦 Multi-catalog mode: {{BRONZE_CATALOG}}.{{TGT_SCHEMA}} → {{SILVER_CATALOG}}.{{TGT_SCHEMA}}")
+    print(f"✅ Multi-catalog medallion: {{BRONZE_CATALOG}}.{{TGT_SCHEMA}} → {{SILVER_CATALOG}}.{{TGT_SCHEMA}} (no prefix)")
 else:
-    TARGET_CATALOG = target_config.get("catalog", CATALOG)
-    TARGET_SCHEMA  = target_config.get("schema", SCHEMA)
+    _fallback_cat = target_config.get("catalog", "")
+    _meta_cat = target_config.get("metadata_catalog", CATALOG)
+    if _fallback_cat and _fallback_cat != _meta_cat and _fallback_cat != CATALOG:
+        TARGET_CATALOG = _fallback_cat
+    elif SILVER_CATALOG:
+        TARGET_CATALOG = SILVER_CATALOG
+    elif BRONZE_CATALOG:
+        TARGET_CATALOG = BRONZE_CATALOG
+    else:
+        TARGET_CATALOG = CATALOG
+        print(f"⚠️ WARNING: No silver/bronze_catalog — falling back to metadata catalog {{CATALOG}}")
+    _fallback_sch = target_config.get("schema", "")
+    _meta_sch = target_config.get("metadata_schema", SCHEMA)
+    if _fallback_sch and _fallback_sch != _meta_sch and _fallback_sch != SCHEMA:
+        TARGET_SCHEMA = _fallback_sch
+    elif TGT_SCHEMA:
+        TARGET_SCHEMA = TGT_SCHEMA
+    else:
+        TARGET_SCHEMA = SCHEMA
     bronze_table = f"`{{TARGET_CATALOG}}`.`{{TARGET_SCHEMA}}`.`bronze_{{TABLE_NAME}}`"
     silver_table = f"`{{TARGET_CATALOG}}`.`{{TARGET_SCHEMA}}`.`silver_{{TABLE_NAME}}`"
     DQ_CATALOG   = TARGET_CATALOG
@@ -888,7 +1022,7 @@ except Exception as e:
             MERGE INTO {{run_tbl}} AS t
             USING (SELECT '{{RUN_ID}}' AS run_id) AS s ON t.run_id = s.run_id
             WHEN MATCHED THEN UPDATE SET t.status = 'failed',
-                t.error_message = '{{str(e).replace("'","''")[:500]}}',
+                t.error_message = '{{_sql_esc(e)}}',
                 t.completed_at = current_timestamp()
         """)
     except Exception:
@@ -1057,7 +1191,7 @@ except Exception as e:
             MERGE INTO {{run_tbl}} AS t
             USING (SELECT '{{RUN_ID}}' AS run_id) AS s ON t.run_id = s.run_id
             WHEN MATCHED THEN UPDATE SET t.status = 'failed',
-                t.error_message = '{{str(e).replace("'","''")[:500]}}',
+                t.error_message = '{{_sql_esc(e)}}',
                 t.completed_at = current_timestamp()
         """)
     except Exception:
@@ -1327,7 +1461,7 @@ for group in groups:
                     USING (SELECT '{{run_id}}' AS run_id) AS s ON t.run_id = s.run_id
                     WHEN MATCHED THEN UPDATE SET
                         t.status = 'failed',
-                        t.error_message = '{{str(e).replace("'","''")}}'
+                        t.error_message = '{{_sql_esc(e)}}'
                         , t.completed_at = current_timestamp()
                 """)
                 spark.sql(f"""
@@ -1485,6 +1619,25 @@ spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{{RECON_CATALOG}}`.`{{RECON_SCHEMA}}`")
 
 recon_full_table = f"`{{RECON_CATALOG}}`.`{{RECON_SCHEMA}}`.`{{RECON_TABLE}}`"
 
+spark.sql(f"""
+    CREATE TABLE IF NOT EXISTS {{recon_full_table}} (
+        recon_run_id    STRING NOT NULL,
+        pipeline_run_id STRING NOT NULL,
+        job_id          STRING NOT NULL,
+        source_table    STRING NOT NULL,
+        bronze_table    STRING NOT NULL,
+        column_name     STRING NOT NULL,
+        data_type       STRING,
+        source_value    DOUBLE,
+        bronze_value    DOUBLE,
+        variance        DOUBLE,
+        variance_pct    DOUBLE,
+        status          STRING,
+        recon_timestamp TIMESTAMP
+    ) USING DELTA
+""")
+print(f"📦 Table {{recon_full_table}} ready")
+
 recon_schema_def = StructType([
     StructField("recon_run_id",    StringType(),    False),
     StructField("pipeline_run_id", StringType(),    False),
@@ -1500,14 +1653,6 @@ recon_schema_def = StructType([
     StructField("status",          StringType(),    True),
     StructField("recon_timestamp", TimestampType(), True),
 ])
-
-try:
-    spark.table(recon_full_table)
-    print(f"📦 Table {{recon_full_table}} exists")
-except Exception:
-    empty_df = spark.createDataFrame([], schema=recon_schema_def)
-    empty_df.write.format("delta").saveAsTable(recon_full_table)
-    print(f"📦 Created table {{recon_full_table}}")
 
 # COMMAND ----------
 
@@ -1537,11 +1682,47 @@ BRONZE_CATALOG = target_config.get("bronze_catalog", "")
 TGT_SCHEMA     = target_config.get("target_schema", "")
 VOLUMES_CATALOG= target_config.get("volumes_catalog", "")
 
-# Determine bronze table name (DLT prefixes tables with bronze_)
-if BRONZE_CATALOG and TGT_SCHEMA:
+# Mirror Bronze notebook's MULTI_CATALOG logic to resolve the actual bronze table name.
+# In multi-catalog medallion mode (volumes + bronze + schema all set), the bronze
+# notebook writes the table WITHOUT the legacy "bronze_" prefix.
+MULTI_CATALOG = bool(VOLUMES_CATALOG and BRONZE_CATALOG and TGT_SCHEMA)
+
+if MULTI_CATALOG:
+    BRONZE_TABLE = f"`{{BRONZE_CATALOG}}`.`{{TGT_SCHEMA}}`.`{{TABLE_NAME}}`"
+elif BRONZE_CATALOG and TGT_SCHEMA:
+    # bronze_catalog + schema set, but volumes missing → bronze still uses prefix
     BRONZE_TABLE = f"`{{BRONZE_CATALOG}}`.`{{TGT_SCHEMA}}`.`bronze_{{TABLE_NAME}}`"
 else:
-    BRONZE_TABLE = f"`{{target_config.get('catalog', CATALOG)}}`.`{{target_config.get('schema', SCHEMA)}}`.`bronze_{{TABLE_NAME}}`"
+    _fallback_cat = target_config.get('catalog', '')
+    _meta_cat = target_config.get('metadata_catalog', CATALOG)
+    if _fallback_cat and _fallback_cat != _meta_cat and _fallback_cat != CATALOG:
+        BRONZE_TABLE = f"`{{_fallback_cat}}`.`{{target_config.get('schema', SCHEMA)}}`.`bronze_{{TABLE_NAME}}`"
+    elif BRONZE_CATALOG:
+        BRONZE_TABLE = f"`{{BRONZE_CATALOG}}`.`{{TGT_SCHEMA or SCHEMA}}`.`bronze_{{TABLE_NAME}}`"
+    else:
+        BRONZE_TABLE = f"`{{CATALOG}}`.`{{SCHEMA}}`.`bronze_{{TABLE_NAME}}`"
+        print(f"⚠️ WARNING: No bronze_catalog — falling back to metadata catalog {{CATALOG}}")
+
+# Defensive fallback: if the resolved table doesn't exist but the prefixed
+# (or unprefixed) variant does, use whichever one is actually present.
+def _table_exists(fq: str) -> bool:
+    try:
+        spark.sql(f"DESCRIBE TABLE {{fq}}").limit(1).collect()
+        return True
+    except Exception:
+        return False
+
+if not _table_exists(BRONZE_TABLE):
+    _alt_candidates = []
+    if MULTI_CATALOG:
+        _alt_candidates.append(f"`{{BRONZE_CATALOG}}`.`{{TGT_SCHEMA}}`.`bronze_{{TABLE_NAME}}`")
+    else:
+        _alt_candidates.append(f"`{{BRONZE_CATALOG or CATALOG}}`.`{{TGT_SCHEMA or SCHEMA}}`.`{{TABLE_NAME}}`")
+    for _alt in _alt_candidates:
+        if _table_exists(_alt):
+            print(f"⚠️ Bronze table {{BRONZE_TABLE}} not found — using {{_alt}} instead")
+            BRONZE_TABLE = _alt
+            break
 
 print(f"📋 Source: [{{TABLE_SCHEMA}}].[{{TABLE_NAME}}] on {{SERVER}}/{{DATABASE}}")
 print(f"📋 Bronze: {{BRONZE_TABLE}}")
@@ -1874,6 +2055,25 @@ spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{{LOG_CATALOG}}`.`{{LOG_SCHEMA}}`")
 
 log_full_table = f"`{{LOG_CATALOG}}`.`{{LOG_SCHEMA}}`.`{{LOG_TABLE}}`"
 
+spark.sql(f"""
+    CREATE TABLE IF NOT EXISTS {{log_full_table}} (
+        log_run_id          STRING NOT NULL,
+        group_id            STRING NOT NULL,
+        full_table          STRING NOT NULL,
+        stage               STRING NOT NULL,
+        load_type           STRING,
+        status              STRING,
+        rows_processed      BIGINT,
+        started_at          STRING,
+        completed_at        STRING,
+        duration_sec        DOUBLE,
+        error_message       STRING,
+        orchestrator_status STRING,
+        log_timestamp       TIMESTAMP
+    ) USING DELTA
+""")
+print(f"📦 Table {{log_full_table}} ready")
+
 log_schema = StructType([
     StructField("log_run_id",          StringType(),    False),
     StructField("group_id",            StringType(),    False),
@@ -1889,15 +2089,6 @@ log_schema = StructType([
     StructField("orchestrator_status", StringType(),    True),
     StructField("log_timestamp",       TimestampType(), True),
 ])
-
-# Create empty table if it doesn't exist yet
-try:
-    spark.table(log_full_table)
-    print(f"📦 Table {{log_full_table}} exists")
-except Exception:
-    empty_df = spark.createDataFrame([], schema=log_schema)
-    empty_df.write.format("delta").saveAsTable(log_full_table)
-    print(f"📦 Created table {{log_full_table}}")
 
 # COMMAND ----------
 
@@ -2092,13 +2283,17 @@ def _make_bronze(job):
     """Factory: register a DLT streaming table for one Bronze source."""
     tbl   = job["table_name"]
     full  = job["full_table"]
-    tcfg  = json.loads(job.get("target_config") or "{{}}")
-    v_cat = tcfg.get("volumes_catalog", "")
-    t_sch = tcfg.get("target_schema", "")
-    src   = f"/Volumes/{{v_cat}}/{{t_sch}}/landing/{{tbl}}" if v_cat and t_sch else f"{{LANDING_PATH}}/{{tbl}}"
+    # Always use LANDING_PATH (from pipeline config) — it matches the path
+    # used by the extract notebook.  Never construct a per-table Volumes path
+    # here because the extract may write to an ABFSS path or a different
+    # volume schema (e.g. hr vs dbo).
+    src   = f"{{LANDING_PATH}}/{{tbl}}"
+    # Use simple names — DLT pipeline's catalog/schema controls where tables
+    # are published.  3-part names cause "Failed to analyze flow" errors.
+    bronze_full = f"bronze_{{tbl}}"
 
     @dlt.table(
-        name=f"bronze_{{tbl}}",
+        name=bronze_full,
         comment=f"Bronze — raw ingestion of {{full}} via Auto Loader",
         table_properties={{
             "quality": "bronze",
@@ -2117,7 +2312,6 @@ def _make_bronze(job):
             spark.readStream
                 .format("cloudFiles")
                 .option("cloudFiles.format", "parquet")
-                .option("cloudFiles.schemaLocation", f"{{src}}/_schema")
                 .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
                 .load(src)
                 .withColumn("__bronze_ts",      F.current_timestamp())
@@ -2126,13 +2320,40 @@ def _make_bronze(job):
         )
 
 if not bronze_jobs:
+    print("⚠️ No tables found in wf_job_metadata for DLT pipeline.")
+    print(f"   Checked stages: landing_to_bronze, bronze_to_silver, dlt_bronze_silver")
+    print(f"   Metadata table: {{job_tbl}}")
+
+# Check landing paths before registering tables — skip tables whose
+# landing directory does not exist or is empty.  This prevents the
+# CF_EMPTY_DIR_FOR_SCHEMA_INFERENCE error that kills the whole pipeline.
+# NOTE: dbutils.fs.ls() is BLOCKED inside DLT pipelines (PY4J_BLOCKED_API).
+# Use spark.read.format("parquet") instead — it is DLT-compatible.
+_bronze_registered = []
+for _j in bronze_jobs:
+    _landing = f"{{LANDING_PATH}}/{{_j['table_name']}}"
+    try:
+        _check = spark.read.format("parquet").load(_landing).limit(1).count()
+        if _check > 0:
+            _make_bronze(_j)
+            _bronze_registered.append(_j["table_name"])
+            print(f"  ✅ Registered bronze: {{_j['table_name']}}")
+        else:
+            print(f"  ⏭️ Skipping {{_j['table_name']}}: landing path is empty")
+    except Exception as _ls_err:
+        _err_msg = str(_ls_err).lower()
+        if "path does not exist" in _err_msg or "filenotfoundexception" in _err_msg or "is not a delta table" in _err_msg or "unable to infer schema" in _err_msg:
+            print(f"  ⏭️ Skipping {{_j['table_name']}}: landing path not found ({{_landing}})")
+        else:
+            raise   # surface credential / permission errors
+
+if not _bronze_registered:
     raise ValueError(
-        "No tables found in wf_job_metadata for DLT pipeline. "
-        "Ensure pipelines are created via MetadataFlow before running DLT."
+        "No tables have data in the landing zone. "
+        "Run extracts first to populate landing data before triggering DLT."
     )
 
-for _j in bronze_jobs:
-    _make_bronze(_j)
+print(f"\\n⚡ Registered {{len(_bronze_registered)}}/{{len(bronze_jobs)}} bronze tables")
 
 # COMMAND ----------
 
@@ -2148,10 +2369,17 @@ def _make_silver(job):
     """Factory: register a DLT materialized view for one Silver table."""
     tbl         = job["table_name"]
     full        = job["full_table"]
+    tcfg        = json.loads(job.get("target_config") or "{{}}")
+    b_cat       = tcfg.get("bronze_catalog", "")
+    s_cat       = tcfg.get("silver_catalog", "")
+    t_sch       = tcfg.get("target_schema", "")
+    # Use simple names — must match the bronze name used in _make_bronze.
+    # DLT pipeline's catalog/schema controls where tables are published.
     bronze_name = f"bronze_{{tbl}}"
+    silver_full = f"silver_{{tbl}}"
 
     @dlt.table(
-        name=f"silver_{{tbl}}",
+        name=silver_full,
         comment=f"Silver — cleansed & validated {{full}}",
         table_properties={{
             "quality": "silver",
@@ -2164,6 +2392,9 @@ def _make_silver(job):
     @dlt.expect("dq03_bronze_freshness",            "__bronze_ts >= current_timestamp() - INTERVAL 7 DAYS")
     @dlt.expect("dq04_no_empty_source",             "length(trim(coalesce(__source_table, ''))) > 0")
     def _inner():
+        # Always use dlt.read() for within-pipeline dependency resolution.
+        # spark.read.table() fails because bronze isn't committed yet
+        # during the same pipeline update.
         df = dlt.read(bronze_name)
 
         # Filter quarantined rows before dropping the flag column
@@ -2183,8 +2414,15 @@ def _make_silver(job):
                 .withColumn("__dq_status",  F.lit("passed"))
         )
 
+# Only create silver tables for tables that have bronze registered
+# (i.e. tables that had landing data)
 for _j in silver_jobs:
-    _make_silver(_j)
+    if _j["table_name"] in _bronze_registered:
+        _make_silver(_j)
+    else:
+        print(f"  ⏭️ Skipping silver for {{_j['table_name']}}: no bronze table registered")
+
+print(f"⚡ Registered {{len(_bronze_registered)}} silver tables")
 '''
 
 
@@ -2220,6 +2458,10 @@ dbutils.widgets.text("catalog", "{catalog}", "Metadata Catalog")
 dbutils.widgets.text("schema", "{schema}", "Metadata Schema")
 dbutils.widgets.text("landing_path", "{landing_path}", "Landing Base Path")
 dbutils.widgets.text("workspace_path", "{workspace_path}", "Notebook Workspace Path")
+dbutils.widgets.text("volumes_catalog", "", "Volumes Catalog (dev_volumes)")
+dbutils.widgets.text("bronze_catalog", "", "Bronze Catalog")
+dbutils.widgets.text("silver_catalog", "", "Silver Catalog")
+dbutils.widgets.text("target_schema", "", "Target Schema (hr)")
 
 GROUP_ID       = dbutils.widgets.get("group_id").strip()
 LOAD_OVERRIDE  = dbutils.widgets.get("load_type").strip()
@@ -2228,6 +2470,10 @@ CATALOG        = dbutils.widgets.get("catalog").strip()
 SCHEMA         = dbutils.widgets.get("schema").strip()
 LANDING_PATH   = dbutils.widgets.get("landing_path").strip()
 WORKSPACE_PATH = dbutils.widgets.get("workspace_path").strip()
+_VOLUMES_CAT   = dbutils.widgets.get("volumes_catalog").strip()
+_BRONZE_CAT    = dbutils.widgets.get("bronze_catalog").strip()
+_SILVER_CAT    = dbutils.widgets.get("silver_catalog").strip()
+_TARGET_SCHEMA = dbutils.widgets.get("target_schema").strip()
 
 # COMMAND ----------
 
@@ -2306,12 +2552,41 @@ print(f"📋 Extract jobs: {{len(extract_jobs)}}")
 # COMMAND ----------
 
 extract_nb = f"{{WORKSPACE_PATH}}/01_Meta_Extract"
-extract_results = []
+extract_results = [None] * len(extract_jobs)
 
-for job in extract_jobs:
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# ── Skip extracts that already succeeded recently ──────────────────
+# When run_pipeline_group() triggers Extract (job 1) first and then
+# this orchestrator (job 2), the extract is already done.  Re-running
+# it wastes time and fails on large tables.  Check wf_run_history for
+# a successful extract for each table within the last 4 hours.
+_already_extracted = set()
+try:
+    _recent = spark.sql(f"""
+        SELECT DISTINCT full_table
+        FROM {{run_tbl}}
+        WHERE stage = 'extract'
+          AND status = 'success'
+          AND started_at >= current_timestamp() - INTERVAL 4 HOURS
+    """).collect()
+    _already_extracted = set(r[0] for r in _recent if r[0])
+    if _already_extracted:
+        print(f"⏭️ {{len(_already_extracted)}} table(s) already extracted in last 4h — will skip")
+except Exception:
+    pass
+
+def _run_extract(idx, job):
+    """Run a single extract notebook — designed for parallel execution."""
     job_id    = job["job_id"]
     run_id    = uuid.uuid4().hex[:12]
     load_type = LOAD_OVERRIDE or job.get("load_type") or "full"
+    full_table = job.get("full_table", "")
+
+    # Skip if extract already succeeded recently
+    if full_table in _already_extracted:
+        print(f"  ⏭️ {{job['job_name']}}: extract already succeeded recently — skipping")
+        return idx, {{"job": job["job_name"], "status": "OK", "rows": 0, "run_id": run_id, "skipped": True}}
 
     # Create run record
     try:
@@ -2325,7 +2600,6 @@ for job in extract_jobs:
     except Exception:
         pass
 
-    print(f"\\n  ▶ Extract: {{job['job_name']}}")
     try:
         result_json = dbutils.notebook.run(extract_nb, 3600, {{
             "job_id": job_id, "run_id": run_id,
@@ -2336,14 +2610,23 @@ for job in extract_jobs:
         status = result.get("status", "UNKNOWN")
         rows   = result.get("rows", 0)
         if status in ("FAILED", "ERROR"):
-            print(f"    ❌ {{job['job_name']}}: {{result.get('error','')}}")
-            extract_results.append({{"job": job["job_name"], "status": "FAILED", "error": result.get("error",""), "run_id": run_id}})
+            return idx, {{"job": job["job_name"], "status": "FAILED", "error": result.get("error",""), "run_id": run_id}}
         else:
-            print(f"    ✅ {{job['job_name']}}: {{rows:,}} rows")
-            extract_results.append({{"job": job["job_name"], "status": "OK", "rows": rows, "run_id": run_id}})
+            return idx, {{"job": job["job_name"], "status": "OK", "rows": rows, "run_id": run_id}}
     except Exception as e:
-        print(f"    ❌ {{job['job_name']}}: {{e}}")
-        extract_results.append({{"job": job["job_name"], "status": "FAILED", "error": str(e)[:500], "run_id": run_id}})
+        return idx, {{"job": job["job_name"], "status": "FAILED", "error": str(e)[:500], "run_id": run_id}}
+
+# Run all extracts in parallel (up to 4 concurrent)
+_max_workers = min(4, len(extract_jobs)) if extract_jobs else 1
+print(f"🚀 Running {{len(extract_jobs)}} extracts in parallel (max {{_max_workers}} workers)")
+with ThreadPoolExecutor(max_workers=_max_workers) as pool:
+    futures = {{pool.submit(_run_extract, i, j): i for i, j in enumerate(extract_jobs)}}
+    for future in as_completed(futures):
+        idx, result_entry = future.result()
+        extract_results[idx] = result_entry
+        emoji = "✅" if result_entry["status"] == "OK" else "❌"
+        rows_info = f": {{result_entry.get('rows',0):,}} rows" if result_entry["status"] == "OK" else f": {{result_entry.get('error','')}}"
+        print(f"  {{emoji}} {{result_entry['job']}}{{rows_info}}")
 
 extract_ok   = len([r for r in extract_results if r["status"] == "OK"])
 extract_fail = len([r for r in extract_results if r["status"] == "FAILED"])
@@ -2361,25 +2644,47 @@ DLT_NAME = f"MetadataPipeline_{{GROUP_ID}}" if GROUP_ID else "MetadataPipeline_A
 DLT_NB   = f"{{WORKSPACE_PATH}}/02_Meta_DLT_Pipeline"
 
 # ── Determine DLT output catalog/schema ──────────────────────────
-# DLT tables (bronze_*, silver_*) should go into the bronze catalog,
-# NOT the metadata (admin_source) catalog.
-# Read the proper target from wf_job_metadata target_config, or fall back.
-try:
-    _first_target = spark.sql(f"""
-        SELECT target_config FROM `{{CATALOG}}`.`{{SCHEMA}}`.wf_job_metadata
-        WHERE target_config IS NOT NULL AND LENGTH(TRIM(target_config)) > 2
-        LIMIT 1
-    """).first()
-    if _first_target:
-        _tcfg = json.loads(_first_target[0] or "{{}}")
-        DLT_CATALOG = _tcfg.get("bronze_catalog", "") or CATALOG
-        DLT_SCHEMA  = _tcfg.get("target_schema", "") or SCHEMA
-    else:
-        DLT_CATALOG = CATALOG
-        DLT_SCHEMA  = SCHEMA
-except Exception:
-    DLT_CATALOG = CATALOG
-    DLT_SCHEMA  = SCHEMA
+# Use explicit widget parameters first (most reliable), then fall back
+# to wf_job_metadata target_config, then to metadata catalog.
+if _BRONZE_CAT:
+    DLT_CATALOG = _BRONZE_CAT
+    DLT_SCHEMA  = _TARGET_SCHEMA or SCHEMA
+    print(f"📦 Using explicit bronze_catalog widget: {{DLT_CATALOG}}.{{DLT_SCHEMA}}")
+else:
+    # Fallback: read from wf_job_metadata target_config
+    try:
+        _first_target = spark.sql(f"""
+            SELECT target_config FROM `{{CATALOG}}`.`{{SCHEMA}}`.wf_job_metadata
+            WHERE target_config IS NOT NULL AND LENGTH(TRIM(target_config)) > 2
+            LIMIT 1
+        """).first()
+        if _first_target:
+            _tcfg = json.loads(_first_target[0] or "{{}}")
+            DLT_CATALOG = _tcfg.get("bronze_catalog", "")
+            DLT_SCHEMA  = _tcfg.get("target_schema", "")
+        else:
+            DLT_CATALOG = ""
+            DLT_SCHEMA  = ""
+    except Exception:
+        DLT_CATALOG = ""
+        DLT_SCHEMA  = ""
+
+# Safety: never use the metadata catalog for DLT data tables
+if DLT_CATALOG == CATALOG and _BRONZE_CAT:
+    DLT_CATALOG = _BRONZE_CAT
+if DLT_SCHEMA == SCHEMA and _TARGET_SCHEMA:
+    DLT_SCHEMA = _TARGET_SCHEMA
+
+# ── FAIL-FAST: DLT MUST have a valid catalog \u2500\u2500
+if not DLT_CATALOG or DLT_CATALOG == CATALOG:
+    raise ValueError(
+        f"FATAL: bronze_catalog is empty or same as metadata catalog ({{CATALOG}}). "
+        "Cannot run DLT pipeline without explicit bronze_catalog. "
+        "Re-create the pipeline group with bronze/silver catalogs set."
+    )
+if not DLT_SCHEMA:
+    DLT_SCHEMA = "hr"
+    print(f"⚠️ DLT_SCHEMA was empty, defaulting to 'hr'")
 
 # Ensure the DLT output schema exists
 try:
@@ -2396,6 +2701,10 @@ pipeline_cfg = {{
     "pipeline.meta_schema":   SCHEMA,
     "pipeline.landing_path":  LANDING_PATH,
     "pipeline.group_id":      GROUP_ID,
+    # Allow this pipeline to (re)claim tables previously written by another DLT
+    # pipeline. Required when switching from single-catalog to multi-catalog
+    # (bronze.hr.* + silver.hr.*) publishing layout.
+    "pipelines.tableManagedByMultiplePipelinesCheck.enabled": "false",
 }}
 
 pipeline_spec = {{
@@ -2410,62 +2719,238 @@ pipeline_spec = {{
     "serverless":    True,
 }}
 
-# Check for existing pipeline by name
-resp = requests.get(
+# ── Collect active group_ids from wf_job_metadata ──
+_active_groups = set()
+try:
+    _ag_rows = spark.sql(f"SELECT DISTINCT group_id FROM {{job_tbl}} WHERE group_id IS NOT NULL").collect()
+    _active_groups = set(r[0] for r in _ag_rows if r[0])
+except Exception:
+    pass
+print(f"📋 Active group_ids in metadata: {{len(_active_groups)}}")
+
+# ── Clean up stale DLT pipelines for same catalog.schema ──
+# A stale pipeline is one whose group_id is no longer in wf_job_metadata.
+# This prevents "Table already managed by another pipeline" errors.
+
+# ── Step 1: Find existing pipeline by name (fast, reliable) ──────
+existing = None
+
+# Use filter param to search by name directly (avoids pagination issues)
+_search_resp = requests.get(
     f"{{HOST}}/api/2.0/pipelines",
     params={{"filter": f"name LIKE '{{DLT_NAME}}'", "max_results": 10}},
     headers=_hdrs,
 )
-resp.raise_for_status()
-existing = [p for p in resp.json().get("statuses", []) if p["name"] == DLT_NAME]
+if _search_resp.ok:
+    for p in _search_resp.json().get("statuses", []):
+        if p.get("name") == DLT_NAME:
+            existing = {{"pipeline_id": p["pipeline_id"], "name": p["name"]}}
+            break
+
+# Fallback: paginate through all pipelines if filter didn't work
+if not existing:
+    _next_token = None
+    _searched_all = False
+    while not _searched_all:
+        _params = {{"max_results": 100}}
+        if _next_token:
+            _params["page_token"] = _next_token
+        _lr = requests.get(f"{{HOST}}/api/2.0/pipelines", params=_params, headers=_hdrs)
+        if not _lr.ok:
+            break
+        _lr_json = _lr.json()
+        for p in _lr_json.get("statuses", []):
+            if p.get("name") == DLT_NAME:
+                existing = {{"pipeline_id": p["pipeline_id"], "name": p["name"]}}
+                _searched_all = True
+                break
+        _next_token = _lr_json.get("next_page_token")
+        if not _next_token:
+            _searched_all = True
+
+# ── Step 2: Clean up stale pipelines for same catalog.schema ─────
+# Only do this on the first page of results (best-effort cleanup)
+_first_page = requests.get(
+    f"{{HOST}}/api/2.0/pipelines",
+    params={{"max_results": 100}},
+    headers=_hdrs,
+)
+_all_pipelines = _first_page.json().get("statuses", []) if _first_page.ok else []
+_stale_ids = []
+
+for p in _all_pipelines:
+    pid = p.get("pipeline_id", "")
+    pname = p.get("name", "")
+    if pname == DLT_NAME:
+        continue  # this is ours, not stale
+    try:
+        pd = requests.get(f"{{HOST}}/api/2.0/pipelines/{{pid}}", headers=_hdrs)
+        if not pd.ok:
+            continue
+        pspec = pd.json().get("spec", {{}})
+        pcfg  = pspec.get("configuration", {{}})
+        p_cat = pspec.get("catalog", "")
+        p_sch = pspec.get("schema", "")
+        p_gid = pcfg.get("pipeline.group_id", "")
+
+        # Only consider pipelines targeting OUR catalog.schema
+        if p_cat != DLT_CATALOG or p_sch != DLT_SCHEMA:
+            continue
+
+        # Pipeline belongs to a group_id that is no longer active → stale
+        if p_gid and p_gid not in _active_groups:
+            _stale_ids.append((pid, pname, p_gid))
+    except Exception:
+        pass
+
+# Delete stale pipelines so their table ownership is released
+for _s_pid, _s_name, _s_gid in _stale_ids:
+    print(f"🗑️ Deleting stale DLT pipeline '{{_s_name}}' ({{_s_pid}}) — group {{_s_gid}} no longer active")
+    try:
+        requests.delete(f"{{HOST}}/api/2.0/pipelines/{{_s_pid}}", headers=_hdrs)
+        print(f"   ✅ Deleted")
+    except Exception as del_err:
+        print(f"   ⚠️ Delete failed: {{del_err}}")
+
+# ── Step 3: Create or update the pipeline ────────────────────────
+if existing:
+    pipeline_id = existing["pipeline_id"]
+    print(f"📦 Existing DLT pipeline: {{DLT_NAME}} ({{pipeline_id}})")
+    # Verify it still exists (may be stale)
+    verify_r = requests.get(f"{{HOST}}/api/2.0/pipelines/{{pipeline_id}}", headers=_hdrs)
+    if verify_r.status_code == 404:
+        print(f"⚠️ Pipeline {{pipeline_id}} no longer exists — will recreate.")
+        existing = None
+    else:
+        # Update pipeline config
+        requests.put(
+            f"{{HOST}}/api/2.0/pipelines/{{pipeline_id}}",
+            json=pipeline_spec,
+            headers=_hdrs,
+        )
 
 if not existing:
-    # Also search for ANY pipeline targeting the same catalog.schema
-    # to avoid "table already managed by pipeline X" errors
-    all_resp = requests.get(
-        f"{{HOST}}/api/2.0/pipelines",
-        params={{"max_results": 50}},
-        headers=_hdrs,
-    )
-    if all_resp.ok:
-        for p in all_resp.json().get("statuses", []):
-            pid = p.get("pipeline_id", "")
-            try:
-                pd = requests.get(f"{{HOST}}/api/2.0/pipelines/{{pid}}", headers=_hdrs)
-                if pd.ok:
-                    pspec = pd.json().get("spec", {{}})
-                    if pspec.get("catalog") == DLT_CATALOG and pspec.get("schema") == DLT_SCHEMA:
-                        print(f"⚠️ Found stale pipeline '{{p.get('name','')}}' ({{pid}}) targeting {{DLT_CATALOG}}.{{DLT_SCHEMA}}")
-                        print(f"   Deleting stale pipeline to avoid ownership conflict…")
-                        requests.delete(f"{{HOST}}/api/2.0/pipelines/{{pid}}", headers=_hdrs)
-                        print(f"   ✅ Deleted stale pipeline {{pid}}")
-            except Exception:
-                pass
-
-    # Re-check after cleanup
-    resp2 = requests.get(
-        f"{{HOST}}/api/2.0/pipelines",
-        params={{"filter": f"name LIKE '{{DLT_NAME}}'", "max_results": 10}},
-        headers=_hdrs,
-    )
-    if resp2.ok:
-        existing = [p for p in resp2.json().get("statuses", []) if p["name"] == DLT_NAME]
-
-if existing:
-    pipeline_id = existing[0]["pipeline_id"]
-    print(f"📦 Existing DLT pipeline: {{DLT_NAME}} ({{pipeline_id}})")
-    # Update pipeline config
-    requests.put(
-        f"{{HOST}}/api/2.0/pipelines/{{pipeline_id}}",
-        json=pipeline_spec,
-        headers=_hdrs,
-    )
-else:
     print(f"📦 Creating DLT pipeline: {{DLT_NAME}}")
     cr = requests.post(f"{{HOST}}/api/2.0/pipelines", json=pipeline_spec, headers=_hdrs)
-    cr.raise_for_status()
-    pipeline_id = cr.json()["pipeline_id"]
-    print(f"✅ Created DLT pipeline: {{pipeline_id}}")
+    # Handle 409 (pipeline already exists but wasn't found in listing)
+    if cr.status_code == 409:
+        print("⚠️ 409 Conflict — pipeline already exists. Searching by name…")
+        # Re-search with filter
+        _retry_search = requests.get(
+            f"{{HOST}}/api/2.0/pipelines",
+            params={{"filter": f"name LIKE '{{DLT_NAME}}'", "max_results": 10}},
+            headers=_hdrs,
+        )
+        _found = False
+        if _retry_search.ok:
+            for p in _retry_search.json().get("statuses", []):
+                if p.get("name") == DLT_NAME:
+                    pipeline_id = p["pipeline_id"]
+                    print(f"✅ Found existing pipeline: {{pipeline_id}} — updating config")
+                    requests.put(
+                        f"{{HOST}}/api/2.0/pipelines/{{pipeline_id}}",
+                        json=pipeline_spec,
+                        headers=_hdrs,
+                    )
+                    _found = True
+                    break
+        if not _found:
+            # Last resort: list ALL pipelines with pagination
+            _nt = None
+            while not _found:
+                _pp = {{"max_results": 100}}
+                if _nt:
+                    _pp["page_token"] = _nt
+                _pr = requests.get(f"{{HOST}}/api/2.0/pipelines", params=_pp, headers=_hdrs)
+                if not _pr.ok:
+                    break
+                _prj = _pr.json()
+                for p in _prj.get("statuses", []):
+                    if p.get("name") == DLT_NAME:
+                        pipeline_id = p["pipeline_id"]
+                        print(f"✅ Found existing pipeline (page scan): {{pipeline_id}}")
+                        requests.put(
+                            f"{{HOST}}/api/2.0/pipelines/{{pipeline_id}}",
+                            json=pipeline_spec,
+                            headers=_hdrs,
+                        )
+                        _found = True
+                        break
+                _nt = _prj.get("next_page_token")
+                if not _nt:
+                    break
+            if not _found:
+                raise Exception(f"409 Conflict creating pipeline '{{DLT_NAME}}' but could not find existing pipeline. Delete manually in Databricks UI.")
+    else:
+        cr.raise_for_status()
+        pipeline_id = cr.json()["pipeline_id"]
+        print(f"✅ Created DLT pipeline: {{pipeline_id}}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 🧹 Pre-DLT: Drop non-DLT managed tables that would collide
+
+# COMMAND ----------
+
+# DLT creates streaming tables named bronze_<tbl> and silver_<tbl>.
+# If regular MANAGED tables with those names already exist (e.g. from
+# a CTAS restore or manual creation), DLT will fail with:
+# "Could not materialize ... because a MANAGED table already exists".
+# We detect and drop those here so DLT can recreate them as streaming tables.
+#
+# Query the SAME stages the DLT notebook uses to discover tables.
+
+_dlt_job_names = set()
+for _j in extract_jobs:
+    _tname = _j.get("table_name") or _j.get("job_name", "").split(".")[-1]
+    if _tname:
+        _dlt_job_names.add(_tname)
+
+# Also query DLT-specific stages to catch tables not in extract_jobs
+try:
+    _gf2 = f"AND group_id = '{{GROUP_ID}}'" if GROUP_ID else ""
+    _dlt_stage_rows = spark.sql(f"""
+        SELECT DISTINCT table_name FROM `{{CATALOG}}`.`{{SCHEMA}}`.wf_job_metadata
+        WHERE stage IN ('landing_to_bronze', 'bronze_to_silver', 'dlt_bronze_silver')
+          AND (enabled = true OR enabled IS NULL)
+          {{_gf2}}
+    """).collect()
+    for _r in _dlt_stage_rows:
+        if _r[0]:
+            _dlt_job_names.add(_r[0])
+except Exception:
+    pass
+
+_dlt_tables = []
+for _tname in _dlt_job_names:
+    _dlt_tables.append(f"bronze_{{_tname}}")
+    _dlt_tables.append(f"silver_{{_tname}}")
+
+print(f"🔍 Collision check: {{len(_dlt_job_names)}} table names → {{len(_dlt_tables)}} DLT targets to verify in `{{DLT_CATALOG}}`.`{{DLT_SCHEMA}}`")
+
+_dropped_pre = 0
+for _dt in _dlt_tables:
+    _fqn = f"`{{DLT_CATALOG}}`.`{{DLT_SCHEMA}}`.`{{_dt}}`"
+    try:
+        _info = spark.sql(f"DESCRIBE EXTENDED {{_fqn}}")
+        _type_row = [r for r in _info.collect() if r[0].strip().lower() == "type"]
+        _tbl_type = _type_row[0][1].strip().upper() if _type_row else ""
+        # Only drop if it's a plain MANAGED table, NOT a streaming table (DLT-owned)
+        if _tbl_type == "MANAGED" or _tbl_type == "":
+            # Check if it's actually a DLT streaming table by looking for pipeline_id
+            _prop_rows = {{r[0].strip().lower(): r[1] for r in _info.collect()}}
+            if "pipelines.pipelineid" not in _prop_rows:
+                spark.sql(f"DROP TABLE IF EXISTS {{_fqn}}")
+                print(f"  🧹 Dropped pre-existing non-DLT table: {{_fqn}}")
+                _dropped_pre += 1
+    except Exception:
+        pass  # Table doesn't exist — fine
+
+if _dropped_pre:
+    print(f"🧹 Dropped {{_dropped_pre}} pre-existing non-DLT tables to avoid collisions")
+else:
+    print(f"✅ No pre-existing table collisions found")
 
 # COMMAND ----------
 
@@ -2474,14 +2959,73 @@ else:
 
 # COMMAND ----------
 
-full_refresh = (LOAD_OVERRIDE or "full").lower() == "full"
-print(f"🚀 Triggering DLT update (full_refresh={{full_refresh}})…")
+full_refresh = LOAD_OVERRIDE.lower() == "full" if LOAD_OVERRIDE else False
+# Only force full_refresh if we dropped pre-existing colliding tables
+_force_full = full_refresh or _dropped_pre > 0
+if _force_full and not full_refresh:
+    print(f"🔄 Forcing full_refresh because {{_dropped_pre}} colliding non-DLT tables were dropped")
+print(f"🚀 Triggering DLT update (full_refresh={{_force_full}})…")
+
+# Verify pipeline exists before triggering
+verify_before = requests.get(f"{{HOST}}/api/2.0/pipelines/{{pipeline_id}}", headers=_hdrs)
+if verify_before.status_code == 404:
+    raise Exception(f"DLT Pipeline {{pipeline_id}} not found (404). It may have been deleted. Please re-run to recreate.")
+verify_before.raise_for_status()
+
+# Check if pipeline already has an active update — wait or stop it
+pipe_info = verify_before.json()
+pipe_state = pipe_info.get("state", "")
+if pipe_state not in ("IDLE", ""):
+    print(f"⏳ Pipeline is currently {{pipe_state}} — waiting for it to finish…")
+    wait_count = 0
+    while pipe_state not in ("IDLE", "FAILED", ""):
+        if wait_count >= 60:  # 60 × 10s = 10 min max wait
+            # Stop the running update so we can start a fresh one
+            print(f"⏳ Pipeline still busy after 10 min — stopping active update…")
+            try:
+                requests.post(f"{{HOST}}/api/2.0/pipelines/{{pipeline_id}}/stop", headers=_hdrs)
+                time.sleep(15)
+            except Exception:
+                pass
+            break
+        time.sleep(10)
+        wait_count += 1
+        try:
+            wr = requests.get(f"{{HOST}}/api/2.0/pipelines/{{pipeline_id}}", headers=_hdrs)
+            if wr.ok:
+                pipe_state = wr.json().get("state", "")
+                if wait_count % 3 == 0:
+                    print(f"  ⏳ Pipeline state: {{pipe_state}} ({{wait_count * 10}}s)")
+        except Exception:
+            break
+    print(f"✅ Pipeline is now {{pipe_state}} — ready to trigger.")
 
 trigger_resp = requests.post(
     f"{{HOST}}/api/2.0/pipelines/{{pipeline_id}}/updates",
-    json={{"full_refresh": full_refresh}},
+    json={{"full_refresh": _force_full}},
     headers=_hdrs,
 )
+# Handle 409 Conflict: pipeline still has an active update — exponential backoff
+if trigger_resp.status_code == 409:
+    _max_409_retries = 4
+    _backoff_secs = [20, 40, 80, 120]
+    for _retry_idx in range(_max_409_retries):
+        _wait = _backoff_secs[_retry_idx] if _retry_idx < len(_backoff_secs) else 120
+        print(f"⚠️ 409 Conflict (attempt {{_retry_idx + 1}}/{{_max_409_retries}}). Stopping pipeline, waiting {{_wait}}s…")
+        try:
+            requests.post(f"{{HOST}}/api/2.0/pipelines/{{pipeline_id}}/stop", headers=_hdrs)
+        except Exception:
+            pass
+        time.sleep(_wait)
+        trigger_resp = requests.post(
+            f"{{HOST}}/api/2.0/pipelines/{{pipeline_id}}/updates",
+            json={{"full_refresh": _force_full}},
+            headers=_hdrs,
+        )
+        if trigger_resp.status_code != 409:
+            break
+    if trigger_resp.status_code == 409:
+        raise Exception(f"DLT pipeline {{pipeline_id}} still has an active update after {{_max_409_retries}} retries. Check Databricks UI.")
 trigger_resp.raise_for_status()
 update_id = trigger_resp.json().get("update_id", "")
 print(f"📋 Update ID: {{update_id}}")
@@ -2498,6 +3042,8 @@ dlt_status  = "WAITING"
 poll_count  = 0
 MAX_POLLS   = 360   # 360 × 10s = 60 min max
 POLL_INTERVAL = 10  # seconds between polls
+consecutive_404 = 0
+MAX_404 = 3         # Give up after 3 consecutive 404s (pipeline does not exist)
 
 print(f"🔗 DLT Pipeline URL: {{HOST}}/#joblist/pipelines/{{pipeline_id}}")
 
@@ -2506,6 +3052,15 @@ while dlt_status not in terminal_states and poll_count < MAX_POLLS:
     poll_count += 1
     try:
         pr = requests.get(f"{{HOST}}/api/2.0/pipelines/{{pipeline_id}}", headers=_hdrs)
+        if pr.status_code == 404:
+            consecutive_404 += 1
+            print(f"  ⚠️ Pipeline not found (404) — attempt {{consecutive_404}}/{{MAX_404}}")
+            if consecutive_404 >= MAX_404:
+                print(f"  ❌ Pipeline {{pipeline_id}} does not exist. Stopping poll.")
+                dlt_status = "FAILED"
+                break
+            continue
+        consecutive_404 = 0
         pr.raise_for_status()
         pipe_data = pr.json()
         latest = (pipe_data.get("latest_updates") or [{{}}])[0]
@@ -2590,7 +3145,7 @@ if dlt_status == "FAILED":
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## � Phase 3 — Relocate Silver Tables to Silver Catalog
+# MAGIC ## 🔄 Phase 3 — Relocate Silver Tables to Silver Catalog
 
 # COMMAND ----------
 
@@ -2598,25 +3153,35 @@ silver_relocated = 0
 silver_failed    = 0
 
 if dlt_status == "COMPLETED":
-    # Determine the silver catalog AND schema from target_config
-    SILVER_CATALOG = ""
-    SILVER_SCHEMA  = ""
-    try:
-        _tgt_row = spark.sql(f"""
-            SELECT target_config FROM `{{CATALOG}}`.`{{SCHEMA}}`.wf_job_metadata
-            WHERE target_config IS NOT NULL AND LENGTH(TRIM(target_config)) > 2
-              AND target_config LIKE '%silver_catalog%'
-            LIMIT 1
-        """).first()
-        if _tgt_row:
-            _tgt = json.loads(_tgt_row[0] or "{{}}")
-            SILVER_CATALOG = _tgt.get("silver_catalog", "")
-            SILVER_SCHEMA  = _tgt.get("target_schema", "") or DLT_SCHEMA
-    except Exception:
-        pass
+    # Determine the silver catalog AND schema — use explicit widget first
+    SILVER_CATALOG = _SILVER_CAT
+    SILVER_SCHEMA  = _TARGET_SCHEMA or DLT_SCHEMA
+    if not SILVER_CATALOG:
+        # Fallback: read from wf_job_metadata target_config
+        try:
+            _tgt_row = spark.sql(f"""
+                SELECT target_config FROM `{{CATALOG}}`.`{{SCHEMA}}`.wf_job_metadata
+                WHERE target_config IS NOT NULL AND LENGTH(TRIM(target_config)) > 2
+                  AND target_config LIKE '%silver_catalog%'
+                LIMIT 1
+            """).first()
+            if _tgt_row:
+                _tgt = json.loads(_tgt_row[0] or "{{}}")
+                SILVER_CATALOG = _tgt.get("silver_catalog", "")
+                SILVER_SCHEMA  = _tgt.get("target_schema", "") or DLT_SCHEMA
+        except Exception:
+            pass
+
+    if not SILVER_CATALOG:
+        raise ValueError(
+            "FATAL: silver_catalog is empty — cannot relocate silver tables. "
+            "Re-create the pipeline group with bronze/silver catalogs set."
+        )
 
     if SILVER_CATALOG and SILVER_CATALOG != DLT_CATALOG:
         print(f"🔄 Relocating silver tables: {{DLT_CATALOG}}.{{DLT_SCHEMA}} → {{SILVER_CATALOG}}.{{SILVER_SCHEMA}}")
+        print(f"📦 Bronze tables (DLT-managed) stay in: {{DLT_CATALOG}}.{{DLT_SCHEMA}}")
+        print(f"📦 DLT pipeline '{{DLT_NAME}}' ({{pipeline_id}}) is preserved — NOT deleted")
 
         # Ensure silver schema exists
         try:
@@ -2624,30 +3189,49 @@ if dlt_status == "COMPLETED":
         except Exception as se:
             print(f"⚠️ Could not create schema {{SILVER_CATALOG}}.{{SILVER_SCHEMA}}: {{se}}")
 
-        # Find all silver_* tables created by DLT in the bronze catalog
+        # Discover silver tables in the DLT catalog
+        silver_tables = []
         try:
-            silver_tables = [r[1] for r in spark.sql(f"""
+            _all_tables = [r[1] for r in spark.sql(f"""
                 SHOW TABLES IN `{{DLT_CATALOG}}`.`{{DLT_SCHEMA}}`
-            """).collect() if r[1].startswith("silver_")]
+            """).collect()]
+            silver_tables = [t for t in _all_tables if t.startswith("silver_")]
         except Exception:
-            silver_tables = []
+            pass
 
+        print(f"📋 Found {{len(silver_tables)}} silver tables to relocate")
+
+        # ── Copy silver tables to silver catalog via CTAS ──
+        # The DLT pipeline creates silver tables as materialized views in DLT_CATALOG.
+        # We copy them to the silver catalog. Bronze DLT streaming tables are untouched.
+        # Strip "silver_" prefix so the destination table has a clean name
+        # (e.g. silver.hr.DimDate instead of silver.hr.silver_DimDate).
+        import time as _time
         for stbl in silver_tables:
+            # Strip prefix for clean destination name
+            clean_name = stbl[7:] if stbl.startswith("silver_") else stbl
+            src_full = f"`{{DLT_CATALOG}}`.`{{DLT_SCHEMA}}`.`{{stbl}}`"
+            dst_full = f"`{{SILVER_CATALOG}}`.`{{SILVER_SCHEMA}}`.`{{clean_name}}`"
+            print(f"  📋 {{src_full}} → {{dst_full}}")
             try:
-                src_full = f"`{{DLT_CATALOG}}`.`{{DLT_SCHEMA}}`.`{{stbl}}`"
-                dst_full = f"`{{SILVER_CATALOG}}`.`{{SILVER_SCHEMA}}`.`{{stbl}}`"
-                print(f"  📋 {{src_full}} → {{dst_full}}")
+                spark.sql(f"SELECT 1 FROM {{src_full}} LIMIT 1")
+            except Exception as src_err:
+                if "TABLE_OR_VIEW_NOT_FOUND" in str(src_err):
+                    print(f"    ⏭️ Source table not found — skipping {{stbl}}")
+                    continue
+                print(f"    ⚠️ Source table unreadable: {{src_err}}")
 
-                # DLT creates silver as materialized views — use CTAS instead of DEEP CLONE
-                spark.sql(f"CREATE OR REPLACE TABLE {{dst_full}} AS SELECT * FROM {{src_full}}")
-                # Drop the materialized view from bronze catalog
-                try:
-                    spark.sql(f"DROP MATERIALIZED VIEW IF EXISTS {{src_full}}")
-                except Exception:
+            try:
+                # Drop existing destination to allow fresh copy
+                for _drop_sql in [
+                    f"DROP TABLE IF EXISTS {{dst_full}}",
+                ]:
                     try:
-                        spark.sql(f"DROP VIEW IF EXISTS {{src_full}}")
+                        spark.sql(_drop_sql)
                     except Exception:
-                        spark.sql(f"DROP TABLE IF EXISTS {{src_full}}")
+                        pass
+                _time.sleep(1)
+                spark.sql(f"CREATE TABLE {{dst_full}} AS SELECT * FROM {{src_full}}")
                 silver_relocated += 1
                 print(f"    ✅ Relocated {{stbl}}")
             except Exception as rel_err:
@@ -2655,6 +3239,8 @@ if dlt_status == "COMPLETED":
                 print(f"    ❌ Failed to relocate {{stbl}}: {{rel_err}}")
 
         print(f"\\n📦 Silver relocation: {{silver_relocated}} ok / {{silver_failed}} failed")
+        print(f"📦 Bronze tables: untouched (DLT streaming tables preserved)")
+        print(f"📦 DLT pipeline: preserved ({{pipeline_id}})")
     else:
         if not SILVER_CATALOG:
             print("ℹ️ No silver_catalog in target_config — silver tables remain in DLT catalog")
@@ -2756,12 +3342,19 @@ print(f"  📝 Execution Log   : {{log_status}}")
 print(f"  📊 Rows (JDBC)     : {{total_rows:,}}")
 print(f"  🔗 Pipeline ID     : {{pipeline_id}}")
 
+_overall = "COMPLETED"
+if extract_fail or silver_failed:
+    _overall = "PARTIAL"
+if dlt_status != "COMPLETED":
+    _overall = "FAILED"
+
 exit_payload = json.dumps({{
-    "status":          "COMPLETED" if dlt_status == "COMPLETED" and not extract_fail else "PARTIAL",
+    "status":          _overall,
     "extract_ok":      extract_ok,
     "extract_failed":  extract_fail,
     "dlt_status":      dlt_status,
     "silver_relocated": silver_relocated,
+    "silver_failed":   silver_failed,
     "recon_status":    recon_status,
     "log_status":      log_status,
     "pipeline_id":     pipeline_id,

@@ -15,18 +15,35 @@ class UnityCatalogExecutor:
 
     POLL_INTERVAL = 3   # seconds between status polls
     MAX_POLLS     = 40  # max polls before timeout
+    _DATABRICKS_RESOURCE_ID = "2ff814a6-3304-4ab8-85cb-cd0e6f879c1d"
 
     def __init__(self, host: str, token: str, catalog: str = "main", schema: str = "default"):
         self.host    = host.rstrip("/")
         self.token   = token
         self.catalog = catalog
         self.schema  = schema
+        self._aad_token = None
         self.headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type":  "application/json"
         }
         self.session = requests.Session()
         self.session.headers.update(self.headers)
+
+    # ── AAD fallback ──────────────────────────────────────────────────────────
+    def _try_aad_fallback(self) -> bool:
+        """Attempt to get an Azure AD token for Databricks and update session headers."""
+        if self._aad_token:
+            return True
+        try:
+            from azure.identity import DefaultAzureCredential
+            cred = DefaultAzureCredential()
+            tok = cred.get_token(f"{self._DATABRICKS_RESOURCE_ID}/.default")
+            self._aad_token = tok.token
+            self.session.headers["Authorization"] = f"Bearer {self._aad_token}"
+            return True
+        except Exception:
+            return False
 
     # ── Statement Execution API ───────────────────────────────────────────────
     def _execute_statement(self, sql: str, warehouse_id: str, wait_timeout: str = "30s") -> dict:
@@ -44,6 +61,13 @@ class UnityCatalogExecutor:
             json=payload,
             timeout=60
         )
+        # If PAT returns 401/403, try AAD token automatically
+        if resp.status_code in (401, 403) and self._try_aad_fallback():
+            resp = self.session.post(
+                f"{self.host}/api/2.0/sql/statements",
+                json=payload,
+                timeout=60
+            )
         return resp.json() if resp.status_code == 200 else {"error": resp.text[:300], "status_code": resp.status_code}
 
     def _poll_statement(self, statement_id: str) -> dict:
@@ -68,9 +92,12 @@ class UnityCatalogExecutor:
 
     # ── List SQL Warehouses ───────────────────────────────────────────────────
     def list_warehouses(self) -> dict:
-        """List available SQL Warehouses."""
+        """List available SQL Warehouses. Falls back to AAD token if PAT fails."""
         try:
             resp = self.session.get(f"{self.host}/api/2.0/sql/warehouses", timeout=15)
+            # If PAT returns 401/403, try AAD token automatically
+            if resp.status_code in (401, 403) and self._try_aad_fallback():
+                resp = self.session.get(f"{self.host}/api/2.0/sql/warehouses", timeout=15)
             if resp.status_code == 200:
                 whs = resp.json().get("warehouses", [])
                 return {
@@ -97,6 +124,9 @@ class UnityCatalogExecutor:
             url  = f"{self.host}/api/2.1/unity-catalog/tables"
             params = {"catalog_name": self.catalog, "schema_name": self.schema}
             resp = self.session.get(url, params=params, timeout=15)
+            # If PAT returns 401/403, try AAD token automatically
+            if resp.status_code in (401, 403) and self._try_aad_fallback():
+                resp = self.session.get(url, params=params, timeout=15)
 
             if resp.status_code == 200:
                 tables = resp.json().get("tables", [])

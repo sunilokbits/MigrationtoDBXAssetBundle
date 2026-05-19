@@ -106,13 +106,24 @@ log_schema = StructType([
     StructField("log_timestamp",       TimestampType(), True),
 ])
 
-try:
-    spark.table(log_full_table)
-    print(f"Table {log_full_table} exists")
-except Exception:
-    empty_df = spark.createDataFrame([], schema=log_schema)
-    empty_df.write.format("delta").saveAsTable(log_full_table)
-    print(f"Created table {log_full_table}")
+spark.sql(f"""
+    CREATE TABLE IF NOT EXISTS {log_full_table} (
+        log_run_id          STRING NOT NULL,
+        group_id            STRING NOT NULL,
+        full_table          STRING NOT NULL,
+        stage               STRING NOT NULL,
+        load_type           STRING,
+        status              STRING,
+        rows_processed      BIGINT,
+        started_at          STRING,
+        completed_at        STRING,
+        duration_sec        DOUBLE,
+        error_message       STRING,
+        orchestrator_status STRING,
+        log_timestamp       TIMESTAMP
+    ) USING DELTA
+""")
+print(f"Table {log_full_table} ready")
 
 # COMMAND ----------
 

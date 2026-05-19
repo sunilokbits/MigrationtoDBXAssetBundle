@@ -47,6 +47,21 @@ except Exception:
 TABLE_PREFIX = "silver_"
 BRONZE_TABLE_PREFIX = "bronze_"
 
+# Auto-discover tables from Bronze catalog if TABLE_NAMES is empty
+if not TABLE_NAMES:
+    try:
+        bronze_tables_df = spark.sql(f"SHOW TABLES IN `{BRONZE_CATALOG}`.`{BRONZE_SCHEMA}`")
+        bronze_tables = [row.tableName for row in bronze_tables_df.collect()]
+        TABLE_NAMES = [
+            t.replace(BRONZE_TABLE_PREFIX, "", 1) if t.startswith(BRONZE_TABLE_PREFIX) else t
+            for t in bronze_tables
+            if not t.startswith("__")
+        ]
+        if TABLE_NAMES:
+            print(f"Auto-discovered {len(TABLE_NAMES)} tables from Bronze catalog: {TABLE_NAMES}")
+    except Exception as e:
+        print(f"Auto-discovery from Bronze catalog failed: {e}")
+
 print(f"Silver Catalog  : {CATALOG}.{SCHEMA}")
 print(f"Bronze Catalog  : {BRONZE_CATALOG}.{BRONZE_SCHEMA}")
 print(f"Mode            : {EXEC_MODE}")

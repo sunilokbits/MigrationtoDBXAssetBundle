@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login — SQL → Databricks Migration Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#F0F2F5;--surface:#FFFFFF;--border:#E5E7EB;
+  --t1:#1B1F2E;--t2:#374151;--t3:#5F6B7A;--t4:#9CA3AF;
+  --accent:#E8553A;--accent-h:#D14A32;
+  --r-md:10px;--r-lg:16px;
+}
+html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--t1)}
+body{display:flex;align-items:center;justify-content:center}
+
+/* ── Animated background ── */
+.bg-shapes{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;overflow:hidden;pointer-events:none}
+.bg-shapes span{
+  position:absolute;border-radius:50%;opacity:.08;
+  animation:float 20s ease-in-out infinite;
+}
+.bg-shapes span:nth-child(1){width:400px;height:400px;background:#3B82F6;top:-100px;left:-80px;animation-duration:25s}
+.bg-shapes span:nth-child(2){width:300px;height:300px;background:#E8553A;bottom:-80px;right:-60px;animation-duration:18s;animation-delay:3s}
+.bg-shapes span:nth-child(3){width:200px;height:200px;background:#8B5CF6;top:40%;left:60%;animation-duration:22s;animation-delay:6s}
+@keyframes float{
+  0%,100%{transform:translateY(0) scale(1)}
+  50%{transform:translateY(-40px) scale(1.05)}
+}
+
+/* ── Login card ── */
+.login-card{
+  position:relative;z-index:1;
+  width:100%;max-width:420px;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);
+  padding:44px 40px 36px;
+  box-shadow:0 4px 24px rgba(0,0,0,.06);
+}
+
+/* ── Brand ── */
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:32px;justify-content:center}
+.brand-ico{
+  width:42px;height:42px;border-radius:12px;
+  background:linear-gradient(135deg,#E8553A,#D14A32);
+  display:flex;align-items:center;justify-content:center;
+}
+.brand-ico svg{width:22px;height:22px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.brand-name{font-size:1.2rem;font-weight:700;color:var(--t1)}
+.brand-sub{font-size:.7rem;color:var(--t3);letter-spacing:.5px;text-transform:uppercase;margin-top:1px}
+
+/* ── Heading ── */
+.login-heading{text-align:center;margin-bottom:28px}
+.login-heading h2{font-size:1.3rem;font-weight:700;color:var(--t1);margin-bottom:6px}
+.login-heading p{font-size:.85rem;color:var(--t3)}
+
+/* ── Form ── */
+.form-group{margin-bottom:18px}
+.form-label{display:block;font-size:.78rem;font-weight:600;color:var(--t2);margin-bottom:6px;letter-spacing:.3px}
+.form-input{
+  width:100%;padding:12px 16px;font-size:.9rem;font-family:inherit;
+  border:1px solid var(--border);border-radius:var(--r-md);
+  background:#F9FAFB;color:var(--t1);
+  transition:border-color .2s,box-shadow .2s;
+}
+.form-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(232,85,58,.12)}
+.form-input::placeholder{color:var(--t4)}
+
+/* ── Button ── */
+.btn-login{
+  width:100%;padding:13px;font-size:.95rem;font-weight:600;font-family:inherit;
+  color:#fff;background:linear-gradient(135deg,#E8553A,#D14A32);
+  border:none;border-radius:var(--r-md);cursor:pointer;
+  transition:transform .15s,box-shadow .15s;margin-top:6px;
+}
+.btn-login:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(232,85,58,.3)}
+.btn-login:active{transform:translateY(0)}
+.btn-login:disabled{opacity:.6;cursor:not-allowed;transform:none;box-shadow:none}
+
+/* ── Error ── */
+.error-msg{
+  display:none;padding:10px 14px;font-size:.82rem;font-weight:500;
+  color:#B91C1C;background:#FEF2F2;border:1px solid #FECACA;
+  border-radius:var(--r-md);margin-bottom:16px;text-align:center;
+}
+.error-msg.visible{display:block}
+
+/* ── Demo accounts ── */
+.demo-accounts{
+  margin-top:24px;padding-top:20px;border-top:1px solid var(--border);
+}
+.demo-title{font-size:.72rem;font-weight:600;color:var(--t4);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;text-align:center}
+.demo-chips{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.demo-chip{
+  padding:6px 14px;border-radius:20px;font-size:.75rem;font-weight:600;
+  cursor:pointer;border:1px solid var(--border);background:#F9FAFB;color:var(--t2);
+  transition:all .2s;display:flex;align-items:center;gap:6px;
+}
+.demo-chip:hover{border-color:var(--accent);color:var(--accent);background:#FFF5F3}
+.demo-chip .chip-role{
+  font-size:.65rem;padding:2px 6px;border-radius:8px;font-weight:700;
+}
+.chip-admin .chip-role{background:rgba(232,85,58,.12);color:#E8553A}
+.chip-dev .chip-role{background:rgba(59,130,246,.12);color:#3B82F6}
+.chip-viewer .chip-role{background:rgba(139,92,246,.12);color:#8B5CF6}
+
+/* ── Password toggle ── */
+.input-wrap{position:relative}
+.input-wrap .toggle-pw{
+  position:absolute;right:12px;top:50%;transform:translateY(-50%);
+  background:none;border:none;cursor:pointer;color:var(--t4);padding:2px;
+}
+.input-wrap .toggle-pw:hover{color:var(--t2)}
+.input-wrap .toggle-pw svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+</style>
+</head>
+<body>
+<div class="bg-shapes" aria-hidden="true"><span></span><span></span><span></span></div>
+
+<main class="login-card" role="main" aria-label="Login">
+  <div class="brand">
+    <div class="brand-ico">
+      <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+    </div>
+    <div>
+      <div class="brand-name">Migration Studio</div>
+      <div class="brand-sub">SQL → Databricks</div>
+    </div>
+  </div>
+
+  <div class="login-heading">
+    <h2>Welcome back</h2>
+    <p>Sign in to continue to your workspace</p>
+  </div>
+
+  <div class="error-msg" id="errMsg" role="alert" aria-live="assertive"></div>
+
+  <form id="loginForm" autocomplete="off">
+    <div class="form-group">
+      <label class="form-label" for="username">Username</label>
+      <input class="form-input" id="username" name="username" type="text" placeholder="Enter your username" required autofocus>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="password">Password</label>
+      <div class="input-wrap">
+        <input class="form-input" id="password" name="password" type="password" placeholder="Enter your password" required>
+        <button type="button" class="toggle-pw" onclick="togglePassword()" title="Show/Hide password">
+          <svg id="eyeIcon" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </div>
+    </div>
+    <button type="submit" class="btn-login" id="btnLogin">Sign In</button>
+  </form>
+
+  <div class="demo-accounts" role="region" aria-label="Demo accounts">
+    <div class="demo-title">Quick access — Demo accounts</div>
+    <div class="demo-chips">
+      <div class="demo-chip chip-admin" onclick="fillDemo('admin','admin123')">
+        admin <span class="chip-role">Admin</span>
+      </div>
+      <div class="demo-chip chip-dev" onclick="fillDemo('developer','dev123')">
+        developer <span class="chip-role">Dev</span>
+      </div>
+      <div class="demo-chip chip-viewer" onclick="fillDemo('viewer','view123')">
+        viewer <span class="chip-role">Viewer</span>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+function togglePassword(){
+  const pw=document.getElementById('password');
+  pw.type = pw.type==='password'?'text':'password';
+}
+function fillDemo(u,p){
+  document.getElementById('username').value=u;
+  document.getElementById('password').value=p;
+  document.getElementById('loginForm').dispatchEvent(new Event('submit',{cancelable:true}));
+}
+document.getElementById('loginForm').addEventListener('submit',async function(e){
+  e.preventDefault();
+  const btn=document.getElementById('btnLogin');
+  const err=document.getElementById('errMsg');
+  btn.disabled=true; btn.textContent='Signing in…';
+  err.classList.remove('visible');
+  try{
+    const res=await fetch('/login',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        username:document.getElementById('username').value.trim(),
+        password:document.getElementById('password').value
+      })
+    });
+    const data=await res.json();
+    if(data.success){
+      window.location.href='/';
+    }else{
+      err.textContent=data.error||'Login failed';
+      err.classList.add('visible');
+    }
+  }catch(ex){
+    err.textContent='Network error — please try again';
+    err.classList.add('visible');
+  }
+  btn.disabled=false; btn.textContent='Sign In';
+});
+</script>
+</body>
+</html>

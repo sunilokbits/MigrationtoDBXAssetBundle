@@ -62,6 +62,25 @@ spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{RECON_CATALOG}`.`{RECON_SCHEMA}`")
 
 recon_full_table = f"`{RECON_CATALOG}`.`{RECON_SCHEMA}`.`{RECON_TABLE}`"
 
+spark.sql(f"""
+    CREATE TABLE IF NOT EXISTS {recon_full_table} (
+        recon_run_id    STRING NOT NULL,
+        pipeline_run_id STRING NOT NULL,
+        job_id          STRING NOT NULL,
+        source_table    STRING NOT NULL,
+        bronze_table    STRING NOT NULL,
+        column_name     STRING NOT NULL,
+        data_type       STRING,
+        source_value    DOUBLE,
+        bronze_value    DOUBLE,
+        variance        DOUBLE,
+        variance_pct    DOUBLE,
+        status          STRING,
+        recon_timestamp TIMESTAMP
+    ) USING DELTA
+""")
+print(f"Table {recon_full_table} ready")
+
 recon_schema_def = StructType([
     StructField("recon_run_id",    StringType(),    False),
     StructField("pipeline_run_id", StringType(),    False),
@@ -77,14 +96,6 @@ recon_schema_def = StructType([
     StructField("status",          StringType(),    True),
     StructField("recon_timestamp", TimestampType(), True),
 ])
-
-try:
-    spark.table(recon_full_table)
-    print(f"Table {recon_full_table} exists")
-except Exception:
-    empty_df = spark.createDataFrame([], schema=recon_schema_def)
-    empty_df.write.format("delta").saveAsTable(recon_full_table)
-    print(f"Created table {recon_full_table}")
 
 # COMMAND ----------
 
@@ -138,12 +149,19 @@ elif ":" in SERVER:
 else:
     _host, _port = SERVER, "1433"
 
-jdbc_url = f"jdbc:sqlserver://{_host}:{_port};databaseName={DATABASE};encrypt={encrypt};trustServerCertificate={trust}"
+jdbc_url = (
+    f"jdbc:sqlserver://{_host}:{_port};databaseName={DATABASE};"
+    f"encrypt={encrypt};trustServerCertificate={trust};"
+    f"loginTimeout=60;socketTimeout=0;selectMethod=cursor"
+)
 jdbc_props = {
     "user":     USERNAME,
     "password": PASSWORD,
     "driver":   "com.microsoft.sqlserver.jdbc.SQLServerDriver",
     "fetchsize": "10000",
+    "queryTimeout": "0",
+    "loginTimeout": "60",
+    "socketTimeout": "0",
 }
 
 # COMMAND ----------

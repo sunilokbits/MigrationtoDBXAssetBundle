@@ -29,6 +29,7 @@ dbutils.widgets.text("catalog", "main", "Target Catalog")
 dbutils.widgets.text("schema", "default", "Target Schema")
 dbutils.widgets.text("landing_path", "/mnt/landing", "Landing Base Path")
 dbutils.widgets.text("tables_json", "[]", "Tables JSON array [{schema, table, incremental_col}]")
+dbutils.widgets.text("max_parallel_tables", "6", "Max parallel table extractions")
 
 # COMMAND ----------
 
@@ -64,15 +65,22 @@ print(f"Tables    : {len(TABLES)}")
 
 # COMMAND ----------
 
-jdbc_url = f"jdbc:sqlserver://{SERVER}:1433;databaseName={DATABASE};encrypt=false;trustServerCertificate=true"
+# selectMethod=cursor → driver streams rows instead of buffering full result
+# loginTimeout=60 (s) ; socketTimeout=0 (no read timeout — large tables won't fail mid-stream)
+jdbc_url = (
+    f"jdbc:sqlserver://{SERVER}:1433;databaseName={DATABASE};"
+    f"encrypt=false;trustServerCertificate=true;"
+    f"loginTimeout=60;socketTimeout=0;selectMethod=cursor"
+)
 
 jdbc_props = {
     "user":     USERNAME,
     "password": PASSWORD,
     "driver":   "com.microsoft.sqlserver.jdbc.SQLServerDriver",
     "fetchsize": "10000",
-    "loginTimeout": "30",
-    "socketTimeout": "300",
+    "queryTimeout": "0",       # no statement timeout
+    "loginTimeout": "60",
+    "socketTimeout": "0",      # disable JDBC socket read timeout
 }
 
 try:
@@ -127,42 +135,70 @@ def save_watermark(catalog, schema, table_name, max_value):
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Extract & Land Data
+# MAGIC ## Extract & Land Data (parallel + single-pass per table)
 
 # COMMAND ----------
 
-results = []
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pyspark.storagelevel import StorageLevel
+
+# Tunables — override via widgets in production
+MAX_PARALLEL_TABLES = int(dbutils.widgets.get("max_parallel_tables") or "6")
+LARGE_TABLE_PARTITIONS = 8  # JDBC parallel partitions for big tables
+
+# Spark perf tuning — set once at session level
+spark.conf.set("spark.sql.adaptive.enabled", "true")
+spark.conf.set("spark.sql.adaptive.coalescePartitions.enabled", "true")
+spark.conf.set("spark.sql.sources.parallelPartitionDiscovery.threshold", "32")
+spark.conf.set("spark.databricks.delta.optimizeWrite.enabled", "true")
+spark.conf.set("spark.databricks.delta.autoCompact.enabled", "true")
+
 run_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-for tbl in TABLES:
+def _read_jdbc_smart(query, partition_col=None, lower=None, upper=None, num_parts=1):
+    """Read via JDBC, optionally with partitioned parallel reads for big tables."""
+    reader = spark.read.format("jdbc").option("url", jdbc_url)
+    for k, v in jdbc_props.items():
+        reader = reader.option(k, v)
+    reader = reader.option("dbtable", query)
+    if partition_col and lower is not None and upper is not None and num_parts > 1:
+        reader = (reader
+                  .option("partitionColumn", partition_col)
+                  .option("lowerBound", str(lower))
+                  .option("upperBound", str(upper))
+                  .option("numPartitions", str(num_parts)))
+    return reader.load()
+
+def _process_table(tbl):
     src_schema = tbl.get("schema", "dbo")
     src_table  = tbl["table"]
     inc_col    = tbl.get("incremental_col", "")
+    part_col   = tbl.get("partition_col", "")  # optional numeric col for parallel read
     full_name  = f"{src_schema}.{src_table}"
     landing_dest = f"{LANDING_PATH}/{src_table}"
     result = {"table": full_name, "status": "pending", "rows": 0}
-
-    print(f"\n{'='*60}")
-    print(f"Extracting: {full_name}")
-    print(f"{'='*60}")
-
     try:
         use_incremental = (LOAD_TYPE == "incremental" and inc_col)
-        watermark = None
+        watermark = get_watermark(CATALOG, SCHEMA, full_name) if use_incremental else None
 
-        if use_incremental:
-            watermark = get_watermark(CATALOG, SCHEMA, full_name)
-            if watermark:
-                print(f"   Incremental from watermark: {inc_col} > '{watermark}'")
-                query = f"(SELECT * FROM [{src_schema}].[{src_table}] WHERE [{inc_col}] > '{watermark}') AS q"
-            else:
-                print(f"   No watermark found — falling back to full load")
-                query = f"[{src_schema}].[{src_table}]"
+        if use_incremental and watermark:
+            query = f"(SELECT * FROM [{src_schema}].[{src_table}] WHERE [{inc_col}] > '{watermark}') AS q"
         else:
-            print(f"   Full load")
             query = f"[{src_schema}].[{src_table}]"
 
-        df = spark.read.jdbc(jdbc_url, query, properties=jdbc_props)
+        # Optional partitioned read for big tables — needs numeric partition_col + bounds
+        if part_col:
+            try:
+                bounds = (spark.read.format("jdbc")
+                          .option("url", jdbc_url).options(**jdbc_props)
+                          .option("dbtable",
+                                  f"(SELECT MIN([{part_col}]) AS lo, MAX([{part_col}]) AS hi FROM [{src_schema}].[{src_table}]) AS b")
+                          .load().collect()[0])
+                df = _read_jdbc_smart(query, part_col, bounds["lo"], bounds["hi"], LARGE_TABLE_PARTITIONS)
+            except Exception:
+                df = _read_jdbc_smart(query)
+        else:
+            df = _read_jdbc_smart(query)
 
         df = (df
               .withColumn("__landing_ts", F.current_timestamp())
@@ -170,30 +206,41 @@ for tbl in TABLES:
               .withColumn("__load_type", F.lit("incremental" if use_incremental else "full"))
               .withColumn("__batch_id", F.lit(run_ts)))
 
-        row_count = df.count()
-        print(f"   Rows extracted: {row_count:,}")
+        # ── Single-pass write: persist once, then count + write + max(watermark) reuse cache
+        df = df.persist(StorageLevel.MEMORY_AND_DISK)
+        try:
+            row_count = df.count()  # triggers JDBC read once → cached
+            # Coalesce tiny results to avoid small-file overhead
+            out_df = df.coalesce(1) if row_count < 100000 else df
+            mode = "overwrite" if (LOAD_TYPE == "full" or not use_incremental) else "append"
+            writer = out_df.write.mode(mode)
+            if mode == "overwrite":
+                writer = writer.option("overwriteSchema", "true")
+            writer.parquet(landing_dest)
 
-        if LOAD_TYPE == "full" or not use_incremental:
-            df.write.mode("overwrite").option("overwriteSchema", "true").parquet(landing_dest)
-            print(f"   Written to {landing_dest} (overwrite)")
-        else:
-            df.write.mode("append").parquet(landing_dest)
-            print(f"   Appended to {landing_dest}")
-
-        if use_incremental and inc_col and row_count > 0:
-            new_wm = df.agg(F.max(F.col(inc_col)).cast("string")).collect()[0][0]
-            if new_wm:
-                save_watermark(CATALOG, SCHEMA, full_name, new_wm)
+            if use_incremental and inc_col and row_count > 0:
+                new_wm = df.agg(F.max(F.col(inc_col)).cast("string")).collect()[0][0]
+                if new_wm:
+                    save_watermark(CATALOG, SCHEMA, full_name, new_wm)
+        finally:
+            df.unpersist()
 
         result["status"] = "success"
         result["rows"]   = row_count
-
+        print(f"[OK]  {full_name:40s}  {row_count:>10,}  -> {landing_dest}")
     except Exception as e:
-        print(f"   FAILED: {e}")
         result["status"] = "failed"
-        result["error"]  = str(e)
+        result["error"]  = str(e)[:300]
+        print(f"[ERR] {full_name:40s}  {str(e)[:200]}")
+    return result
 
-    results.append(result)
+# ── Parallel execution across tables ────────────────────────────────────────
+print(f"Processing {len(TABLES)} tables with parallelism={MAX_PARALLEL_TABLES}...")
+results = []
+with ThreadPoolExecutor(max_workers=MAX_PARALLEL_TABLES) as pool:
+    futs = {pool.submit(_process_table, t): t for t in TABLES}
+    for fut in as_completed(futs):
+        results.append(fut.result())
 
 # COMMAND ----------
 
@@ -225,6 +272,7 @@ exit_payload = json.dumps({
     "total_rows":  total_rows,
     "batch_id":    run_ts,
     "landing_path": LANDING_PATH,
+    "tables":      [r["table"].split(".")[-1] for r in success],
 })
 
 dbutils.notebook.exit(exit_payload)

@@ -117,15 +117,20 @@ elif ":" in SERVER:
 else:
     _host, _port = SERVER, "1433"
 
-jdbc_url = f"jdbc:sqlserver://{_host}:{_port};databaseName={DATABASE};encrypt={encrypt};trustServerCertificate={trust}"
+jdbc_url = (
+    f"jdbc:sqlserver://{_host}:{_port};databaseName={DATABASE};"
+    f"encrypt={encrypt};trustServerCertificate={trust};"
+    f"loginTimeout=60;socketTimeout=0;selectMethod=cursor"
+)
 
 jdbc_props = {
     "user":     USERNAME,
     "password": PASSWORD,
     "driver":   "com.microsoft.sqlserver.jdbc.SQLServerDriver",
     "fetchsize": "10000",
-    "loginTimeout": "30",
-    "socketTimeout": "300",
+    "queryTimeout": "0",
+    "loginTimeout": "60",
+    "socketTimeout": "0",
 }
 
 try:

@@ -41,6 +41,20 @@ except Exception:
 
 TABLE_PREFIX = "bronze_"
 
+# Auto-discover tables from landing zone if TABLE_NAMES is empty
+if not TABLE_NAMES:
+    try:
+        landing_entries = dbutils.fs.ls(LANDING_PATH)
+        TABLE_NAMES = [
+            entry.name.rstrip("/")
+            for entry in landing_entries
+            if entry.isDir() and not entry.name.startswith("_") and not entry.name.startswith(".")
+        ]
+        if TABLE_NAMES:
+            print(f"Auto-discovered {len(TABLE_NAMES)} tables from landing zone: {TABLE_NAMES}")
+    except Exception as e:
+        print(f"Auto-discovery from landing zone failed: {e}")
+
 print(f"Catalog      : {CATALOG}")
 print(f"Schema       : {SCHEMA}")
 print(f"Landing Path : {LANDING_PATH}")

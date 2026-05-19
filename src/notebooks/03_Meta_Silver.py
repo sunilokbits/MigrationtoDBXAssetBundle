@@ -58,18 +58,63 @@ target_config = json.loads(job.get("target_config", "{}") or "{}")
 BRONZE_CATALOG = target_config.get("bronze_catalog", "")
 SILVER_CATALOG = target_config.get("silver_catalog", "")
 TGT_SCHEMA     = target_config.get("target_schema", "")
-MULTI_CATALOG  = bool(BRONZE_CATALOG and SILVER_CATALOG and TGT_SCHEMA)
+
+# ─── Auto-derive silver_catalog if missing/duplicate ──────────────────────────
+# Medallion architecture REQUIRES bronze and silver to be in DIFFERENT catalogs
+# (or at minimum different schemas) to avoid mixing layers and storage duplication.
+def _derive_silver_catalog(bronze_cat: str) -> str:
+    """Derive a silver catalog name from the bronze catalog when none is configured."""
+    if not bronze_cat:
+        return "silver"
+    low = bronze_cat.lower()
+    if "bronze" in low:
+        return bronze_cat.replace("bronze", "silver").replace("BRONZE", "SILVER").replace("Bronze", "Silver")
+    if low.endswith("_brz") or low.endswith("-brz"):
+        return bronze_cat[:-3] + ("_slv" if bronze_cat[-4] == "_" else "-slv")
+    return "silver"
+
+if not SILVER_CATALOG or SILVER_CATALOG == BRONZE_CATALOG:
+    derived = _derive_silver_catalog(BRONZE_CATALOG)
+    print(f"⚠️  silver_catalog not set or equals bronze_catalog — auto-deriving: '{derived}'")
+    SILVER_CATALOG = derived
+
+# Ensure silver catalog + schema exist (no-op if user lacks permission → caught below)
+try:
+    spark.sql(f"CREATE CATALOG IF NOT EXISTS `{SILVER_CATALOG}`")
+    if TGT_SCHEMA:
+        spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{SILVER_CATALOG}`.`{TGT_SCHEMA}`")
+except Exception as _ce:
+    print(f"⚠️  Could not auto-create silver catalog/schema (may need admin): {_ce}")
+
+MULTI_CATALOG  = bool(BRONZE_CATALOG and SILVER_CATALOG and TGT_SCHEMA and BRONZE_CATALOG != SILVER_CATALOG)
 
 if MULTI_CATALOG:
     bronze_table = f"`{BRONZE_CATALOG}`.`{TGT_SCHEMA}`.`{TABLE_NAME}`"
     silver_table = f"`{SILVER_CATALOG}`.`{TGT_SCHEMA}`.`{TABLE_NAME}`"
     DQ_CATALOG   = SILVER_CATALOG
     DQ_SCHEMA    = TGT_SCHEMA
-    spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{SILVER_CATALOG}`.`{TGT_SCHEMA}`")
-    print(f"Multi-catalog mode: {BRONZE_CATALOG}.{TGT_SCHEMA} -> {SILVER_CATALOG}.{TGT_SCHEMA}")
+    print(f"✅ Multi-catalog medallion: {BRONZE_CATALOG}.{TGT_SCHEMA} -> {SILVER_CATALOG}.{TGT_SCHEMA} (no prefix)")
 else:
-    TARGET_CATALOG = target_config.get("catalog", CATALOG)
-    TARGET_SCHEMA  = target_config.get("schema", SCHEMA)
+    # Fallback: use target_config catalog/schema but NEVER the metadata catalog
+    _fallback_cat = target_config.get("catalog", "")
+    _meta_cat = target_config.get("metadata_catalog", CATALOG)
+    if _fallback_cat and _fallback_cat != _meta_cat and _fallback_cat != CATALOG:
+        TARGET_CATALOG = _fallback_cat
+    elif SILVER_CATALOG:
+        TARGET_CATALOG = SILVER_CATALOG
+    elif BRONZE_CATALOG:
+        TARGET_CATALOG = BRONZE_CATALOG
+    else:
+        TARGET_CATALOG = CATALOG
+        print(f"⚠️ WARNING: No silver/bronze_catalog in target_config — falling back to metadata catalog {CATALOG}")
+    _fallback_sch = target_config.get("schema", "")
+    _meta_sch = target_config.get("metadata_schema", SCHEMA)
+    if _fallback_sch and _fallback_sch != _meta_sch and _fallback_sch != SCHEMA:
+        TARGET_SCHEMA = _fallback_sch
+    elif TGT_SCHEMA:
+        TARGET_SCHEMA = TGT_SCHEMA
+    else:
+        TARGET_SCHEMA = SCHEMA
     bronze_table = f"`{TARGET_CATALOG}`.`{TARGET_SCHEMA}`.`bronze_{TABLE_NAME}`"
     silver_table = f"`{TARGET_CATALOG}`.`{TARGET_SCHEMA}`.`silver_{TABLE_NAME}`"
     DQ_CATALOG   = TARGET_CATALOG

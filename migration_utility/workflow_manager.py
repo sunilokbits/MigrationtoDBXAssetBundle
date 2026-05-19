@@ -13,11 +13,15 @@ Manages medallion pipeline jobs with:
 import os
 import uuid
 import json
+import logging
 import threading
 import requests
 import time
 from datetime import datetime
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+logger = logging.getLogger(__name__)
 
 _DEPLOY_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "deployconfig.json")
 
@@ -50,8 +54,198 @@ WATERMARKS = {}                    # table_name → {column, last_value, updated
 PIPELINE_GROUPS = OrderedDict()    # group_id → {table, jobs: [job_ids]}
 SOURCE_TABLES = []                 # discovered source tables
 
+# Fix 5: Secondary index for O(1) lookup by Databricks run id.
+# Maps str(dbr_run_id) -> list of local run_ids. Maintained by
+# _index_run_by_dbr()/_unindex_run_by_dbr() helpers — every write site of
+# JOB_RUNS that assigns a dbr_run_id must call _index_run_by_dbr(). Safe
+# by design: poller falls back to O(n) scan if index entry is missing, so
+# stale/missing index rows never cause incorrect behaviour.
+DBR_RUN_INDEX = {}                 # str(dbr_run_id) -> [run_id, ...]
+
+def _index_run_by_dbr(run_id: str, dbr_run_id):
+    """Register a local run under its Databricks run id (must be called under _lock)."""
+    if not dbr_run_id:
+        return
+    key = str(dbr_run_id)
+    bucket = DBR_RUN_INDEX.setdefault(key, [])
+    if run_id not in bucket:
+        bucket.append(run_id)
+
+def _unindex_run_by_dbr(run_id: str, dbr_run_id=None):
+    """Remove a local run from the index (must be called under _lock)."""
+    if dbr_run_id is not None:
+        keys = [str(dbr_run_id)]
+    else:
+        keys = list(DBR_RUN_INDEX.keys())
+    for k in keys:
+        bucket = DBR_RUN_INDEX.get(k)
+        if not bucket:
+            continue
+        try:
+            bucket.remove(run_id)
+        except ValueError:
+            pass
+        if not bucket:
+            DBR_RUN_INDEX.pop(k, None)
+
+def _runs_for_dbr(dbr_run_str, grp_job_ids):
+    """Return (run_id, run) pairs for the given Databricks run id that belong
+    to the pipeline group's job ids. Uses DBR_RUN_INDEX for O(1) lookup;
+    falls back to O(n) scan of JOB_RUNS if the index is empty/stale.
+    Must be called while holding _lock.
+    """
+    bucket = DBR_RUN_INDEX.get(dbr_run_str)
+    if bucket:
+        pairs = []
+        for rid in bucket:
+            run = JOB_RUNS.get(rid)
+            if run and run["job_id"] in grp_job_ids:
+                pairs.append((rid, run))
+        if pairs:
+            return pairs
+    # Fallback — safety net if index is missing an entry
+    return [(rid, run) for rid, run in JOB_RUNS.items()
+            if str(run.get("dbr_run_id", "")) == dbr_run_str and run["job_id"] in grp_job_ids]
+
 # ── Lock for thread-safe writes ──
-_lock = threading.Lock()
+# Fix 9: Custom Read/Write lock. Backward compatible — using `with _lock:`
+# acquires the WRITER lock (full mutual exclusion, identical to the prior
+# threading.Lock behavior). Readers can opt-in via `with _lock.reader():`
+# to allow concurrent reads while still blocking during writes. Writer
+# preference prevents reader starvation under heavy read load.
+class _RWLock:
+    def __init__(self):
+        self._cond = threading.Condition(threading.Lock())
+        self._readers = 0
+        self._writers_waiting = 0
+        self._writer_active = False
+
+    def acquire_write(self):
+        with self._cond:
+            self._writers_waiting += 1
+            while self._writer_active or self._readers > 0:
+                self._cond.wait()
+            self._writers_waiting -= 1
+            self._writer_active = True
+
+    def release_write(self):
+        with self._cond:
+            self._writer_active = False
+            self._cond.notify_all()
+
+    def acquire_read(self):
+        with self._cond:
+            while self._writer_active or self._writers_waiting > 0:
+                self._cond.wait()
+            self._readers += 1
+
+    def release_read(self):
+        with self._cond:
+            self._readers -= 1
+            if self._readers == 0:
+                self._cond.notify_all()
+
+    # Default context manager = writer (backward compatible with threading.Lock usage)
+    def __enter__(self):
+        self.acquire_write()
+        return self
+    def __exit__(self, exc_type, exc, tb):
+        self.release_write()
+
+    def reader(self):
+        lock = self
+        class _ReaderCtx:
+            def __enter__(self_inner):
+                lock.acquire_read()
+                return lock
+            def __exit__(self_inner, exc_type, exc, tb):
+                lock.release_read()
+        return _ReaderCtx()
+
+_lock = _RWLock()
+
+# ── Fix 8: Cap JOB_RUNS memory — OrderedDict keeps insertion order; oldest
+#           entries evicted once the cap is exceeded. Before eviction, runs
+#           are flushed to Delta so history survives. list_runs() falls back
+#           to Delta query for historical lookups older than the in-memory
+#           window. This prevents unbounded memory growth under high run
+#           volumes (e.g. 10k+ runs over weeks). ──
+_JOB_RUNS_MAX = 500
+
+def _evict_old_runs_if_needed():
+    """Trim JOB_RUNS to _JOB_RUNS_MAX by evicting oldest entries.
+    Caller must hold _lock. Evicted runs are synced to Delta first
+    (best-effort) so they remain queryable via list_runs_from_dbr().
+    """
+    if len(JOB_RUNS) <= _JOB_RUNS_MAX:
+        return
+    overflow = len(JOB_RUNS) - _JOB_RUNS_MAX
+    to_evict = []
+    for rid in list(JOB_RUNS.keys())[:overflow]:
+        to_evict.append((rid, JOB_RUNS[rid]))
+    for rid, run in to_evict:
+        # Preserve in Delta before dropping from memory (best-effort)
+        try:
+            _sync_run_to_dbr(run)
+        except Exception:
+            pass
+        _unindex_run_by_dbr(rid, run.get("dbr_run_id"))
+        JOB_RUNS.pop(rid, None)
+
+
+def list_runs_from_dbr(job_id: str = None, limit: int = 100) -> dict:
+    """Fix 8: query Delta directly for historical runs beyond the in-memory window."""
+    if not _metadata_initialized:
+        return {"success": False, "error": "MetadataFlow not initialized"}
+    where = f" WHERE job_id = {_esc(job_id)}" if job_id else ""
+    cols = ("run_id, job_id, job_name, stage, full_table, load_type, status, "
+            "started_at, completed_at, duration_sec, rows_processed, error_message, dbr_run_id")
+    try:
+        r = _exec_sql(
+            f"SELECT {cols} FROM {_fqn(TBL_RUNS)}{where} "
+            f"ORDER BY started_at DESC LIMIT {int(limit)}"
+        )
+        if r.get("status", {}).get("state") != "SUCCEEDED":
+            return {"success": False, "error": r.get("status", {}).get("error", {}).get("message", "query failed")}
+        cnames = [c["name"] for c in r.get("manifest", {}).get("schema", {}).get("columns", [])]
+        rows = [dict(zip(cnames, row)) for row in r.get("result", {}).get("data_array", []) or []]
+        return {"success": True, "runs": rows, "total": len(rows)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+# ── Fix 10: Bounded semaphore caps concurrent worker threads to prevent thread-storm
+#           during bulk runs (e.g. 100 tables × 3 jobs = 300 threads). Threads acquire
+#           on spawn and release in a try/finally wrapper. max_workers=20 keeps
+#           interactive single-run latency near zero while capping burst load. ──
+_MAX_WORKER_THREADS = 20
+_thread_semaphore = threading.BoundedSemaphore(_MAX_WORKER_THREADS)
+
+def _spawn_worker(target, args=(), kwargs=None, name=None):
+    """Spawn a daemon worker thread guarded by the bounded semaphore.
+    Acquires before start and releases when target() returns or raises.
+    """
+    kwargs = kwargs or {}
+    def _runner():
+        try:
+            target(*args, **kwargs)
+        except Exception:
+            logger.exception("Worker thread %s crashed", name or getattr(target, "__name__", "?"))
+        finally:
+            try:
+                _thread_semaphore.release()
+            except ValueError:
+                pass
+    _thread_semaphore.acquire()
+    t = threading.Thread(target=_runner, name=name, daemon=True)
+    t.start()
+    return t
+
+# ── Pipeline completion callbacks (called from poller thread) ──
+_pipeline_complete_callbacks = []
+
+def on_pipeline_complete(fn):
+    """Register callback fn(group_id, final_status) for when a Databricks run finishes."""
+    _pipeline_complete_callbacks.append(fn)
 
 # ── Databricks connection state (set via init_metadata_flow) ──
 _dbr_host = None
@@ -62,15 +256,15 @@ _dbr_warehouse_id = None
 _metadata_initialized = False
 
 # ── Auto-restore connection state from deployconfig.json on module load ──
-def _restore_from_deploy_config():
-    global _dbr_host, _dbr_token, _dbr_catalog, _dbr_schema, _dbr_warehouse_id, _metadata_initialized
-    dcfg = _load_deploy_config()
-    if dcfg:
-        _dbr_host = _dbr_host or dcfg.get("databricks_host", "").rstrip("/") or None
-        _dbr_token = _dbr_token or dcfg.get("databricks_token") or None
-        _dbr_catalog = _dbr_catalog or dcfg.get("metadata_catalog") or None
-        _dbr_schema = _dbr_schema or dcfg.get("metadata_schema") or None
-        # Try to auto-detect warehouse if we have host+token
+# Fix 7: Warehouse auto-detection now runs in a background daemon thread so
+# module import never blocks on Databricks HTTP (15s timeout). An Event signals
+# when restoration completes for callers that need to wait.
+_config_ready = threading.Event()
+
+def _discover_warehouse_async():
+    """Background worker: discover warehouse via HTTP if not already set."""
+    global _dbr_warehouse_id, _metadata_initialized
+    try:
         if _dbr_host and _dbr_token and not _dbr_warehouse_id:
             try:
                 s = requests.Session()
@@ -88,9 +282,60 @@ def _restore_from_deploy_config():
                         _dbr_warehouse_id = whs[0]["id"]
             except Exception:
                 pass
-        # If we have all needed state, mark as initialized
         if _dbr_host and _dbr_token and _dbr_catalog and _dbr_schema and _dbr_warehouse_id:
             _metadata_initialized = True
+            # Auto-hydrate in-memory stores from Databricks Delta tables
+            _auto_hydrate_from_dbr()
+    finally:
+        _config_ready.set()
+
+
+def _auto_hydrate_from_dbr():
+    """Silently load pipeline/job/watermark data from Databricks into memory.
+
+    Called once after metadata_initialized is set during startup so that the
+    in-memory JOB_REGISTRY, PIPELINE_GROUPS, and WATERMARKS survive app restarts.
+    """
+    try:
+        result = load_metadata_from_dbr()
+        if result.get("success"):
+            loaded = result.get("loaded", {})
+            print(
+                f"✅ Auto-hydrated from Databricks: "
+                f"{loaded.get('pipelines', 0)} pipelines, "
+                f"{loaded.get('jobs', 0)} jobs, "
+                f"{loaded.get('watermarks', 0)} watermarks"
+            )
+        else:
+            print(f"⚠️ Auto-hydration skipped: {result.get('error', 'unknown')}")
+    except Exception as e:
+        print(f"⚠️ Auto-hydration failed (non-blocking): {e}")
+
+def _restore_from_deploy_config():
+    """Fast synchronous portion — load config file and populate in-memory globals.
+    Warehouse discovery (HTTP) is dispatched to a background thread.
+    """
+    global _dbr_host, _dbr_token, _dbr_catalog, _dbr_schema, _dbr_warehouse_id, _metadata_initialized
+    dcfg = _load_deploy_config()
+    if dcfg:
+        _dbr_host = _dbr_host or dcfg.get("databricks_host", "").rstrip("/") or None
+        _dbr_token = _dbr_token or dcfg.get("databricks_token") or None
+        _dbr_catalog = _dbr_catalog or dcfg.get("metadata_catalog") or None
+        _dbr_schema = _dbr_schema or dcfg.get("metadata_schema") or None
+        # If warehouse was persisted in config, use it immediately (no HTTP needed)
+        if not _dbr_warehouse_id:
+            _dbr_warehouse_id = dcfg.get("warehouse_id") or dcfg.get("databricks_warehouse_id") or None
+        # Fast-path: everything present, mark initialized right away
+        if _dbr_host and _dbr_token and _dbr_catalog and _dbr_schema and _dbr_warehouse_id:
+            _metadata_initialized = True
+            _config_ready.set()
+            # Auto-hydrate in background to avoid blocking module import
+            t = threading.Thread(target=_auto_hydrate_from_dbr, name="dbr-auto-hydrate", daemon=True)
+            t.start()
+            return
+    # Slow path — discover warehouse in background
+    t = threading.Thread(target=_discover_warehouse_async, name="dbr-warehouse-discover", daemon=True)
+    t.start()
 
 _restore_from_deploy_config()
 
@@ -174,10 +419,59 @@ def _find_warehouse(session) -> str:
     return None
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  STORAGE CREDENTIAL PRE-VALIDATION  (before DDL)
+# ─────────────────────────────────────────────────────────────────────────────
+def _prevalidate_storage_credentials(session):
+    """Quick-check the configured storage credential (not all of them).
+
+    Only validates the single credential from deployconfig.json to avoid
+    iterating over dozens of unrelated credentials.  Non-fatal.
+    """
+    try:
+        cfg = _load_deploy_config()
+        cred_name = cfg.get("storage_credential_name") or cfg.get("access_connector", "")
+        if not cred_name:
+            return
+
+        resp = session.get(
+            f"{_dbr_host}/api/2.1/unity-catalog/storage-credentials/{cred_name}",
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            logger.warning("Storage credential '%s' not found (%s) — skipping.", cred_name, resp.status_code)
+            return
+
+        cred = resp.json()
+        ami = cred.get("azure_managed_identity", {})
+        connector_id = ami.get("access_connector_id", "")
+        if not connector_id:
+            return
+
+        # Single PATCH attempt — no retries, no sleeps
+        logger.info("Pre-validating storage credential '%s'…", cred_name)
+        patch_resp = session.patch(
+            f"{_dbr_host}/api/2.1/unity-catalog/storage-credentials/{cred_name}",
+            json={
+                "azure_managed_identity": {"access_connector_id": connector_id},
+                "skip_validation": False,
+                "force": True,
+            },
+            timeout=15,
+        )
+        if 200 <= patch_resp.status_code < 300:
+            logger.info("Storage credential '%s' validated OK.", cred_name)
+        else:
+            logger.warning("Credential '%s' validation returned %s — continuing anyway.",
+                           cred_name, patch_resp.status_code)
+    except Exception as e:
+        logger.warning("Storage credential pre-validation skipped: %s", e)
+
+
 def init_metadata_flow(host: str, token: str, catalog: str = "main",
                        schema: str = "default", warehouse_id: str = "") -> dict:
     """
-    Provision the 5 metadata Delta tables in Databricks Unity Catalog.
+    Provision the 5 metadataCalog.
     Tables are created IF NOT EXISTS so calling again is safe.
     """
     global _dbr_host, _dbr_token, _dbr_catalog, _dbr_schema, _dbr_warehouse_id, _metadata_initialized
@@ -196,6 +490,9 @@ def init_metadata_flow(host: str, token: str, catalog: str = "main",
 
     if not _dbr_warehouse_id:
         return {"success": False, "error": "No SQL Warehouse found. Start one in your Databricks workspace."}
+
+    # ── Pre-validate storage credentials to avoid UC_CLOUD_STORAGE_ACCESS_FAILURE ──
+    _prevalidate_storage_credentials(s)
 
     # Ensure schema exists
     _exec_sql(f"CREATE SCHEMA IF NOT EXISTS `{_dbr_catalog}`.`{_dbr_schema}`")
@@ -357,19 +654,41 @@ def init_metadata_flow(host: str, token: str, catalog: str = "main",
 
     results = []
     errors = []
-    for ddl in ddl_statements:
-        r = _exec_sql(ddl)
-        state = r.get("status", {}).get("state", "UNKNOWN")
-        if "error" in r:
-            errors.append(r["error"])
-        elif state == "FAILED":
-            err_msg = r.get("status", {}).get("error", {}).get("message", "DDL failed")
-            errors.append(err_msg)
-        else:
-            results.append(state)
+    # Fix 1: Parallel DDL — all 8 statements use IF NOT EXISTS, so order is irrelevant
+    # and they can run concurrently against the SQL warehouse for ~8x speedup.
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        futures = [ex.submit(_exec_sql, ddl) for ddl in ddl_statements]
+        for fut in as_completed(futures):
+            try:
+                r = fut.result()
+            except Exception as e:
+                errors.append(str(e))
+                continue
+            state = r.get("status", {}).get("state", "UNKNOWN")
+            if "error" in r:
+                errors.append(r["error"])
+            elif state == "FAILED":
+                err_msg = r.get("status", {}).get("error", {}).get("message", "DDL failed")
+                errors.append(err_msg)
+            else:
+                results.append(state)
 
     if errors:
-        return {"success": False, "error": "; ".join(errors), "partial_results": results}
+        # Detect storage access failures and give actionable guidance
+        joined = "; ".join(errors)
+        if "CLOUD_STORAGE_ACCESS_FAILURE" in joined or "AbfsRestOperationException" in joined:
+            return {
+                "success": False,
+                "error": (
+                    "Storage access failed — the Access Connector's RBAC role may still be "
+                    "propagating (takes up to 10 minutes after Deploy Infrastructure). "
+                    "Please wait a few minutes and click Create MetadataFlow again. "
+                    f"Details: {joined[:300]}"
+                ),
+                "partial_results": results,
+                "retry": True,
+            }
+        return {"success": False, "error": joined, "partial_results": results}
 
     _metadata_initialized = True
 
@@ -395,15 +714,34 @@ def get_metadata_status() -> dict:
     if not _dbr_host or not _dbr_token:
         return {"success": True, "initialized": False, "message": "Databricks not connected"}
 
+    tables = [TBL_PIPELINES, TBL_JOBS, TBL_JOBS_HISTORY, TBL_RUNS, TBL_WATERMARKS, TBL_SOURCES, TBL_SCH_CONFIG, TBL_SCH_HISTORY]
     tables_status = {}
-    for tbl in [TBL_PIPELINES, TBL_JOBS, TBL_JOBS_HISTORY, TBL_RUNS, TBL_WATERMARKS, TBL_SOURCES, TBL_SCH_CONFIG, TBL_SCH_HISTORY]:
-        r = _exec_sql(f"SELECT COUNT(*) AS cnt FROM {_fqn(tbl)}")
-        state = r.get("status", {}).get("state", "")
-        if state == "SUCCEEDED":
-            rows = r.get("result", {}).get("data_array", [["0"]])
-            tables_status[tbl] = {"exists": True, "rows": int(rows[0][0])}
-        else:
-            tables_status[tbl] = {"exists": False, "rows": 0}
+
+    # Fix 2: Single UNION ALL query replaces 8 serial COUNTs for ~8x faster dashboard polling.
+    # If the combined query fails (e.g. one table missing), gracefully fall back to per-table queries.
+    union_sql = " UNION ALL ".join(
+        [f"SELECT '{tbl}' AS tbl, COUNT(*) AS cnt FROM {_fqn(tbl)}" for tbl in tables]
+    )
+    r = _exec_sql(union_sql)
+    state = r.get("status", {}).get("state", "")
+    if state == "SUCCEEDED":
+        rows = r.get("result", {}).get("data_array", []) or []
+        row_map = {row[0]: int(row[1]) for row in rows if row and len(row) >= 2}
+        for tbl in tables:
+            if tbl in row_map:
+                tables_status[tbl] = {"exists": True, "rows": row_map[tbl]}
+            else:
+                tables_status[tbl] = {"exists": False, "rows": 0}
+    else:
+        # Fallback: one table may not exist — query each independently
+        for tbl in tables:
+            r = _exec_sql(f"SELECT COUNT(*) AS cnt FROM {_fqn(tbl)}")
+            tstate = r.get("status", {}).get("state", "")
+            if tstate == "SUCCEEDED":
+                trows = r.get("result", {}).get("data_array", [["0"]])
+                tables_status[tbl] = {"exists": True, "rows": int(trows[0][0])}
+            else:
+                tables_status[tbl] = {"exists": False, "rows": 0}
 
     all_exist = all(v["exists"] for v in tables_status.values())
     return {
@@ -576,18 +914,43 @@ def sync_source_tables_to_dbr(tables: list, source_config: dict) -> dict:
         db = source_config.get("database", "")
         _exec_sql(f"DELETE FROM {_fqn(TBL_SOURCES)} WHERE server = {_esc(server)} AND database_name = {_esc(db)}")
 
-        # Batch insert
-        for t in tables:
-            sid = uuid.uuid4().hex[:12]
-            sql = f"""INSERT INTO {_fqn(TBL_SOURCES)} VALUES (
-                {_esc(sid)}, {_esc(source_config.get('source_type', 'sqlserver'))},
-                {_esc(server)}, {_esc(db)},
-                {_esc(t.get('schema', 'dbo'))}, {_esc(t.get('table', ''))},
-                {_esc(t.get('full_name', ''))}, {t.get('col_count', 0)},
-                {t.get('row_estimate', 0)}, current_timestamp()
-            )"""
-            _exec_sql(sql)
-        return {"success": True, "synced": len(tables)}
+        if not tables:
+            return {"success": True, "synced": 0}
+
+        # Fix 4: Single multi-row INSERT replaces N round-trips.
+        # Chunk at 200 tables per statement to keep SQL payload under warehouse limits.
+        src_type = source_config.get('source_type', 'sqlserver')
+        total = 0
+        CHUNK = 200
+        for i in range(0, len(tables), CHUNK):
+            chunk = tables[i:i+CHUNK]
+            rows = []
+            for t in chunk:
+                sid = uuid.uuid4().hex[:12]
+                rows.append(
+                    f"({_esc(sid)}, {_esc(src_type)}, {_esc(server)}, {_esc(db)}, "
+                    f"{_esc(t.get('schema','dbo'))}, {_esc(t.get('table',''))}, "
+                    f"{_esc(t.get('full_name',''))}, {int(t.get('col_count',0) or 0)}, "
+                    f"{int(t.get('row_estimate',0) or 0)}, current_timestamp())"
+                )
+            sql = f"INSERT INTO {_fqn(TBL_SOURCES)} VALUES " + ", ".join(rows)
+            r = _exec_sql(sql)
+            if r.get("status", {}).get("state") == "SUCCEEDED":
+                total += len(chunk)
+            else:
+                # Fall back to per-row INSERT for this chunk if batch failed
+                for t in chunk:
+                    sid = uuid.uuid4().hex[:12]
+                    fallback = f"""INSERT INTO {_fqn(TBL_SOURCES)} VALUES (
+                        {_esc(sid)}, {_esc(src_type)},
+                        {_esc(server)}, {_esc(db)},
+                        {_esc(t.get('schema', 'dbo'))}, {_esc(t.get('table', ''))},
+                        {_esc(t.get('full_name', ''))}, {int(t.get('col_count', 0) or 0)},
+                        {int(t.get('row_estimate', 0) or 0)}, current_timestamp()
+                    )"""
+                    _exec_sql(fallback)
+                total += len(chunk)
+        return {"success": True, "synced": total}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -611,6 +974,12 @@ def load_metadata_from_dbr() -> dict:
             for row in r.get("result", {}).get("data_array", []):
                 rec = dict(zip(cols, row))
                 gid = rec["group_id"]
+                src_cfg = {}
+                tgt_cfg = {}
+                try: src_cfg = json.loads(rec.get("source_config") or "{}")
+                except: pass
+                try: tgt_cfg = json.loads(rec.get("target_config") or "{}")
+                except: pass
                 with _lock:
                     PIPELINE_GROUPS[gid] = {
                         "group_id": gid,
@@ -621,6 +990,8 @@ def load_metadata_from_dbr() -> dict:
                         "watermark_column": rec.get("watermark_column", ""),
                         "job_ids": [],
                         "status": rec.get("status", "created"),
+                        "source_config": src_cfg,
+                        "target_config": tgt_cfg,
                         "created_at": rec.get("created_at", ""),
                     }
                 loaded["pipelines"] += 1
@@ -668,6 +1039,12 @@ def load_metadata_from_dbr() -> dict:
                         PIPELINE_GROUPS[gid]["job_ids"].append(jid)
                 loaded["jobs"] += 1
 
+        # Infer pipeline_mode from job stages (DLT pipelines have dlt_bronze_silver stage)
+        with _lock:
+            for gid, grp in PIPELINE_GROUPS.items():
+                stages = {JOB_REGISTRY[jid].get("stage", "") for jid in grp.get("job_ids", []) if jid in JOB_REGISTRY}
+                grp["pipeline_mode"] = "dlt" if "dlt_bronze_silver" in stages else "standard"
+
         # Load watermarks
         r = _exec_sql(f"SELECT * FROM {_fqn(TBL_WATERMARKS)}")
         if r.get("status", {}).get("state") == "SUCCEEDED":
@@ -683,6 +1060,42 @@ def load_metadata_from_dbr() -> dict:
                     }
                 loaded["watermarks"] += 1
 
+        # Load run history — Fix 6: skip logs column (lazy-loaded on demand)
+        run_cols_no_logs = (
+            "run_id, job_id, job_name, stage, full_table, load_type, "
+            "watermark_column, watermark_value, status, started_at, completed_at, "
+            "duration_sec, rows_processed, error_message, dbr_run_id"
+        )
+        r = _exec_sql(f"SELECT {run_cols_no_logs} FROM {_fqn(TBL_RUNS)} ORDER BY started_at DESC LIMIT 200")
+        if r.get("status", {}).get("state") == "SUCCEEDED":
+            cols = [c["name"] for c in r.get("manifest", {}).get("schema", {}).get("columns", [])]
+            for row in r.get("result", {}).get("data_array", []):
+                rec = dict(zip(cols, row))
+                rid = rec["run_id"]
+                run_entry = {
+                    "run_id":           rid,
+                    "job_id":           rec.get("job_id", ""),
+                    "job_name":         rec.get("job_name", ""),
+                    "stage":            rec.get("stage", ""),
+                    "full_table":       rec.get("full_table", ""),
+                    "load_type":        rec.get("load_type", ""),
+                    "watermark_column": rec.get("watermark_column", ""),
+                    "watermark_value":  rec.get("watermark_value"),
+                    "status":           rec.get("status", ""),
+                    "started_at":       rec.get("started_at", ""),
+                    "completed_at":     rec.get("completed_at"),
+                    "duration_sec":     rec.get("duration_sec"),
+                    "rows_processed":   int(rec.get("rows_processed", 0) or 0),
+                    "error":            rec.get("error_message"),
+                    "dbr_run_id":       rec.get("dbr_run_id"),
+                    "logs":             [],
+                    "logs_loaded":      False,
+                }
+                with _lock:
+                    JOB_RUNS[rid] = run_entry
+                    _index_run_by_dbr(rid, run_entry.get("dbr_run_id"))
+                loaded["runs"] += 1
+
         return {"success": True, "loaded": loaded}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -691,8 +1104,99 @@ def load_metadata_from_dbr() -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 #  FULL SYNC — flush all in-memory data to Databricks
 # ─────────────────────────────────────────────────────────────────────────────
+# Fix 3: async task registry — callers dispatch sync via start_full_sync_to_dbr()
+# and poll get_full_sync_status(task_id). Synchronous full_sync_to_dbr() remains
+# for backward compatibility (tests, CLI, scripted callers).
+_sync_tasks = {}        # task_id -> {status, started_at, completed_at, synced, error, progress}
+_sync_tasks_lock = threading.Lock()
+_SYNC_TASKS_MAX = 20    # keep last N tasks only
+
+def _run_full_sync(task_id: str):
+    """Worker: perform full sync, updating task state in _sync_tasks."""
+    def _set(**kw):
+        with _sync_tasks_lock:
+            if task_id in _sync_tasks:
+                _sync_tasks[task_id].update(kw)
+
+    synced = {"pipelines": 0, "jobs": 0, "runs": 0, "watermarks": 0}
+    try:
+        if not _metadata_initialized:
+            _set(status="failed", error="MetadataFlow not initialized",
+                 completed_at=datetime.now().isoformat())
+            return
+        _set(status="running", progress="pipelines")
+        for gid, grp in list(PIPELINE_GROUPS.items()):
+            try:
+                _sync_pipeline_to_dbr(grp)
+                synced["pipelines"] += 1
+            except Exception as e:
+                logger.warning("full_sync pipeline %s failed: %s", gid, e)
+        _set(progress="jobs", synced=dict(synced))
+        for jid, job in list(JOB_REGISTRY.items()):
+            try:
+                _sync_job_to_dbr(job)
+                synced["jobs"] += 1
+            except Exception as e:
+                logger.warning("full_sync job %s failed: %s", jid, e)
+        _set(progress="runs", synced=dict(synced))
+        for rid, run in list(JOB_RUNS.items()):
+            try:
+                _sync_run_to_dbr(run)
+                synced["runs"] += 1
+            except Exception as e:
+                logger.warning("full_sync run %s failed: %s", rid, e)
+        _set(progress="watermarks", synced=dict(synced))
+        for tbl, wm in list(WATERMARKS.items()):
+            try:
+                _sync_watermark_to_dbr(tbl, wm)
+                synced["watermarks"] += 1
+            except Exception as e:
+                logger.warning("full_sync watermark %s failed: %s", tbl, e)
+        _set(status="succeeded", progress="done", synced=synced,
+             completed_at=datetime.now().isoformat())
+    except Exception as e:
+        logger.exception("full_sync task %s crashed", task_id)
+        _set(status="failed", error=str(e), synced=synced,
+             completed_at=datetime.now().isoformat())
+
+
+def start_full_sync_to_dbr() -> dict:
+    """Fix 3: dispatch a full sync in the background. Returns task_id for polling."""
+    if not _metadata_initialized:
+        return {"success": False, "error": "MetadataFlow not initialized"}
+    task_id = f"sync-{uuid.uuid4().hex[:12]}"
+    with _sync_tasks_lock:
+        # Trim oldest
+        if len(_sync_tasks) >= _SYNC_TASKS_MAX:
+            oldest = sorted(_sync_tasks.items(), key=lambda kv: kv[1].get("started_at", ""))[0][0]
+            _sync_tasks.pop(oldest, None)
+        _sync_tasks[task_id] = {
+            "task_id":      task_id,
+            "status":       "queued",
+            "started_at":   datetime.now().isoformat(),
+            "completed_at": None,
+            "synced":       {"pipelines": 0, "jobs": 0, "runs": 0, "watermarks": 0},
+            "progress":     "queued",
+            "error":        None,
+        }
+    _spawn_worker(_run_full_sync, args=(task_id,), name=f"full-sync-{task_id}")
+    return {"success": True, "task_id": task_id, "status": "queued"}
+
+
+def get_full_sync_status(task_id: str) -> dict:
+    """Fix 3: poll status of a background full-sync task."""
+    with _sync_tasks_lock:
+        t = _sync_tasks.get(task_id)
+        if not t:
+            return {"success": False, "error": f"Task '{task_id}' not found"}
+        return {"success": True, "task": dict(t)}
+
+
 def full_sync_to_dbr() -> dict:
-    """Write all in-memory metadata to Databricks (for bulk sync)."""
+    """Write all in-memory metadata to Databricks (for bulk sync).
+    Synchronous version — blocks caller until complete. Prefer
+    start_full_sync_to_dbr() for HTTP callers to avoid request timeout.
+    """
     if not _metadata_initialized:
         return {"success": False, "error": "MetadataFlow not initialized"}
     synced = {"pipelines": 0, "jobs": 0, "runs": 0, "watermarks": 0}
@@ -955,6 +1459,33 @@ def create_pipeline_for_table(
     """
     full_table = f"{table_schema}.{table_name}"
 
+    # ── Validate catalogs exist on Databricks before creating pipeline ──
+    tc = target_config or {}
+    catalogs_to_check = set()
+    for key in ("volumes_catalog", "bronze_catalog", "silver_catalog", "catalog"):
+        cat = tc.get(key, "")
+        if cat:
+            catalogs_to_check.add(cat)
+    if catalogs_to_check and _metadata_initialized:
+        try:
+            from unity_catalog_executor import execute_sql
+            existing_cats_df = execute_sql("SHOW CATALOGS", max_wait=30)
+            if existing_cats_df and existing_cats_df.get("success"):
+                rows = existing_cats_df.get("data", [])
+                existing_names = {r[0].lower() for r in rows if r}
+                missing = [c for c in catalogs_to_check if c.lower() not in existing_names]
+                if missing:
+                    return {
+                        "success": False,
+                        "error": (
+                            f"Catalog(s) {missing} not found on Databricks. "
+                            "Create them first or check your target_config."
+                        ),
+                    }
+        except Exception as e:
+            # Non-blocking: log warning but continue
+            print(f"⚠️ Catalog validation skipped: {e}")
+
     # ── Deduplicate: archive existing jobs for this table ──
     archived_ids = _archive_existing_jobs(table_name, reason="load_type_change")
 
@@ -964,6 +1495,45 @@ def create_pipeline_for_table(
     source_config = source_config or {}
     target_config = target_config or {}
     primary_keys  = primary_keys or []
+
+    # ── Auto-populate multi-catalog keys if missing ──
+    # The frontend may not always send bronze_catalog / silver_catalog /
+    # volumes_catalog / target_schema.  First try SHOW CATALOGS for real
+    # validation, then fall back to deployconfig.json defaults.
+    if not target_config.get("bronze_catalog"):
+        _auto_populated = False
+        if _metadata_initialized:
+            try:
+                from unity_catalog_executor import execute_sql
+                cats_resp = execute_sql("SHOW CATALOGS", max_wait=20)
+                if cats_resp and cats_resp.get("success"):
+                    cat_names = {r[0].lower() for r in cats_resp.get("data", []) if r}
+                    if "bronze" in cat_names:
+                        target_config.setdefault("bronze_catalog", "bronze")
+                    if "silver" in cat_names:
+                        target_config.setdefault("silver_catalog", "silver")
+                    if "dev_volumes" in cat_names:
+                        target_config.setdefault("volumes_catalog", "dev_volumes")
+                    _auto_populated = True
+            except Exception as _ac_err:
+                logger.warning("Could not auto-populate from SHOW CATALOGS: %s", _ac_err)
+
+        # Fallback: read catalog names from deployconfig.json
+        if not _auto_populated or not target_config.get("bronze_catalog"):
+            _dcfg = _load_deploy_config()
+            _dcfg_cats = _dcfg.get("catalogs", {})
+            for _cat_name in ("bronze", "silver", "dev_volumes"):
+                if _cat_name in _dcfg_cats:
+                    _key = "volumes_catalog" if _cat_name == "dev_volumes" else f"{_cat_name}_catalog"
+                    target_config.setdefault(_key, _cat_name)
+
+        # Always set target_schema from table_schema if not present
+        if not target_config.get("target_schema") and table_schema:
+            target_config["target_schema"] = table_schema
+
+        logger.info("Auto-populated multi-catalog keys: bronze=%s silver=%s volumes=%s schema=%s",
+                 target_config.get("bronze_catalog"), target_config.get("silver_catalog"),
+                 target_config.get("volumes_catalog"), target_config.get("target_schema"))
 
     # Inject CDC config into source_config for downstream notebooks
     if cdc_mode and cdc_mode != "watermark":
@@ -1054,23 +1624,33 @@ def create_pipeline_for_table(
 #  BULK CREATE PIPELINES
 # ─────────────────────────────────────────────────────────────────────────────
 def create_pipelines_bulk(
-    tables: list,           # [{schema, table, load_type, watermark_column}, ...]
+    tables: list,           # [{schema, table, load_type, watermark_column, target_catalog, target_schema}, ...]
     source_config: dict = None,
     target_config: dict = None,
     pipeline_mode: str = "standard",
     cdc_mode: str = "watermark",
     primary_keys: list = None,
 ) -> dict:
-    """Create pipeline groups for multiple tables at once."""
+    """Create pipeline groups for multiple tables at once.
+
+    Each table entry may include ``target_catalog`` and ``target_schema`` for
+    per-table Databricks schema mapping.  When present, they override the
+    shared target_config values for that specific table's pipeline.
+    """
     results = []
     for t in tables:
+        # Build per-table target config — only override target_schema
+        tc = dict(target_config or {})
+        if t.get("target_schema"):
+            tc["target_schema"] = t["target_schema"]
+
         r = create_pipeline_for_table(
             table_schema=t.get("schema", "dbo"),
             table_name=t.get("table", ""),
             load_type=t.get("load_type", "full"),
             watermark_column=t.get("watermark_column", ""),
             source_config=source_config,
-            target_config=target_config,
+            target_config=tc,
             pipeline_mode=pipeline_mode,
             cdc_mode=cdc_mode,
             primary_keys=t.get("primary_keys", primary_keys or []),
@@ -1129,6 +1709,116 @@ def list_pipeline_groups() -> dict:
             "status": overall,
         })
     return {"success": True, "groups": groups, "total": len(groups)}
+
+
+def list_pipeline_groups_live() -> dict:
+    """Query pipeline/job status directly from Databricks metadata tables (real-time)."""
+    if not _metadata_initialized:
+        # Fallback to in-memory if not connected
+        return list_pipeline_groups()
+
+    try:
+        # Query pipelines with their jobs in a single JOIN
+        sql = f"""
+            SELECT
+                p.group_id, p.table_schema, p.table_name, p.full_table,
+                p.load_type, p.watermark_column, p.status AS pipeline_status,
+                p.source_config, p.target_config, p.created_at AS pipeline_created_at,
+                p.updated_at AS pipeline_updated_at,
+                j.job_id, j.job_name, j.stage, j.status AS job_status,
+                j.last_run_id, j.last_run_at, j.last_status,
+                j.run_count, j.fail_count, j.enabled, j.job_order, j.updated_at AS job_updated_at
+            FROM {_fqn(TBL_PIPELINES)} p
+            LEFT JOIN {_fqn(TBL_JOBS)} j ON p.group_id = j.group_id
+            ORDER BY p.created_at, j.job_order
+        """
+        r = _exec_sql(sql)
+        state = r.get("status", {}).get("state", "")
+        if state != "SUCCEEDED":
+            logger.warning("list_pipeline_groups_live SQL failed, falling back to memory")
+            return list_pipeline_groups()
+
+        cols = [c["name"] for c in r.get("manifest", {}).get("schema", {}).get("columns", [])]
+        rows = r.get("result", {}).get("data_array", [])
+
+        # Build group dict
+        groups_map = OrderedDict()
+        for row in rows:
+            rec = dict(zip(cols, row))
+            gid = rec["group_id"]
+            if gid not in groups_map:
+                src_cfg = {}
+                tgt_cfg = {}
+                try: src_cfg = json.loads(rec.get("source_config") or "{}")
+                except: pass
+                try: tgt_cfg = json.loads(rec.get("target_config") or "{}")
+                except: pass
+                groups_map[gid] = {
+                    "group_id": gid,
+                    "table_schema": rec.get("table_schema", ""),
+                    "table_name": rec.get("table_name", ""),
+                    "full_table": rec.get("full_table", ""),
+                    "load_type": rec.get("load_type", "full"),
+                    "watermark_column": rec.get("watermark_column", ""),
+                    "status": rec.get("pipeline_status", "created"),
+                    "source_config": src_cfg,
+                    "target_config": tgt_cfg,
+                    "created_at": rec.get("pipeline_created_at", ""),
+                    "updated_at": rec.get("pipeline_updated_at", ""),
+                    "job_ids": [],
+                    "jobs": [],
+                }
+
+            # Add job if present
+            jid = rec.get("job_id")
+            if jid:
+                job = {
+                    "job_id": jid,
+                    "job_name": rec.get("job_name", ""),
+                    "stage": rec.get("stage", ""),
+                    "group_id": gid,
+                    "status": rec.get("job_status", "created"),
+                    "last_run_id": rec.get("last_run_id"),
+                    "last_run_at": rec.get("last_run_at"),
+                    "last_status": rec.get("last_status"),
+                    "run_count": int(rec.get("run_count", 0) or 0),
+                    "fail_count": int(rec.get("fail_count", 0) or 0),
+                    "enabled": str(rec.get("enabled", "true")).lower() in ("true", "1", "yes"),
+                    "order": int(rec.get("job_order", 1) or 1),
+                    "updated_at": rec.get("job_updated_at", ""),
+                }
+                groups_map[gid]["job_ids"].append(jid)
+                groups_map[gid]["jobs"].append(job)
+
+        # Compute overall status + pipeline_mode + last_activity
+        groups = []
+        for gid, grp in groups_map.items():
+            statuses = [j["status"] for j in grp["jobs"]]
+            if any(s == "failed" for s in statuses):
+                overall = "failed"
+            elif all(s == "success" for s in statuses):
+                overall = "success"
+            elif any(s == "running" for s in statuses):
+                overall = "running"
+            else:
+                overall = "created"
+            grp["status"] = overall
+
+            # Determine pipeline_mode from stages
+            stages = {j.get("stage", "") for j in grp["jobs"]}
+            grp["pipeline_mode"] = "dlt" if "dlt_bronze_silver" in stages else "standard"
+
+            # Last activity timestamp (most recent last_run_at across jobs)
+            run_times = [j["last_run_at"] for j in grp["jobs"] if j.get("last_run_at")]
+            grp["last_activity"] = max(run_times) if run_times else grp.get("updated_at") or grp.get("created_at") or ""
+
+            groups.append(grp)
+
+        return {"success": True, "groups": groups, "total": len(groups)}
+
+    except Exception as e:
+        logger.error(f"list_pipeline_groups_live error: {e}")
+        return list_pipeline_groups()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1196,6 +1886,7 @@ def delete_job(job_id: str) -> dict:
         # Remove related runs
         run_ids_to_remove = [rid for rid, r in JOB_RUNS.items() if r["job_id"] == job_id]
         for rid in run_ids_to_remove:
+            _unindex_run_by_dbr(rid, JOB_RUNS[rid].get("dbr_run_id"))
             del JOB_RUNS[rid]
 
     _delete_job_from_dbr(job_id)
@@ -1220,6 +1911,7 @@ def delete_pipeline_group(group_id: str) -> dict:
             # Remove runs
             run_ids = [rid for rid, r in JOB_RUNS.items() if r["job_id"] == jid]
             for rid in run_ids:
+                _unindex_run_by_dbr(rid, JOB_RUNS[rid].get("dbr_run_id"))
                 del JOB_RUNS[rid]
         del PIPELINE_GROUPS[group_id]
 
@@ -1282,22 +1974,26 @@ def run_job(job_id: str, force_full: bool = False) -> dict:
         job["last_run_at"] = ts
         job["status"] = "running"
         job["run_count"] += 1
+        _evict_old_runs_if_needed()
 
     # Sync run start to Databricks
     _sync_run_to_dbr(run)
     _sync_job_to_dbr(job)
 
-    # Start background execution
-    t = threading.Thread(target=_execute_job_run, args=(run_id, job_id), daemon=True)
-    t.start()
+    # Start background execution (Fix 10: bounded by _thread_semaphore)
+    _spawn_worker(_execute_job_run, args=(run_id, job_id), name=f"job-run-{run_id}")
 
     return {"success": True, "run_id": run_id, "run": run}
 
 
 def _execute_job_run(run_id: str, job_id: str):
-    """Background execution of a job run (simulated)."""
+    """Background execution of a job run via Databricks notebook.
+
+    Submits the appropriate metadata-driven notebook on Databricks and
+    polls for completion. Falls back to marking the run as failed with
+    a clear error when Databricks credentials are missing.
+    """
     import time
-    import random
 
     run = JOB_RUNS.get(run_id)
     job = JOB_REGISTRY.get(job_id)
@@ -1307,107 +2003,264 @@ def _execute_job_run(run_id: str, job_id: str):
     try:
         ts = datetime.now().isoformat()
         stage = job["stage"]
+
+        # ── Resolve Databricks connection ──
+        dcfg = _load_deploy_config()
+        host  = _dbr_host or dcfg.get("databricks_host", "")
+        token = _dbr_token or dcfg.get("databricks_token", "")
+        cat   = _dbr_catalog or dcfg.get("metadata_catalog", "") or "main"
+        sch   = _dbr_schema or dcfg.get("metadata_schema", "") or "default"
+        ws    = _notebooks_workspace_path or "/Shared/MetadataPipeline"
+        password = dcfg.get("source", {}).get("password", "") if dcfg else ""
+
+        if not host or not token:
+            raise RuntimeError(
+                "Databricks not connected — use 'Run on Databricks' from Pipeline Studio "
+                "or initialise MetadataFlow first."
+            )
+
+        from databricks_connector import DatabricksConnector
+        import base64
+        connector = DatabricksConnector(host, token)
+
+        # Map stage → notebook path
+        # NOTE: dlt_bronze_silver must run the ORCHESTRATOR (00_Meta_Orchestrator)
+        # which calls the DLT REST API internally.  The 02_Meta_DLT_Pipeline
+        # notebook uses `import dlt` and can ONLY execute inside the DLT
+        # runtime — running it directly on a cluster causes
+        # NoSuchElementException: None.get.
+        stage_nb_map = {
+            "extract":           f"{ws}/01_Meta_Extract",
+            "landing_to_bronze": f"{ws}/02_Meta_Bronze",
+            "bronze_to_silver":  f"{ws}/03_Meta_Silver",
+            "dlt_bronze_silver": f"{ws}/00_Meta_Orchestrator",
+        }
+        nb_path = stage_nb_map.get(stage)
+        if not nb_path:
+            raise RuntimeError(f"Unknown pipeline stage '{stage}' — no notebook mapping")
+
+        pwd_b64 = base64.b64encode((password or "").encode("utf-8")).decode("ascii")
         tc = job.get("target_config") or {}
-        vol_cat = tc.get("volumes_catalog", "")
-        brz_cat = tc.get("bronze_catalog", "")
-        slv_cat = tc.get("silver_catalog", "")
-        tgt_sch = tc.get("target_schema", "")
-        multi_cat = bool(vol_cat and brz_cat and slv_cat)
 
-        # Simulate stage-specific processing
-        if stage == "extract":
-            run["logs"].append(f"[{ts}] 🔌 Connecting to source database…")
-            time.sleep(1)
-            run["logs"].append(f"[{ts}] ✅ JDBC connection established")
-            time.sleep(0.5)
-            rows = random.randint(1000, 50000)
-            run["logs"].append(f"[{ts}] 📥 Extracting data from [{job['table_schema']}].[{job['table_name']}]…")
-            time.sleep(1.5)
-            run["logs"].append(f"[{ts}] 📊 Rows extracted: {rows:,}")
-            if multi_cat:
-                landing_dest = f"/Volumes/{vol_cat}/{tgt_sch}/landing/{job['table_name']}"
-                run["logs"].append(f"[{ts}] 💾 Writing to UC Volumes: {landing_dest}")
-            else:
-                run["logs"].append(f"[{ts}] 💾 Writing to landing zone (Parquet)…")
-            time.sleep(1)
-            run["rows_processed"] = rows
-            if multi_cat:
-                run["logs"].append(f"[{ts}] ✅ Extract → {vol_cat} complete")
-            else:
-                run["logs"].append(f"[{ts}] ✅ Landing zone write complete")
+        # ── Fallback: if target_config is empty (app restarted, JOB_REGISTRY
+        #    lost), restore it from wf_job_metadata on Databricks. ──
+        if not tc.get("bronze_catalog") and host and token:
+            try:
+                _wh_id = None
+                _wh_resp = requests.get(
+                    f"{host}/api/2.0/sql/warehouses",
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=15,
+                )
+                for _w in (_wh_resp.json() or {}).get("warehouses", []):
+                    if _w.get("state") in ("RUNNING", "STARTING"):
+                        _wh_id = _w["id"]; break
+                if not _wh_id:
+                    for _w in (_wh_resp.json() or {}).get("warehouses", []):
+                        _wh_id = _w["id"]; break
+                if _wh_id:
+                    _grp = job.get("group_id", "")
+                    _sql = (
+                        f"SELECT target_config FROM `{cat}`.`{sch}`.wf_job_metadata "
+                        f"WHERE group_id = '{_grp}' AND target_config IS NOT NULL "
+                        f"AND LENGTH(TRIM(target_config)) > 2 LIMIT 1"
+                    )
+                    _sr = requests.post(
+                        f"{host}/api/2.0/sql/statements",
+                        headers={"Authorization": f"Bearer {token}",
+                                 "Content-Type": "application/json"},
+                        json={"warehouse_id": _wh_id, "statement": _sql,
+                              "wait_timeout": "30s"},
+                        timeout=45,
+                    )
+                    _sj = _sr.json()
+                    _rows = (_sj.get("result", {}).get("data_array") or [])
+                    if _rows:
+                        tc = json.loads(_rows[0][0] or "{}")
+                        logger.info("_execute_job_run: restored target_config from "
+                                 "wf_job_metadata for group %s", _grp)
+            except Exception as _fbe:
+                logger.warning("_execute_job_run: target_config fallback failed: %s", _fbe)
 
-        elif stage == "landing_to_bronze":
-            if multi_cat:
-                run["logs"].append(f"[{ts}] 📂 Reading from {vol_cat} UC Volumes…")
-            else:
-                run["logs"].append(f"[{ts}] 📂 Reading from landing zone…")
-            time.sleep(1)
-            rows = random.randint(1000, 50000)
-            run["logs"].append(f"[{ts}] 🔄 Applying schema enforcement…")
-            time.sleep(0.5)
-            run["logs"].append(f"[{ts}] 📋 Adding audit columns (__bronze_ts, __source, __batch_id)…")
-            time.sleep(0.5)
-            if multi_cat:
-                run["logs"].append(f"[{ts}] 💾 Writing to {brz_cat}.{tgt_sch}.{job['table_name']} (Bronze Delta)…")
-            else:
-                run["logs"].append(f"[{ts}] 💾 Writing to Bronze layer (Delta)…")
-            time.sleep(1)
-            run["rows_processed"] = rows
-            if multi_cat:
-                run["logs"].append(f"[{ts}] ✅ {vol_cat} → {brz_cat}.{tgt_sch} complete ({rows:,} rows)")
-            else:
-                run["logs"].append(f"[{ts}] ✅ Bronze layer write complete ({rows:,} rows)")
+        landing_path = tc.get("landing_path", "/mnt/landing")
 
-        elif stage == "bronze_to_silver":
-            if multi_cat:
-                run["logs"].append(f"[{ts}] 📂 Reading from {brz_cat}.{tgt_sch}.{job['table_name']}…")
-            else:
-                run["logs"].append(f"[{ts}] 📂 Reading from Bronze layer…")
-            time.sleep(1)
-            rows = random.randint(800, 45000)
-            run["logs"].append(f"[{ts}] 🧹 Applying data quality checks…")
-            time.sleep(0.5)
-            run["logs"].append(f"[{ts}] 🔄 Deduplication and cleansing…")
-            time.sleep(0.5)
-            run["logs"].append(f"[{ts}] 📋 Applying business transformations…")
-            time.sleep(0.5)
-            rejected = random.randint(0, int(rows * 0.02))
-            run["logs"].append(f"[{ts}] ⚠️ {rejected} rows rejected by quality checks")
-            if multi_cat:
-                run["logs"].append(f"[{ts}] 💾 Writing to {slv_cat}.{tgt_sch}.{job['table_name']} (Silver Delta)…")
-            else:
-                run["logs"].append(f"[{ts}] 💾 Writing to Silver layer (Delta)…")
-            time.sleep(1)
-            run["rows_processed"] = rows - rejected
-            if multi_cat:
-                run["logs"].append(f"[{ts}] ✅ {brz_cat}.{tgt_sch} → {slv_cat}.{tgt_sch} complete ({rows - rejected:,} rows)")
-            else:
-                run["logs"].append(f"[{ts}] ✅ Silver layer write complete ({rows - rejected:,} rows)")
+        nb_params = {
+            "job_id":       job_id,
+            "run_id":       run_id,
+            "load_type":    job.get("load_type", "full"),
+            "password_b64": pwd_b64,
+            "catalog":      cat,
+            "schema":       sch,
+            "landing_path": landing_path,
+        }
 
-        # Update watermark if incremental
-        if job["load_type"] == "incremental" and job.get("watermark_column"):
-            new_wm = datetime.now().isoformat()
-            with _lock:
-                WATERMARKS[job["full_table"]] = {
-                    "column":     job["watermark_column"],
-                    "last_value": new_wm,
-                    "updated_at": datetime.now().isoformat(),
-                }
-            run["logs"].append(f"[{ts}] 💾 Watermark updated: {job['watermark_column']} → {new_wm}")
-            _sync_watermark_to_dbr(job["full_table"], WATERMARKS[job["full_table"]])
+        # DLT orchestrator needs additional params (group_id, workspace_path,
+        # target catalog/schema) so it can find the correct pipeline and
+        # configure the DLT output correctly.
+        if stage == "dlt_bronze_silver":
+            grp_id = job.get("group_id", "")
+            nb_params["group_id"]       = grp_id
+            nb_params["workspace_path"] = ws
+            nb_params["volumes_catalog"] = tc.get("volumes_catalog", "")
+            nb_params["bronze_catalog"]  = tc.get("bronze_catalog", "")
+            nb_params["silver_catalog"]  = tc.get("silver_catalog", "")
+            nb_params["target_schema"]   = tc.get("target_schema", "")
 
-        # Mark success
+            # ── Hard validation: bronze_catalog MUST be set for DLT ──
+            # If still empty after all fallbacks, try deployconfig.json
+            if not nb_params["bronze_catalog"]:
+                _dcfg = _load_deploy_config()
+                _dcfg_cats = _dcfg.get("catalogs", {})
+                if "bronze" in _dcfg_cats:
+                    nb_params["bronze_catalog"] = "bronze"
+                if "silver" in _dcfg_cats:
+                    nb_params["silver_catalog"] = "silver"
+                if "dev_volumes" in _dcfg_cats:
+                    nb_params["volumes_catalog"] = "dev_volumes"
+                logger.warning("DLT params recovered from deployconfig.json: bronze=%s silver=%s",
+                            nb_params["bronze_catalog"], nb_params["silver_catalog"])
+            if not nb_params["target_schema"]:
+                nb_params["target_schema"] = job.get("table_schema", "") or sch
+
+            if not nb_params["bronze_catalog"]:
+                raise RuntimeError(
+                    "Cannot run DLT pipeline: bronze_catalog is empty. "
+                    "Configure bronze/silver/volumes catalogs in the Pipeline Studio settings."
+                )
+
+        run["logs"].append(f"[{ts}] ⚡ Submitting {stage} notebook to Databricks…")
+        run["logs"].append(f"[{ts}] 📋 Notebook: {nb_path}")
+
+        submit_result = connector.run_notebook(
+            notebook_path=nb_path,
+            cluster_id=None,
+            params=nb_params,
+        )
+
+        if not submit_result.get("success"):
+            err_msg = submit_result.get("error") or submit_result.get("message", "Unknown submit error")
+            raise RuntimeError(f"Notebook submit failed: {err_msg}")
+
+        dbr_run_id = submit_result.get("run_id")
+        run_url = submit_result.get("run_url", "")
+        run["dbr_run_id"] = dbr_run_id
+        with _lock:
+            _index_run_by_dbr(run_id, dbr_run_id)
+        run["logs"].append(f"[{ts}] ✅ Submitted (Databricks run {dbr_run_id})")
+        if run_url:
+            run["logs"].append(f"[{ts}] 🔗 {run_url}")
+        _sync_run_to_dbr(run)
+
+        # ── Poll for notebook completion ──
+        terminal_states = {"TERMINATED", "SKIPPED", "INTERNAL_ERROR"}
+        for _attempt in range(360):
+            time.sleep(10)
+            try:
+                status = connector.get_run_status(int(dbr_run_id))
+            except Exception as poll_exc:
+                run["logs"].append(f"[{datetime.now().isoformat()}] ⚠️ Poll error: {poll_exc}")
+                continue
+
+            if not status.get("success"):
+                continue
+
+            lifecycle    = status.get("life_cycle", "UNKNOWN")
+            result_state = status.get("result_state", "")
+            state_msg    = status.get("state_message", "")
+
+            if lifecycle in terminal_states:
+                end_ts = datetime.now().isoformat()
+                # Fetch notebook output
+                output_info = connector.get_run_output(int(dbr_run_id))
+                nb_result = (output_info or {}).get("notebook_result", "")
+                error_trace = (output_info or {}).get("error_trace", "")
+                rows = 0
+                if nb_result:
+                    try:
+                        parsed = json.loads(nb_result)
+                        rows = int(parsed.get("rows", 0))
+                    except Exception:
+                        pass
+                    run["logs"].append(f"[{end_ts}] 📄 Result: {nb_result[:500]}")
+                if error_trace:
+                    run["logs"].append(f"[{end_ts}] 📋 Trace: {error_trace[:1000]}")
+
+                if result_state == "SUCCESS":
+                    # For DLT orchestrator: Databricks reports SUCCESS (notebook
+                    # completed) but the internal DLT pipeline may have FAILED.
+                    # Check the notebook result JSON for the real status.
+                    _internal_failed = False
+                    if stage == "dlt_bronze_silver" and nb_result:
+                        try:
+                            _p = json.loads(nb_result)
+                            _ist = (_p.get("status") or "").upper()
+                            if _ist == "FAILED":
+                                _internal_failed = True
+                                _dlt_err = _p.get("dlt_status", "") or "DLT pipeline failed"
+                                _ext_fail = _p.get("extract_failed", 0)
+                                if _ext_fail:
+                                    _dlt_err += f" ({_ext_fail} extract(s) failed)"
+                                run["logs"].append(f"[{end_ts}] ⚠️ DLT pipeline FAILED — {_dlt_err}")
+                        except Exception:
+                            pass
+
+                    if _internal_failed:
+                        with _lock:
+                            run["status"] = "failed"
+                            run["error"] = "DLT pipeline failed — redeploy notebooks and re-run"
+                            run["completed_at"] = end_ts
+                            run["duration_sec"] = round(
+                                (datetime.fromisoformat(end_ts) - datetime.fromisoformat(run["started_at"])).total_seconds(), 1)
+                            job["status"] = "failed"
+                            job["last_status"] = "failed"
+                            job["fail_count"] += 1
+                            job["updated_at"] = end_ts
+                    else:
+                        with _lock:
+                            run["status"] = "success"
+                            run["completed_at"] = end_ts
+                            run["rows_processed"] = rows
+                            run["duration_sec"] = round(
+                                (datetime.fromisoformat(end_ts) - datetime.fromisoformat(run["started_at"])).total_seconds(), 1)
+                            run["logs"].append(f"[{end_ts}] ✅ Job completed in {run['duration_sec']}s ({rows:,} rows)")
+                            job["status"] = "success"
+                            job["last_status"] = "success"
+                            job["updated_at"] = end_ts
+                else:
+                    err = (output_info or {}).get("error") or error_trace[:500] or state_msg or result_state
+                    with _lock:
+                        run["status"] = "failed"
+                        run["error"] = err
+                        run["completed_at"] = end_ts
+                        run["duration_sec"] = round(
+                            (datetime.fromisoformat(end_ts) - datetime.fromisoformat(run["started_at"])).total_seconds(), 1)
+                        run["logs"].append(f"[{end_ts}] ❌ Job FAILED: {err[:300]}")
+                        job["status"] = "failed"
+                        job["last_status"] = "failed"
+                        job["fail_count"] += 1
+                        job["updated_at"] = end_ts
+
+                _sync_run_to_dbr(run)
+                _sync_job_to_dbr(job)
+                return
+            else:
+                # Still running — update log periodically
+                if _attempt % 3 == 0:
+                    run["logs"].append(
+                        f"[{datetime.now().isoformat()}] 🔄 Databricks: {lifecycle}"
+                        + (f" — {state_msg}" if state_msg else "")
+                    )
+
+        # Timed out after polling
         end_ts = datetime.now().isoformat()
         with _lock:
-            run["status"] = "success"
+            run["status"] = "failed"
+            run["error"] = "Timed out waiting for Databricks notebook (60 min)"
             run["completed_at"] = end_ts
-            run["duration_sec"] = round((datetime.fromisoformat(end_ts) - datetime.fromisoformat(run["started_at"])).total_seconds(), 1)
-            run["logs"].append(f"[{end_ts}] ✅ Job completed successfully in {run['duration_sec']}s")
-            job["status"] = "success"
-            job["last_status"] = "success"
-            job["updated_at"] = end_ts
-
-        # Sync to Databricks
+            run["logs"].append(f"[{end_ts}] ❌ Polling timed out — check Databricks UI")
+            job["status"] = "failed"
+            job["last_status"] = "failed"
+            job["fail_count"] += 1
         _sync_run_to_dbr(run)
         _sync_job_to_dbr(job)
 
@@ -1433,7 +2286,13 @@ def _execute_job_run(run_id: str, job_id: str):
 #  RUN ENTIRE PIPELINE GROUP
 # ─────────────────────────────────────────────────────────────────────────────
 def run_pipeline_group(group_id: str, force_full: bool = False) -> dict:
-    """Run all jobs in a pipeline group sequentially."""
+    """Run all jobs in a pipeline group sequentially (extract → bronze → silver).
+
+    Each job's background thread is monitored to completion before the
+    next job is started.  If a job fails the remaining jobs are skipped.
+    """
+    import time as _time
+
     grp = PIPELINE_GROUPS.get(group_id)
     if not grp:
         return {"success": False, "error": f"Pipeline group '{group_id}' not found"}
@@ -1442,6 +2301,24 @@ def run_pipeline_group(group_id: str, force_full: bool = False) -> dict:
     for jid in grp.get("job_ids", []):
         r = run_job(jid, force_full=force_full)
         run_results.append(r)
+
+        if not r.get("success"):
+            break  # skip remaining stages
+
+        # Wait for the background execution thread to finish
+        run_id = r.get("run_id")
+        if run_id:
+            for _ in range(3600):           # up to ~60 min (1 s per iteration)
+                run_rec = JOB_RUNS.get(run_id)
+                if not run_rec:
+                    break
+                if run_rec.get("status") in ("success", "failed"):
+                    break
+                _time.sleep(1)
+
+            run_rec = JOB_RUNS.get(run_id)
+            if run_rec and run_rec.get("status") == "failed":
+                break  # stop pipeline on failure
 
     return {
         "success": True,
@@ -1491,11 +2368,36 @@ def rerun_from_failure(group_id: str) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 #  GET RUN STATUS
 # ─────────────────────────────────────────────────────────────────────────────
+def _fetch_run_logs(run_id: str) -> list:
+    """Fix 6: Lazy-load logs for a single run from Delta on demand."""
+    try:
+        r = _exec_sql(f"SELECT logs FROM {_fqn(TBL_RUNS)} WHERE run_id = {_esc(run_id)} LIMIT 1")
+        if r.get("status", {}).get("state") != "SUCCEEDED":
+            return []
+        rows = r.get("result", {}).get("data_array", []) or []
+        if not rows:
+            return []
+        logs_raw = rows[0][0] if rows[0] else None
+        if not logs_raw:
+            return []
+        if isinstance(logs_raw, list):
+            return logs_raw
+        return json.loads(logs_raw)
+    except Exception:
+        return []
+
+
 def get_run_status(run_id: str) -> dict:
     """Get status and logs of a specific run."""
     run = JOB_RUNS.get(run_id)
     if not run:
         return {"success": False, "error": f"Run '{run_id}' not found"}
+    # Fix 6: hydrate logs on demand if not already loaded
+    if not run.get("logs") and not run.get("logs_loaded"):
+        fetched = _fetch_run_logs(run_id)
+        with _lock:
+            run["logs"] = fetched
+            run["logs_loaded"] = True
     return {"success": True, "run": run}
 
 
@@ -1515,7 +2417,9 @@ def list_runs(job_id: str = None, group_id: str = None, status: str = None, limi
     if status:
         runs = [r for r in runs if r["status"] == status]
     runs.sort(key=lambda r: r["started_at"], reverse=True)
-    return {"success": True, "runs": runs[:limit], "total": len(runs)}
+    # Fix 6: strip logs from list response (callers use get_run_status for full logs)
+    trimmed = [{k: v for k, v in r.items() if k not in ("logs", "logs_loaded")} for r in runs[:limit]]
+    return {"success": True, "runs": trimmed, "total": len(runs)}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1721,9 +2625,18 @@ def deploy_metadata_notebooks(
     if not gen_result.get("success"):
         return gen_result
 
-    # 2. Upload each notebook via Databricks Workspace API
+    # 2. Delete existing notebooks first, then upload fresh copies
     from databricks_connector import DatabricksConnector
     connector = DatabricksConnector(host, token)
+
+    # Delete each notebook that we are about to deploy
+    for nb in gen_result["notebooks"]:
+        nb_path = f"{workspace_path}/{nb['name']}"
+        del_r = connector.delete_notebook(nb_path)
+        if del_r.get("success"):
+            logger.info("Deleted existing notebook: %s", nb_path)
+        else:
+            logger.warning("Could not delete %s (may not exist): %s", nb_path, del_r.get("error", ""))
 
     results = []
     for nb in gen_result["notebooks"]:
@@ -1792,19 +2705,17 @@ def _poll_databricks_run(connector, dbr_run_id, group_id: str):
             # Log polling errors so they're visible in Pipeline Logs
             if consecutive_errors <= 3:
                 with _lock:
-                    for rid, run in JOB_RUNS.items():
-                        if str(run.get("dbr_run_id", "")) == dbr_run_str and run["job_id"] in grp_job_ids:
-                            run["logs"].append(f"[{ts}] ⚠️ Polling error #{consecutive_errors}: {exc}")
+                    for rid, run in _runs_for_dbr(dbr_run_str, grp_job_ids):
+                        run["logs"].append(f"[{ts}] ⚠️ Polling error #{consecutive_errors}: {exc}")
             if consecutive_errors >= 30:
                 # Give up after ~5 minutes of consecutive errors
                 with _lock:
-                    for rid, run in JOB_RUNS.items():
-                        if str(run.get("dbr_run_id", "")) == dbr_run_str and run["job_id"] in grp_job_ids:
-                            run["status"] = "failed"
-                            run["completed_at"] = ts
-                            run["error"] = f"Polling abandoned after {consecutive_errors} consecutive errors"
-                            run["logs"].append(f"[{ts}] ❌ Polling abandoned — check Databricks UI for run status")
-                            _sync_run_to_dbr(run)
+                    for rid, run in _runs_for_dbr(dbr_run_str, grp_job_ids):
+                        run["status"] = "failed"
+                        run["completed_at"] = ts
+                        run["error"] = f"Polling abandoned after {consecutive_errors} consecutive errors"
+                        run["logs"].append(f"[{ts}] ❌ Polling abandoned — check Databricks UI for run status")
+                        _sync_run_to_dbr(run)
                     if grp:
                         grp["status"] = "failed"
                         _sync_pipeline_to_dbr(grp)
@@ -1833,6 +2744,7 @@ def _poll_databricks_run(connector, dbr_run_id, group_id: str):
             output_info = connector.get_run_output(int(dbr_run_id))
             output_lines = []
             dlt_failed = False
+            extract_failed = False
             if output_info.get("success"):
                 nb_result = output_info.get("notebook_result", "")
                 error_trace = output_info.get("error_trace", "")
@@ -1840,13 +2752,25 @@ def _poll_databricks_run(connector, dbr_run_id, group_id: str):
                 tasks = output_info.get("tasks", [])
                 if nb_result:
                     output_lines.append(f"[{ts}] 📄 Notebook result: {nb_result[:500]}")
-                    # Parse DLT status from notebook result JSON
+                    # Parse per-stage status from notebook result JSON
                     try:
                         import json as _json
                         _nr = _json.loads(nb_result)
-                        if _nr.get("dlt_status") == "FAILED":
+                        _actual_dlt = _nr.get("dlt_status", "")
+                        _actual_extract_fail = _nr.get("extract_failed", 0)
+
+                        if _actual_dlt == "FAILED":
                             dlt_failed = True
-                            output_lines.append(f"[{ts}] ⚠️ DLT pipeline FAILED — Extract OK but Bronze/Silver not processed")
+                            output_lines.append(f"[{ts}] ⚠️ DLT pipeline FAILED — Bronze/Silver not processed")
+                        elif _actual_dlt == "COMPLETED":
+                            output_lines.append(f"[{ts}] ✅ DLT pipeline COMPLETED")
+
+                        if _actual_extract_fail > 0:
+                            extract_failed = True
+                            output_lines.append(f"[{ts}] ⚠️ {_actual_extract_fail} extract(s) failed (DLT may use previous landing data)")
+
+                        if _nr.get("silver_failed", 0) > 0:
+                            output_lines.append(f"[{ts}] ⚠️ silver_failed={_nr['silver_failed']}")
                     except Exception:
                         pass
                 if error_msg:
@@ -1860,14 +2784,17 @@ def _poll_databricks_run(connector, dbr_run_id, group_id: str):
                     output_lines.append(f"[{ts}] 📌 Task {t_status}")
 
             with _lock:
-                for rid, run in JOB_RUNS.items():
-                    if str(run.get("dbr_run_id", "")) == dbr_run_str and run["job_id"] in grp_job_ids:
-                        # For DLT partial failure: extract=success, bronze/silver=failed
-                        if dlt_failed and run.get("stage") == "extract":
-                            run["status"] = "success"
-                        elif dlt_failed:
-                            run["status"] = "failed"
-                            run["error"] = "DLT pipeline failed — redeploy notebooks and re-run"
+                for rid, run in _runs_for_dbr(dbr_run_str, grp_job_ids):
+                        # Set per-job status based on actual stage results
+                        stage = run.get("stage", "")
+                        if stage == "extract":
+                            run["status"] = "failed" if extract_failed else "success"
+                            if extract_failed:
+                                run["error"] = "Extract failed — check source table"
+                        elif stage in ("dlt_bronze_silver", "landing_to_bronze", "bronze_to_silver"):
+                            run["status"] = "failed" if dlt_failed else "success"
+                            if dlt_failed:
+                                run["error"] = "DLT pipeline failed"
                         else:
                             run["status"] = local_status
                         run["completed_at"] = ts
@@ -1893,13 +2820,20 @@ def _poll_databricks_run(connector, dbr_run_id, group_id: str):
                     grp["status"] = "failed" if dlt_failed else local_status
                     _sync_pipeline_to_dbr(grp)
 
+            # ── Notify scheduler (and any other listeners) of completion ──
+            final_status = "failed" if dlt_failed else local_status
+            for cb in _pipeline_complete_callbacks:
+                try:
+                    cb(group_id, final_status)
+                except Exception as _cb_exc:
+                    logger.warning("Pipeline complete callback error: %s", _cb_exc)
+
             return  # done
 
         else:
             # Still running — update log with latest lifecycle state
             with _lock:
-                for rid, run in JOB_RUNS.items():
-                    if str(run.get("dbr_run_id", "")) == dbr_run_str and run["job_id"] in grp_job_ids:
+                for rid, run in _runs_for_dbr(dbr_run_str, grp_job_ids):
                         last_log = run["logs"][-1] if run["logs"] else ""
                         status_line = f"[{ts}] 🔄 Databricks: {lifecycle}"
                         if state_msg:
@@ -1974,6 +2908,82 @@ def run_pipeline_on_databricks(
         "log_table":      log_table,
     }
 
+    # Pass explicit data catalog params from the pipeline group's target_config
+    # so the DLT orchestrator doesn't rely on querying wf_job_metadata
+    grp_pre = PIPELINE_GROUPS.get(group_id, {})
+    tgt_cfg = grp_pre.get("target_config") or {}
+
+    # ── Fallback: after app restart PIPELINE_GROUPS is empty.  Read
+    #    target_config from wf_job_metadata on Databricks so the DLT
+    #    orchestrator still receives the correct catalog parameters. ──
+    if not tgt_cfg.get("bronze_catalog") and host and token and cat and sch:
+        try:
+            import requests as _req
+            _sql = (
+                f"SELECT target_config FROM `{cat}`.`{sch}`.wf_job_metadata "
+                f"WHERE group_id = '{group_id}' AND target_config IS NOT NULL "
+                f"AND LENGTH(TRIM(target_config)) > 2 LIMIT 1"
+            )
+            _whid = dcfg.get("warehouse_id", "")
+            if not _whid:
+                # Try to find a warehouse
+                _wh_resp = _req.get(
+                    f"{host}/api/2.0/sql/warehouses",
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=10,
+                )
+                if _wh_resp.ok:
+                    for _w in _wh_resp.json().get("warehouses", []):
+                        if _w.get("state") in ("RUNNING", "STARTING", ""):
+                            _whid = _w["id"]
+                            break
+            if _whid:
+                _sql_resp = _req.post(
+                    f"{host}/api/2.0/sql/statements",
+                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                    json={"warehouse_id": _whid, "statement": _sql, "wait_timeout": "15s"},
+                    timeout=20,
+                )
+                if _sql_resp.ok:
+                    _rows = _sql_resp.json().get("result", {}).get("data_array", [])
+                    if _rows and _rows[0] and _rows[0][0]:
+                        tgt_cfg = json.loads(_rows[0][0])
+                        logger.info("Restored target_config from Databricks metadata for group %s", group_id)
+        except Exception as _tc_err:
+            logger.warning("Could not restore target_config from Databricks: %s", _tc_err)
+
+    params["volumes_catalog"] = tgt_cfg.get("volumes_catalog", "")
+    params["bronze_catalog"]  = tgt_cfg.get("bronze_catalog", "")
+    params["silver_catalog"]  = tgt_cfg.get("silver_catalog", "")
+    params["target_schema"]   = tgt_cfg.get("target_schema", "")
+
+    # Override landing_path from target_config if available (the function
+    # default "/mnt/landing" is almost never correct for cloud deployments)
+    if tgt_cfg.get("landing_path"):
+        params["landing_path"] = tgt_cfg["landing_path"]
+
+    # ── Hard validation: bronze_catalog MUST be set for DLT ──
+    if not params["bronze_catalog"]:
+        _dcfg_fb = dcfg or {}
+        _dcfg_cats = _dcfg_fb.get("catalogs", {})
+        if "bronze" in _dcfg_cats:
+            params["bronze_catalog"] = "bronze"
+        if "silver" in _dcfg_cats:
+            params["silver_catalog"] = "silver"
+        if "dev_volumes" in _dcfg_cats:
+            params["volumes_catalog"] = "dev_volumes"
+        logger.warning("run_pipeline: catalog params recovered from deployconfig: bronze=%s silver=%s",
+                       params["bronze_catalog"], params["silver_catalog"])
+    if not params["target_schema"]:
+        # Derive from pipeline group metadata on Databricks
+        grp_data = PIPELINE_GROUPS.get(group_id, {})
+        params["target_schema"] = grp_data.get("table_schema", "") or "hr"
+
+    if not params["bronze_catalog"]:
+        return {"success": False, "error":
+                "Cannot run pipeline: bronze_catalog is empty. "
+                "Configure bronze/silver/volumes catalogs in Pipeline Studio settings."}
+
     result = connector.run_notebook(
         notebook_path=f"{ws}/00_Meta_Orchestrator",
         cluster_id=cluster_id or None,
@@ -2026,19 +3036,20 @@ def run_pipeline_on_databricks(
                 }
                 with _lock:
                     JOB_RUNS[local_run_id] = run_entry
+                    _index_run_by_dbr(local_run_id, dbr_run_id)
                     job["last_run_id"] = local_run_id
                     job["last_run_at"] = ts
                     job["status"] = "running"
+                    _evict_old_runs_if_needed()
                 _sync_run_to_dbr(run_entry)
                 _sync_job_to_dbr(job)
 
-        # Start background status poller for this Databricks run
-        t = threading.Thread(
-            target=_poll_databricks_run,
+        # Start background status poller for this Databricks run (Fix 10: bounded)
+        _spawn_worker(
+            _poll_databricks_run,
             args=(connector, dbr_run_id, group_id),
-            daemon=True,
+            name=f"dbr-poll-{dbr_run_id}",
         )
-        t.start()
 
     else:
         # Submission failed — record a failed run so user sees the error in logs
@@ -2072,6 +3083,7 @@ def run_pipeline_on_databricks(
                 with _lock:
                     JOB_RUNS[local_run_id] = run_entry
                     job["status"] = "failed"
+                    _evict_old_runs_if_needed()
                 _sync_run_to_dbr(run_entry)
                 _sync_job_to_dbr(job)
 

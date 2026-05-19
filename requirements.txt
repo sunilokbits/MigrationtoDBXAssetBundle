@@ -1,4 +1,5 @@
 flask>=3.0.0
+gunicorn>=21.2.0
 requests>=2.31.0
 pyodbc>=4.0.39
 pyarrow>=14.0.0
@@ -7,4 +8,6 @@ azure-mgmt-storage>=21.0.0
 azure-mgmt-resource>=23.0.0
 azure-mgmt-databricks>=2.0.0
 azure-mgmt-authorization>=4.0.0
+azure-mgmt-web>=7.0.0
 azure-storage-file-datalake>=12.14.0
+flask-compress>=1.15

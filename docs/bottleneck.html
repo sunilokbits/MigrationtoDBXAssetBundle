@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Workflow Manager — Performance Bottleneck Analysis</title>
+  <style>
+    :root {
+      --red:    #e53e3e;
+      --orange: #dd6b20;
+      --yellow: #d69e2e;
+      --green:  #38a169;
+      --blue:   #3182ce;
+      --indigo: #5a67d8;
+      --gray:   #718096;
+      --bg:     #f7fafc;
+      --card:   #ffffff;
+      --border: #e2e8f0;
+      --text:   #2d3748;
+      --muted:  #718096;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    /* ── Header ── */
+    .page-header {
+      background: linear-gradient(135deg, #1a202c 0%, #2d3748 60%, #4a5568 100%);
+      color: #fff;
+      padding: 48px 40px 40px;
+    }
+    .page-header .badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .page-header h1 {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .page-header .subtitle {
+      font-size: 16px;
+      opacity: 0.75;
+      max-width: 700px;
+    }
+    .page-header .meta {
+      margin-top: 20px;
+      font-size: 13px;
+      opacity: 0.6;
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+
+    /* ── Layout ── */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 32px 64px;
+    }
+
+    /* ── Summary Cards ── */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 16px;
+      margin: 32px 0;
+    }
+    .summary-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .summary-card .num {
+      font-size: 36px;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .summary-card .label {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 6px;
+    }
+    .num.red    { color: var(--red); }
+    .num.orange { color: var(--orange); }
+    .num.yellow { color: var(--yellow); }
+    .num.green  { color: var(--green); }
+    .num.blue   { color: var(--blue); }
+
+    /* ── Section title ── */
+    .section-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin: 40px 0 16px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid var(--border);
+      color: var(--text);
+    }
+
+    /* ── Severity Legend ── */
+    .legend {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot.critical { background: var(--red); }
+    .dot.high     { background: var(--orange); }
+    .dot.medium   { background: var(--yellow); }
+    .dot.low      { background: var(--green); }
+
+    /* ── Bottleneck Card ── */
+    .bn-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 20px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+      transition: box-shadow 0.2s;
+    }
+    .bn-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
+
+    .bn-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      padding: 20px 24px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .bn-number {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 700; color: #fff;
+      flex-shrink: 0; margin-top: 2px;
+    }
+    .bn-number.critical { background: var(--red); }
+    .bn-number.high     { background: var(--orange); }
+    .bn-number.medium   { background: var(--yellow); }
+    .bn-number.low      { background: var(--green); }
+
+    .bn-title-block { flex: 1; }
+    .bn-title {
+      font-size: 16px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .severity-badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .severity-badge.critical { background: #fff5f5; color: var(--red);    border: 1px solid #fed7d7; }
+    .severity-badge.high     { background: #fffaf0; color: var(--orange); border: 1px solid #fbd38d; }
+    .severity-badge.medium   { background: #fffff0; color: var(--yellow); border: 1px solid #faf089; }
+    .severity-badge.low      { background: #f0fff4; color: var(--green);  border: 1px solid #9ae6b4; }
+
+    .bn-meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    .bn-meta span { margin-right: 16px; }
+
+    .bn-toggle {
+      font-size: 20px;
+      color: var(--muted);
+      flex-shrink: 0;
+      transition: transform 0.2s;
+    }
+    .bn-card.open .bn-toggle { transform: rotate(180deg); }
+
+    .bn-body {
+      display: none;
+      padding: 0 24px 24px;
+      border-top: 1px solid var(--border);
+    }
+    .bn-card.open .bn-body { display: block; }
+
+    .bn-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-top: 20px;
+    }
+    @media (max-width: 720px) {
+      .bn-grid { grid-template-columns: 1fr; }
+    }
+
+    .bn-section-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .code-block {
+      background: #1a202c;
+      color: #e2e8f0;
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+      font-size: 12.5px;
+      line-height: 1.6;
+      overflow-x: auto;
+      margin-top: 6px;
+    }
+    .code-block .cm { color: #68d391; }   /* comment */
+    .code-block .kw { color: #f6e05e; }   /* keyword */
+    .code-block .st { color: #fc8181; }   /* string */
+    .code-block .fn { color: #63b3ed; }   /* function */
+    .code-block .nu { color: #d6bcfa; }   /* number */
+
+    .impact-list, .fix-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .impact-list li, .fix-list li {
+      padding: 5px 0 5px 22px;
+      position: relative;
+      font-size: 14px;
+      color: var(--text);
+    }
+    .impact-list li::before {
+      content: '⚠';
+      position: absolute; left: 0;
+      color: var(--orange);
+    }
+    .fix-list li::before {
+      content: '✓';
+      position: absolute; left: 0;
+      color: var(--green);
+      font-weight: 700;
+    }
+
+    /* ── Summary Table ── */
+    .table-wrap { overflow-x: auto; margin-top: 16px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+    }
+    thead tr { background: #2d3748; color: #fff; }
+    thead th {
+      padding: 12px 16px;
+      text-align: left;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    tbody tr { border-bottom: 1px solid var(--border); }
+    tbody tr:hover { background: #f7fafc; }
+    tbody td { padding: 11px 16px; vertical-align: top; }
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .tag.critical { background: #fff5f5; color: var(--red); }
+    .tag.high     { background: #fffaf0; color: var(--orange); }
+    .tag.medium   { background: #fffff0; color: var(--yellow); }
+    .tag.low      { background: #f0fff4; color: var(--green); }
+    .tag.quick    { background: #ebf8ff; color: var(--blue); }
+    .tag.complex  { background: #faf5ff; color: var(--indigo); }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 32px;
+      font-size: 12px;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════ PAGE HEADER -->
+<div class="page-header">
+  <div class="container" style="padding-top:0; padding-bottom:0;">
+    <div class="badge">Performance Analysis</div>
+    <h1>Workflow Manager — Bottleneck Report</h1>
+    <p class="subtitle">
+      Deep-dive analysis of <code style="background:rgba(255,255,255,0.15);padding:2px 6px;border-radius:4px;">workflow_manager.py</code>
+      identifying 10 performance bottlenecks, their root causes, measured impact, and recommended fixes.
+    </p>
+    <div class="meta">
+      <span>📁 File: migration_utility/workflow_manager.py</span>
+      <span>📅 Analysis Date: April 17, 2026</span>
+      <span>🔢 Issues Found: 10</span>
+      <span>🚨 Critical: 3 &nbsp;|&nbsp; 🔶 High: 4 &nbsp;|&nbsp; 🟡 Medium: 2 &nbsp;|&nbsp; 🟢 Low: 1</span>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- ══════════ SUMMARY CARDS -->
+  <div class="summary-grid">
+    <div class="summary-card">
+      <div class="num red">3</div>
+      <div class="label">Critical</div>
+    </div>
+    <div class="summary-card">
+      <div class="num orange">4</div>
+      <div class="label">High</div>
+    </div>
+    <div class="summary-card">
+      <div class="num yellow">2</div>
+      <div class="label">Medium</div>
+    </div>
+    <div class="summary-card">
+      <div class="num green">1</div>
+      <div class="label">Low</div>
+    </div>
+    <div class="summary-card">
+      <div class="num blue">640s</div>
+      <div class="label">Worst-case request block</div>
+    </div>
+    <div class="summary-card">
+      <div class="num blue">400+</div>
+      <div class="label">Max serial API calls</div>
+    </div>
+  </div>
+
+  <!-- ══════════ BOTTLENECK DETAILS -->
+  <h2 class="section-title">Bottleneck Details</h2>
+
+  <div class="legend">
+    <div class="legend-item"><div class="dot critical"></div> Critical — Blocks user requests / causes timeouts</div>
+    <div class="legend-item"><div class="dot high"></div> High — Significant latency under load</div>
+    <div class="legend-item"><div class="dot medium"></div> Medium — Resource waste / gradual degradation</div>
+    <div class="legend-item"><div class="dot low"></div> Low — Minor, cosmetic improvement</div>
+  </div>
+
+  <!-- ─── BN 1 ─── -->
+  <div class="bn-card open" id="bn1">
+    <div class="bn-header" onclick="toggle('bn1')">
+      <div class="bn-number critical">1</div>
+      <div class="bn-title-block">
+        <div class="bn-title">
+          <code>_exec_sql()</code> Blocks Flask Request Thread
+          <span class="severity-badge critical">Critical</span>
+        </div>
+        <div class="bn-meta">
+          <span>📍 Line 113 — workflow_manager.py</span>
+          <span>⏱ Up to 80s per call · 640s worst case</span>
+          <span>🏷 I/O · Blocking · HTTP</span>
+        </div>
+      </div>
+      <div class="bn-toggle">▼</div>
+    </div>
+    <div class="bn-body">
+      <p style="font-size:14px; color:var(--muted); margin-top:16px;">
+        Every Databricks SQL Statement API call sits in a synchronous 40-poll × 2 s busy-wait loop.
+        Because Flask runs on a single WSGI thread per worker, the thread is completely blocked for up to 80 s
+        per DDL/DML statement. <code>init_metadata_flow()</code> runs <strong>8 serial DDL statements</strong>
+        → maximum <strong>640 s</strong> request block. All other users are frozen during this window.
+      </p>
+      <div class="bn-grid">
+        <div>
+          <div class="bn-section-label">Root Cause Code</div>
+          <div class="code-block"><span class="cm"># 40 polls × 2 s = 80 s max per call</span>
+<span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(<span class="nu">40</span>):
+    state = data.get(<span class="st">"status"</span>, {}).get(<span class="st">"state"</span>, <span class="st">""</span>)
+    <span class="kw">if</span> state <span class="kw">in</span> (<span class="st">"SUCCEEDED"</span>, <span class="st">"FAILED"</span>, ...):
+        <span class="kw">break</span>
+    time.sleep(<span class="nu">2</span>)   <span class="cm"># ← blocks Flask thread</span>
+    resp2 = s.get(...)
+<span class="kw">return</span> data</div>
+        </div>
+        <div>
+          <div class="bn-section-label">Impact</div>
+          <ul class="impact-list">
+            <li>Flask worker frozen for up to 640 s during table creation</li>
+            <li>Other API requests queue behind a single long-running DDL</li>
+            <li>Browser shows spinner with no feedback until complete</li>
+            <li>8 × serial DDL calls = maximum 640 s end-to-end</li>
+          </ul>
+          <div class="bn-section-label" style="margin-top:16px;">Recommended Fix</div>
+          <ul class="fix-list">
+            <li>Run init DDLs in a <code>ThreadPoolExecutor</code> (parallel, not serial)</li>
+            <li>Return a task ID immediately; poll via a separate <code>/status</code> endpoint</li>
+            <li>Use Databricks <code>wait_timeout=0s</code> and poll asynchronously</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── BN 2 ─── -->
+  <div class="bn-card" id="bn2">
+    <div class="bn-header" onclick="toggle('bn2')">
+      <div class="bn-number critical">2</div>
+      <div class="bn-title-block">
+        <div class="bn-title">
+          <code>get_metadata_status()</code> — 8 Serial COUNT Queries
+          <span class="severity-badge critical">Critical</span>
+        </div>
+        <div class="bn-meta">
+          <span>📍 get_metadata_status() — workflow_manager.py</span>
+          <span>⏱ 640s worst case per dashboard load</span>
+          <span>🏷 N+1 · Dashboard · I/O</span>
+        </div>
+      </div>
+      <div class="bn-toggle">▼</div>
+    </div>
+    <div class="bn-body">
+      <p style="font-size:14px; color:var(--muted); margin-top:16px;">
+        The dashboard status endpoint fires one <code>SELECT COUNT(*)</code> per table, sequentially,
+        for all 8 metadata tables. Each call goes through the full <code>_exec_sql()</code> polling loop
+        (max 80 s). A single status page load can block the thread for up to <strong>640 s</strong>.
+      </p>
+      <div class="bn-grid">
+        <div>
+          <div class="bn-section-label">Root Cause Code</div>
+          <div class="code-block"><span class="cm"># Called once per table — 8 times!</span>
+<span class="kw">for</span> tbl <span class="kw">in</span> [TBL_PIPELINES, TBL_JOBS, TBL_RUNS, ...]:
+    r = <span class="fn">_exec_sql</span>(
+        <span class="st">f"SELECT COUNT(*) FROM {_fqn(tbl)}"</span>
+    )
+    <span class="cm"># ↑ each is an independent blocking HTTP round-trip</span></div>
+        </div>
+        <div>
+          <div class="bn-section-label">Impact</div>
+          <ul class="impact-list">
+            <li>Dashboard hangs for several seconds on every page load</li>
+            <li>Blocks the single Flask worker during status checks</li>
+          </ul>
+          <div class="bn-section-label" style="margin-top:16px;">Recommended Fix</div>
+          <ul class="fix-list">
+            <li>Merge into a single UNION ALL query — one round trip for all 8 counts</li>
+            <li>Cache the result for 30 s in a module-level dict to avoid repeat calls</li>
+          </ul>
+          <div class="code-block" style="margin-top:10px;"><span class="cm"># Single query replaces 8 serial calls</span>
+sql = <span class="st">" UNION ALL "</span>.join(
+    <span class="st">f"SELECT '{t}' AS tbl, COUNT(*) AS cnt FROM {_fqn(t)}"</span>
+    <span class="kw">for</span> t <span class="kw">in</span> ALL_TABLES
+)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── BN 3 ─── -->
+  <div class="bn-card" id="bn3">
+    <div class="bn-header" onclick="toggle('bn3')">
+      <div class="bn-number critical">3</div>
+      <div class="bn-title-block">
+        <div class="bn-title">
+          <code>full_sync_to_dbr()</code> — Unbounded Serial MERGE Loop
+          <span class="severity-badge critical">Critical</span>
+        </div>
+        <div class="bn-meta">
+          <span>📍 full_sync_to_dbr() — workflow_manager.py</span>
+          <span>⏱ 400+ round trips for 100-table migration</span>
+          <span>🏷 N+1 · Bulk · MERGE</span>
+        </div>
+      </div>
+      <div class="bn-toggle">▼</div>
+    </div>
+    <div class="bn-body">
+      <p style="font-size:14px; color:var(--muted); margin-top:16px;">
+        <code>full_sync_to_dbr()</code> iterates over every pipeline, job, run and watermark
+        and fires one individual MERGE statement each. For 100 source tables (300 jobs, 50 runs, 100 watermarks),
+        that is <strong>550+ sequential HTTP calls</strong>. No batching, no parallelism.
+      </p>
+      <div class="bn-grid">
+        <div>
+          <div class="bn-section-label">Root Cause Code</div>
+          <div class="code-block"><span class="kw">for</span> gid, grp <span class="kw">in</span> PIPELINE_GROUPS.items():
+    <span class="fn">_sync_pipeline_to_dbr</span>(grp)   <span class="cm"># 1 MERGE</span>
+
+<span class="kw">for</span> jid, job <span class="kw">in</span> JOB_REGISTRY.items():
+    <span class="fn">_sync_job_to_dbr</span>(job)         <span class="cm"># 1 MERGE each</span>
+
+<span class="kw">for</span> rid, run <span class="kw">in</span> JOB_RUNS.items():
+    <span class="fn">_sync_run_to_dbr</span>(run)          <span class="cm"># 1 MERGE each</span></div>
+        </div>
+        <div>
+          <div class="bn-section-label">Impact</div>
+          <ul class="impact-list">
+            <li>Full sync hangs the UI for minutes when many tables exist</li>
+            <li>Grows proportionally with number of pipelines — O(n) HTTP calls</li>
+            <li>No progress feedback during the operation</li>
+          </ul>
+          <div class="bn-section-label" style="margin-top:16px;">Recommended Fix</div>
+          <ul class="fix-list">
+            <li>Build a multi-row VALUES clause — one MERGE for all pipelines</li>
+            <li>Run pipeline/job/run syncs in parallel using <code>ThreadPoolExecutor</code></li>
+            <li>Return a background task ID and report progress via SSE or polling</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── BN 4 ─── -->
+  <div class="bn-card" id="bn4">
+    <div class="bn-header" onclick="toggle('bn4')">
+      <div class="bn-number high">4</div>
+      <div class="bn-title-block">
+        <div class="bn-title">
+          <code>sync_source_tables_to_dbr()</code> — Row-by-Row INSERTs
+          <span class="severity-badge high">High</span>
+        </div>
+        <div class="bn-meta">
+          <span>📍 sync_source_tables_to_dbr() — workflow_manager.py</span>
+          <span>⏱ 1 HTTP call per table row</span>
+          <span>🏷 N+1 · INSERT · Unbatched</span>
+        </div>
+      </div>
+      <div class="bn-toggle">▼</div>
+    </div>
+    <div class="bn-body">
+      <p style="font-size:14px; color:var(--muted); margin-top:16px;">
+        When source tables are discovered and synced to Databricks, each table fires a separate
+        <code>INSERT INTO wf_source_tables VALUES (...)</code>. For a schema with 200 tables, this
+        creates 200 sequential HTTP round-trips to the Databricks SQL Statement API.
+      </p>
+      <div class="bn-grid">
+        <div>
+          <div class="bn-section-label">Root Cause Code</div>
+          <div class="code-block"><span class="kw">for</span> t <span class="kw">in</span> tables:     <span class="cm"># one loop = one INSERT</span>
+    sid = uuid4().hex[:<span class="nu">12</span>]
+    sql = <span class="st">f"INSERT INTO {_fqn(TBL_SOURCES)} VALUES ({_esc(sid)}, ...)"</span>
+    <span class="fn">_exec_sql</span>(sql)  <span class="cm"># ← blocking call per row</span></div>
+        </div>
+        <div>
+          <div class="bn-section-label">Impact</div>
+          <ul class="impact-list">
+            <li>200-table schema sync can take several minutes</li>
+            <li>API rate-limit risk on large databases</li>
+          </ul>
+          <div class="bn-section-label" style="margin-top:16px;">Recommended Fix</div>
+          <ul class="fix-list">
+            <li>Build a single INSERT with a multi-row VALUES clause</li>
+            <li>Chunk into batches of 500 rows to stay within SQL statement size limits</li>
+          </ul>
+          <div class="code-block" style="margin-top:10px;"><span class="cm"># Build one INSERT for all rows</span>
+values = <span class="st">", "</span>.join(
+    <span class="st">f"({_esc(uuid4().hex[:12])}, {_esc(t['table'])}, ...)"</span>
+    <span class="kw">for</span> t <span class="kw">in</span> tables
+)
+<span class="fn">_exec_sql</span>(<span class="st">f"INSERT INTO {_fqn(TBL_SOURCES)} VALUES {values}"</span>)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── BN 5 ─── -->
+  <div class="bn-card" id="bn5">
+    <div class="bn-header" onclick="toggle('bn5')">
+      <div class="bn-number high">5</div>
+      <div class="bn-title-block">
+        <div class="bn-title">
+          O(n) Scan in <code>_poll_databricks_run()</code> Every 10 Seconds
+          <span class="severity-badge high">High</span>
+        </div>
+        <div class="bn-meta">
+          <span>📍 _poll_databricks_run() — workflow_manager.py</span>
+          <span>⏱ Grows with every run stored in JOB_RUNS</span>
+          <span>🏷 Linear scan · Lock contention · Background thread</span>
+        </div>
+      </div>
+      <div class="bn-toggle">▼</div>
+    </div>
+    <div class="bn-body">
+      <p style="font-size:14px; color:var(--muted); margin-top:16px;">
+        The Databricks run poller iterates over the <em>entire</em> <code>JOB_RUNS</code> dict
+        on every 10-second tick to find runs matching a specific <code>dbr_run_id</code>.
+        With multiple concurrent pipeline runs, multiple poller threads each
+        do a full O(n) scan of all accumulated run records — while holding <code>_lock</code>.
+      </p>
+      <div class="bn-grid">
+        <div>
+          <div class="bn-section-label">Root Cause Code</div>
+          <div class="code-block"><span class="cm"># Every 10s, iterates ALL JOB_RUNS</span>
+<span class="kw">with</span> _lock:
+    <span class="kw">for</span> rid, run <span class="kw">in</span> JOB_RUNS.items():
+        <span class="kw">if</span> <span class="fn">str</span>(run.get(<span class="st">"dbr_run_id"</span>)) == dbr_run_str \
+          <span class="kw">and</span> run[<span class="st">"job_id"</span>] <span class="kw">in</span> grp_job_ids:
+            <span class="cm"># update this run</span></div>
+        </div>
+        <div>
+          <div class="bn-section-label">Impact</div>
+          <ul class="impact-list">
+            <li>Lock held during full linear scan — blocks all write operations</li>
+            <li>Multiple simultaneous poller threads amplify contention</li>
+            <li>Gets worse over time as JOB_RUNS grows unboundedly</li>
+          </ul>
+          <div class="bn-section-label" style="margin-top:16px;">Recommended Fix</div>
+          <ul class="fix-list">
+            <li>Add a secondary index: <code>DBR_RUN_INDEX = {dbr_run_id: [local_run_ids]}</code></li>
+            <li>Populate index at run creation; look up directly instead of scanning all runs</li>
+            <li>Release lock before Databricks HTTP call; only lock during write</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── BN 6 ─── -->
+  <div class="bn-card" id="bn6">
+    <div class="bn-header" onclick="toggle('bn6')">
+      <div class="bn-number high">6</div>
+      <div class="bn-title-block">
+        <div class="bn-title">
+          Single Global <code>_lock</code> — Coarse-Grained Contention
+          <span class="severity-badge high">High</span>
+        </div>
+        <div class="bn-meta">
+          <span>📍 _lock = threading.Lock() — module level</span>
+          <span>⏱ Serialises all reads and writes across all stores</span>
+          <span>🏷 Lock contention · Threading · Concurrency</span>
+        </div>
+      </div>
+      <div class="bn-toggle">▼</div>
+    </div>
+    <div class="bn-body">
+      <p style="font-size:14px; color:var(--muted); margin-top:16px;">
+        A single <code>threading.Lock()</code> protects <em>all</em> in-memory stores:
+        <code>JOB_REGISTRY</code>, <code>JOB_RUNS</code>, <code>WATERMARKS</code>, and <code>PIPELINE_GROUPS</code>.
+        Background poller threads, the scheduler thread, and every Flask request handler compete for the
+        same lock — even when they access completely independent data structures.
+      </p>
+      <div class="bn-grid">
+        <div>
+          <div class="bn-section-label">Root Cause Code</div>
+          <div class="code-block"><span class="cm"># ONE lock for everything</span>
+_lock = threading.Lock()
+
+<span class="cm"># Used by: Flask handlers, poller threads,</span>
+<span class="cm"># scheduler thread, bulk create, delete...</span>
+<span class="kw">with</span> _lock:
+    JOB_REGISTRY[jid] = job
+    JOB_RUNS[rid] = run
+    WATERMARKS[tbl] = wm
+    PIPELINE_GROUPS[gid] = grp</div>
+        </div>
+        <div>
+          <div class="bn-section-label">Impact</div>
+          <ul class="impact-list">
+            <li>Background threads block user-facing requests mid-update</li>
+            <li>Long bulk-create operation starves poller and scheduler</li>
+            <li>Cannot read while writing even to different data structures</li>
+          </ul>
+          <div class="bn-section-label" style="margin-top:16px;">Recommended Fix</div>
+          <ul class="fix-list">
+            <li>Use <code>threading.RLock()</code> per store: <code>_job_lock</code>, <code>_run_lock</code>, <code>_wm_lock</code></li>
+            <li>Replace with <code>threading.RWLock</code> (readers-writer lock) for read-heavy paths like <code>list_jobs()</code></li>
+            <li>Consider <code>collections.deque</code> with <code>maxlen</code> for append-only logs — no lock needed</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── BN 7 ─── -->
+  <div class="bn-card" id="bn7">
+    <div class="bn-header" onclick="toggle('bn7')">
+      <div class="bn-number high">7</div>
+      <div class="bn-title-block">
+        <div class="bn-title">
+          <code>load_metadata_from_dbr()</code> Loads Full JSON Logs on Re-connect
+          <span class="severity-badge high">High</span>
+        </div>
+        <div class="bn-meta">
+          <span>📍 load_metadata_from_dbr() — LIMIT 200 runs</span>
+          <span>⏱ Potentially 2MB+ on reconnect</span>
+          <span>🏷 Memory · N+1 · Hydration</span>
+        </div>
+      </div>
+      <div class="bn-toggle">▼</div>
+    </div>
+    <div class="bn-body">
+      <p style="font-size:14px; color:var(--muted); margin-top:16px;">
+        On every reconnect or server restart, <code>load_metadata_from_dbr()</code> fetches
+        <strong>200 run records</strong> including full JSON log arrays (each log entry is a timestamped string).
+        A run with 50 log lines of 100 characters each = 5 KB. 200 runs = up to <strong>1 MB of JSON</strong>
+        parsed and kept in memory — for data that is mostly display-only.
+      </p>
+      <div class="bn-grid">
+        <div>
+          <div class="bn-section-label">Root Cause Code</div>
+          <div class="code-block"><span class="cm"># Fetches 200 rows including full logs JSON</span>
+r = <span class="fn">_exec_sql</span>(
+    <span class="st">f"SELECT * FROM {_fqn(TBL_RUNS)}"</span>
+    <span class="st">" ORDER BY started_at DESC LIMIT 200"</span>
+)
+<span class="cm"># Each row parses the "logs" JSON column</span>
+logs = json.loads(logs_raw)</div>
+        </div>
+        <div>
+          <div class="bn-section-label">Impact</div>
+          <ul class="impact-list">
+            <li>Startup hydration is slow — logs parsed for every run</li>
+            <li>Memory grows proportionally with log verbosity</li>
+            <li>All 200 runs kept in RAM even if 190 are never displayed</li>
+          </ul>
+          <div class="bn-section-label" style="margin-top:16px;">Recommended Fix</div>
+          <ul class="fix-list">
+            <li>Exclude the <code>logs</code> column from the hydration SELECT — load logs lazily per run</li>
+            <li>Add a <code>GET /run/{id}/logs</code> endpoint that fetches logs on demand only</li>
+            <li>Reduce LIMIT from 200 to 50 for in-memory hydration; paginate from DB for history</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── BN 8 ─── -->
+  <div class="bn-card" id="bn8">
+    <div class="bn-header" onclick="toggle('bn8')">
+      <div class="bn-number medium">8</div>
+      <div class="bn-title-block">
+        <div class="bn-title">
+          Blocking HTTP Call at Module Import Time
+          <span class="severity-badge medium">Medium</span>
+        </div>
+        <div class="bn-meta">
+          <span>📍 _restore_from_deploy_config() — called at module load</span>
+          <span>⏱ Up to 15s startup delay if Databricks is unreachable</span>
+          <span>🏷 Startup · Blocking HTTP · I/O</span>
+        </div>
+      </div>
+      <div class="bn-toggle">▼</div>
+    </div>
+    <div class="bn-body">
+      <p style="font-size:14px; color:var(--muted); margin-top:16px;">
+        <code>_restore_from_deploy_config()</code> is called at module level (not inside a function).
+        It issues a synchronous <code>GET /api/2.0/sql/warehouses</code> request during import.
+        If Databricks is slow or unreachable, Flask startup blocks for up to the <strong>15-second timeout</strong>
+        before the app begins serving requests.
+      </p>
+      <div class="bn-grid">
+        <div>
+          <div class="bn-section-label">Root Cause Code</div>
+          <div class="code-block"><span class="cm"># At the bottom of the module — runs at import</span>
+<span class="fn">_restore_from_deploy_config</span>()
+
+<span class="cm"># Inside it:</span>
+resp = s.get(
+    <span class="st">f"{_dbr_host}/api/2.0/sql/warehouses"</span>,
+    timeout=<span class="nu">15</span>   <span class="cm"># ← 15s block during startup</span>
+)</div>
+        </div>
+        <div>
+          <div class="bn-section-label">Impact</div>
+          <ul class="impact-list">
+            <li>App takes 15+ seconds to start if Databricks is down</li>
+            <li>Gunicorn/uWSGI worker startup timeout may kill the process</li>
+            <li>Cold-start in Docker containers is unreliable</li>
+          </ul>
+          <div class="bn-section-label" style="margin-top:16px;">Recommended Fix</div>
+          <ul class="fix-list">
+            <li>Move warehouse discovery to a lazy background thread started from <code>app.py</code></li>
+            <li>Use a 3-second timeout with silent failure; retry on first API use</li>
+            <li>Cache warehouse ID in <code>deployconfig.json</code> to skip discovery on re-start</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── BN 9 ─── -->
+  <div class="bn-card" id="bn9">
+    <div class="bn-header" onclick="toggle('bn9')">
+      <div class="bn-number medium">9</div>
+      <div class="bn-title-block">
+        <div class="bn-title">
+          <code>JOB_RUNS</code> Unbounded Memory Growth — No TTL or Eviction
+          <span class="severity-badge medium">Medium</span>
+        </div>
+        <div class="bn-meta">
+          <span>📍 JOB_RUNS = OrderedDict() — module level</span>
+          <span>⏱ Grows indefinitely across server uptime</span>
+          <span>🏷 Memory leak · In-process · OrderedDict</span>
+        </div>
+      </div>
+      <div class="bn-toggle">▼</div>
+    </div>
+    <div class="bn-body">
+      <p style="font-size:14px; color:var(--muted); margin-top:16px;">
+        <code>JOB_RUNS</code> is an <code>OrderedDict</code> with no maximum size or TTL policy.
+        Every <code>run_job()</code> call appends an entry. After days of running, hundreds of
+        completed runs (each with full log arrays) accumulate in memory, consuming RAM and slowing
+        down every linear scan over the dictionary.
+      </p>
+      <div class="bn-grid">
+        <div>
+          <div class="bn-section-label">Root Cause Code</div>
+          <div class="code-block"><span class="cm"># Never evicted. Grows forever.</span>
+JOB_RUNS = OrderedDict()
+
+<span class="cm"># Every run adds a new entry:</span>
+<span class="kw">with</span> _lock:
+    JOB_RUNS[run_id] = run  <span class="cm"># no maxlen, no TTL</span></div>
+        </div>
+        <div>
+          <div class="bn-section-label">Impact</div>
+          <ul class="impact-list">
+            <li>Memory grows without bound during long server uptime</li>
+            <li>O(n) operations (list_runs, poller scan) slow down gradually</li>
+            <li>Risk of OOM on servers with limited RAM after heavy use</li>
+          </ul>
+          <div class="bn-section-label" style="margin-top:16px;">Recommended Fix</div>
+          <ul class="fix-list">
+            <li>Cap at last 500 runs: evict oldest when limit is reached (FIFO via <code>OrderedDict.popitem(last=False)</code>)</li>
+            <li>Add a TTL: evict runs older than 7 days in the background scheduler tick</li>
+            <li>Move completed runs to Databricks-only storage; serve history endpoint from Delta query</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── BN 10 ─── -->
+  <div class="bn-card" id="bn10">
+    <div class="bn-header" onclick="toggle('bn10')">
+      <div class="bn-number low">10</div>
+      <div class="bn-title-block">
+        <div class="bn-title">
+          Bulk Simulated Runs Spawn N Threads Simultaneously
+          <span class="severity-badge low">Low</span>
+        </div>
+        <div class="bn-meta">
+          <span>📍 run_pipeline_group() / create_pipelines_bulk() — workflow_manager.py</span>
+          <span>⏱ N threads spawned instantly for N tables</span>
+          <span>🏷 Thread storm · Resource contention · Demo mode</span>
+        </div>
+      </div>
+      <div class="bn-toggle">▼</div>
+    </div>
+    <div class="bn-body">
+      <p style="font-size:14px; color:var(--muted); margin-top:16px;">
+        When bulk-running pipelines in simulated mode, <code>run_pipeline_group()</code> calls
+        <code>run_job()</code> for each job which spawns a <code>daemon=True</code> thread immediately.
+        For a 100-table bulk run, this creates up to <strong>300 threads simultaneously</strong>
+        (3 jobs per table), all sleeping and competing for — and repeatedly acquiring — <code>_lock</code>.
+      </p>
+      <div class="bn-grid">
+        <div>
+          <div class="bn-section-label">Root Cause Code</div>
+          <div class="code-block"><span class="cm"># Each call spawns a thread immediately</span>
+<span class="kw">for</span> jid <span class="kw">in</span> grp.get(<span class="st">"job_ids"</span>, []):
+    r = <span class="fn">run_job</span>(jid)   <span class="cm"># ← spawns 1 thread</span>
+    run_results.append(r)
+<span class="cm"># 100 tables × 3 jobs = 300 threads at once</span></div>
+        </div>
+        <div>
+          <div class="bn-section-label">Impact</div>
+          <ul class="impact-list">
+            <li>Thread storm on large table sets degrades all operations</li>
+            <li>GIL contention in CPython compounds the problem</li>
+            <li>All threads contend for the same global <code>_lock</code></li>
+          </ul>
+          <div class="bn-section-label" style="margin-top:16px;">Recommended Fix</div>
+          <ul class="fix-list">
+            <li>Add a <code>threading.Semaphore(max_concurrent=10)</code> around thread spawning</li>
+            <li>Use a producer-queue pattern: one worker pool processes runs in controlled batches</li>
+            <li>Consider <code>concurrent.futures.ThreadPoolExecutor(max_workers=8)</code> for managed execution</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ SUMMARY TABLE -->
+  <h2 class="section-title">Summary Reference Table</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Bottleneck</th>
+          <th>Location</th>
+          <th>Severity</th>
+          <th>Worst-Case Impact</th>
+          <th>Fix Effort</th>
+          <th>Strategy</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>1</strong></td>
+          <td><code>_exec_sql()</code> blocking poll loop</td>
+          <td>Line 113</td>
+          <td><span class="tag critical">Critical</span></td>
+          <td>640 s request block</td>
+          <td><span class="tag complex">Complex</span></td>
+          <td>Async task + polling endpoint</td>
+        </tr>
+        <tr>
+          <td><strong>2</strong></td>
+          <td><code>get_metadata_status()</code> 8 serial COUNTs</td>
+          <td>get_metadata_status()</td>
+          <td><span class="tag critical">Critical</span></td>
+          <td>640 s per dashboard load</td>
+          <td><span class="tag quick">Quick</span></td>
+          <td>UNION ALL + 30 s cache</td>
+        </tr>
+        <tr>
+          <td><strong>3</strong></td>
+          <td><code>full_sync_to_dbr()</code> 400+ serial MERGEs</td>
+          <td>full_sync_to_dbr()</td>
+          <td><span class="tag critical">Critical</span></td>
+          <td>Minutes for large schemas</td>
+          <td><span class="tag complex">Complex</span></td>
+          <td>Batch MERGE + background task</td>
+        </tr>
+        <tr>
+          <td><strong>4</strong></td>
+          <td>Row-by-row INSERTs in source tables sync</td>
+          <td>sync_source_tables_to_dbr()</td>
+          <td><span class="tag high">High</span></td>
+          <td>1 HTTP call per table</td>
+          <td><span class="tag quick">Quick</span></td>
+          <td>Multi-row VALUES INSERT</td>
+        </tr>
+        <tr>
+          <td><strong>5</strong></td>
+          <td>O(n) <code>JOB_RUNS</code> scan in poller every 10 s</td>
+          <td>_poll_databricks_run()</td>
+          <td><span class="tag high">High</span></td>
+          <td>Lock contention under concurrency</td>
+          <td><span class="tag quick">Quick</span></td>
+          <td>Secondary index dict</td>
+        </tr>
+        <tr>
+          <td><strong>6</strong></td>
+          <td>Single global <code>_lock</code> coarse contention</td>
+          <td>Module level</td>
+          <td><span class="tag high">High</span></td>
+          <td>All threads serialised</td>
+          <td><span class="tag complex">Complex</span></td>
+          <td>Per-store RLock / RWLock</td>
+        </tr>
+        <tr>
+          <td><strong>7</strong></td>
+          <td>Load 200 runs with full JSON logs on reconnect</td>
+          <td>load_metadata_from_dbr()</td>
+          <td><span class="tag high">High</span></td>
+          <td>2 MB+ memory on start</td>
+          <td><span class="tag quick">Quick</span></td>
+          <td>Exclude logs column; lazy load</td>
+        </tr>
+        <tr>
+          <td><strong>8</strong></td>
+          <td>Blocking HTTP at module import time</td>
+          <td>_restore_from_deploy_config()</td>
+          <td><span class="tag medium">Medium</span></td>
+          <td>15 s startup delay</td>
+          <td><span class="tag quick">Quick</span></td>
+          <td>Background thread + 3 s timeout</td>
+        </tr>
+        <tr>
+          <td><strong>9</strong></td>
+          <td><code>JOB_RUNS</code> unbounded memory growth</td>
+          <td>Module level OrderedDict</td>
+          <td><span class="tag medium">Medium</span></td>
+          <td>OOM after sustained use</td>
+          <td><span class="tag quick">Quick</span></td>
+          <td>maxlen cap + TTL eviction</td>
+        </tr>
+        <tr>
+          <td><strong>10</strong></td>
+          <td>Bulk run spawns N threads simultaneously</td>
+          <td>run_pipeline_group()</td>
+          <td><span class="tag low">Low</span></td>
+          <td>300+ threads for 100 tables</td>
+          <td><span class="tag quick">Quick</span></td>
+          <td>Semaphore / ThreadPoolExecutor</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ══════════ PRIORITY ROADMAP -->
+  <h2 class="section-title">Recommended Fix Prioritization</h2>
+  <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:20px; margin-top:8px;">
+
+    <div style="background:#fff5f5; border:1px solid #fed7d7; border-radius:10px; padding:20px;">
+      <div style="font-weight:700; color:var(--red); font-size:14px; margin-bottom:12px;">🚨 Sprint 1 — Critical (Fix First)</div>
+      <ul style="font-size:13px; color:var(--text); list-style:none; padding:0;">
+        <li style="padding:4px 0 4px 20px; position:relative;"><span style="position:absolute;left:0;">1.</span> Merge 8 DDL statements into parallel <code>ThreadPoolExecutor</code></li>
+        <li style="padding:4px 0 4px 20px; position:relative;"><span style="position:absolute;left:0;">2.</span> Replace 8 COUNT queries with single UNION ALL</li>
+        <li style="padding:4px 0 4px 20px; position:relative;"><span style="position:absolute;left:0;">3.</span> Background task for <code>full_sync_to_dbr()</code></li>
+      </ul>
+    </div>
+
+    <div style="background:#fffaf0; border:1px solid #fbd38d; border-radius:10px; padding:20px;">
+      <div style="font-weight:700; color:var(--orange); font-size:14px; margin-bottom:12px;">🔶 Sprint 2 — High (Reduce Latency)</div>
+      <ul style="font-size:13px; color:var(--text); list-style:none; padding:0;">
+        <li style="padding:4px 0 4px 20px; position:relative;"><span style="position:absolute;left:0;">4.</span> Batch INSERT for source table sync</li>
+        <li style="padding:4px 0 4px 20px; position:relative;"><span style="position:absolute;left:0;">5.</span> Add <code>DBR_RUN_INDEX</code> for O(1) poller lookup</li>
+        <li style="padding:4px 0 4px 20px; position:relative;"><span style="position:absolute;left:0;">6.</span> Exclude <code>logs</code> from hydration; load lazily</li>
+      </ul>
+    </div>
+
+    <div style="background:#f0fff4; border:1px solid #9ae6b4; border-radius:10px; padding:20px;">
+      <div style="font-weight:700; color:var(--green); font-size:14px; margin-bottom:12px;">🟢 Sprint 3 — Medium/Low (Stability)</div>
+      <ul style="font-size:13px; color:var(--text); list-style:none; padding:0;">
+        <li style="padding:4px 0 4px 20px; position:relative;"><span style="position:absolute;left:0;">7.</span> Move startup HTTP to background thread</li>
+        <li style="padding:4px 0 4px 20px; position:relative;"><span style="position:absolute;left:0;">8.</span> Cap <code>JOB_RUNS</code> at 500 with TTL eviction</li>
+        <li style="padding:4px 0 4px 20px; position:relative;"><span style="position:absolute;left:0;">9.</span> Per-store RLocks / RWLocks</li>
+        <li style="padding:4px 0 4px 20px; position:relative;"><span style="position:absolute;left:0;">10.</span> Semaphore for bulk thread spawning</li>
+      </ul>
+    </div>
+
+  </div>
+
+</div><!-- /container -->
+
+<footer>
+  SQL → Databricks Migration Studio v2.4 &nbsp;·&nbsp;
+  Bottleneck Analysis Report &nbsp;·&nbsp;
+  File: <code>migration_utility/workflow_manager.py</code> &nbsp;·&nbsp;
+  Generated: April 17, 2026
+</footer>
+
+<script>
+  function toggle(id) {
+    const card = document.getElementById(id);
+    card.classList.toggle('open');
+  }
+</script>
+
+</body>
+</html>

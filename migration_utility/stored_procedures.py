@@ -1061,6 +1061,235 @@ END;
 }
 
 # ═════════════════════════════════════════════════════════════════════════════
+# SQL TABLES — demo table DDLs for Discovery analysis
+# ═════════════════════════════════════════════════════════════════════════════
+SQL_TABLES = {
+    "Customers": {
+        "name": "Customers",
+        "object_type": "table",
+        "description": "Core customer master table — clean, standard types",
+        "column_count": 8,
+        "row_count": 125000,
+        "has_triggers": False,
+        "index_count": 3,
+        "fk_count": 0,
+        "check_count": 1,
+        "code": """
+CREATE TABLE [dbo].[Customers] (
+  [CustomerID]   INT            IDENTITY(1,1) NOT NULL,
+  [CustomerName] NVARCHAR(200)  NOT NULL,
+  [Email]        NVARCHAR(255)  NOT NULL,
+  [Phone]        NVARCHAR(20)   NULL,
+  [Region]       NVARCHAR(50)   NOT NULL DEFAULT 'US',
+  [CreatedDate]  DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
+  [IsActive]     BIT            NOT NULL DEFAULT 1,
+  [CreditLimit]  DECIMAL(18,2)  NULL,
+  CONSTRAINT PK_Customers PRIMARY KEY CLUSTERED (CustomerID),
+  CONSTRAINT UQ_Customers_Email UNIQUE (Email),
+  CONSTRAINT CK_Customers_CreditLimit CHECK (CreditLimit >= 0)
+);
+"""
+    },
+    "Orders": {
+        "name": "Orders",
+        "object_type": "table",
+        "description": "Order header table with foreign keys and triggers",
+        "column_count": 12,
+        "row_count": 4500000,
+        "has_triggers": True,
+        "index_count": 5,
+        "fk_count": 2,
+        "check_count": 2,
+        "code": """
+CREATE TABLE [dbo].[Orders] (
+  [OrderID]      INT            IDENTITY(1,1) NOT NULL,
+  [CustomerID]   INT            NOT NULL,
+  [OrderDate]    DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
+  [ShipDate]     DATETIME2      NULL,
+  [Status]       NVARCHAR(20)   NOT NULL DEFAULT 'PENDING',
+  [OrderTotal]   DECIMAL(18,2)  NOT NULL,
+  [TaxAmount]    DECIMAL(18,2)  NOT NULL DEFAULT 0,
+  [DiscountPct]  DECIMAL(5,2)   NULL,
+  [SalesRepID]   INT            NULL,
+  [WarehouseID]  INT            NOT NULL,
+  [ReturnFlag]   BIT            NOT NULL DEFAULT 0,
+  [Notes]        NVARCHAR(MAX)  NULL,
+  CONSTRAINT PK_Orders PRIMARY KEY CLUSTERED (OrderID),
+  CONSTRAINT FK_Orders_Customer FOREIGN KEY (CustomerID) REFERENCES Customers(CustomerID),
+  CONSTRAINT FK_Orders_SalesRep FOREIGN KEY (SalesRepID) REFERENCES Employees(EmployeeID),
+  CONSTRAINT CK_Orders_Total CHECK (OrderTotal >= 0),
+  CONSTRAINT CK_Orders_Status CHECK (Status IN ('PENDING','CONFIRMED','SHIPPED','DELIVERED','CANCELLED','FRAUD'))
+);
+CREATE TRIGGER trg_Orders_Audit ON [dbo].[Orders] AFTER INSERT, UPDATE AS
+BEGIN
+  INSERT INTO AuditLog (TableName, Action, RecordID, ChangedDate)
+  SELECT 'Orders', CASE WHEN EXISTS(SELECT 1 FROM deleted) THEN 'UPDATE' ELSE 'INSERT' END,
+         i.OrderID, GETDATE()
+  FROM inserted i;
+END;
+"""
+    },
+    "OrderDetails": {
+        "name": "OrderDetails",
+        "object_type": "table",
+        "description": "Order line items — high volume, partitioned",
+        "column_count": 9,
+        "row_count": 28000000,
+        "has_triggers": False,
+        "index_count": 4,
+        "fk_count": 2,
+        "check_count": 1,
+        "code": """
+CREATE TABLE [dbo].[OrderDetails] (
+  [DetailID]     BIGINT         IDENTITY(1,1) NOT NULL,
+  [OrderID]      INT            NOT NULL,
+  [ProductID]    INT            NOT NULL,
+  [Quantity]     INT            NOT NULL,
+  [UnitPrice]    DECIMAL(18,2)  NOT NULL,
+  [LineTotal]    AS (Quantity * UnitPrice) PERSISTED,
+  [Discount]     DECIMAL(5,2)   NULL DEFAULT 0,
+  [ShipStatus]   NVARCHAR(20)   NOT NULL DEFAULT 'PENDING',
+  [CreatedDate]  DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
+  CONSTRAINT PK_OrderDetails PRIMARY KEY CLUSTERED (DetailID),
+  CONSTRAINT FK_OD_Order FOREIGN KEY (OrderID) REFERENCES Orders(OrderID),
+  CONSTRAINT FK_OD_Product FOREIGN KEY (ProductID) REFERENCES Products(ProductID),
+  CONSTRAINT CK_OD_Qty CHECK (Quantity > 0)
+) ON PartitionScheme_Monthly(CreatedDate);
+"""
+    },
+    "Products": {
+        "name": "Products",
+        "object_type": "table",
+        "description": "Product catalog — clean schema, standard types",
+        "column_count": 10,
+        "row_count": 8500,
+        "has_triggers": False,
+        "index_count": 3,
+        "fk_count": 1,
+        "check_count": 2,
+        "code": """
+CREATE TABLE [dbo].[Products] (
+  [ProductID]    INT            IDENTITY(1,1) NOT NULL,
+  [ProductName]  NVARCHAR(200)  NOT NULL,
+  [SKU]          NVARCHAR(50)   NOT NULL,
+  [CategoryID]   INT            NOT NULL,
+  [UnitPrice]    DECIMAL(18,2)  NOT NULL,
+  [StockQty]     INT            NOT NULL DEFAULT 0,
+  [Weight]       DECIMAL(10,3)  NULL,
+  [IsActive]     BIT            NOT NULL DEFAULT 1,
+  [LaunchDate]   DATE           NULL,
+  [Description]  NVARCHAR(MAX)  NULL,
+  CONSTRAINT PK_Products PRIMARY KEY CLUSTERED (ProductID),
+  CONSTRAINT FK_Products_Category FOREIGN KEY (CategoryID) REFERENCES Categories(CategoryID),
+  CONSTRAINT UQ_Products_SKU UNIQUE (SKU),
+  CONSTRAINT CK_Products_Price CHECK (UnitPrice > 0)
+);
+"""
+    },
+    "AuditLog": {
+        "name": "AuditLog",
+        "object_type": "table",
+        "description": "System-versioned temporal audit table with XML column",
+        "column_count": 8,
+        "row_count": 150000000,
+        "has_triggers": False,
+        "index_count": 2,
+        "fk_count": 0,
+        "check_count": 0,
+        "code": """
+CREATE TABLE [dbo].[AuditLog] (
+  [AuditID]      BIGINT          IDENTITY(1,1) NOT NULL,
+  [TableName]    NVARCHAR(128)   NOT NULL,
+  [Action]       NVARCHAR(10)    NOT NULL,
+  [RecordID]     INT             NOT NULL,
+  [ChangedDate]  DATETIME2       GENERATED ALWAYS AS ROW START NOT NULL,
+  [EndDate]      DATETIME2       GENERATED ALWAYS AS ROW END NOT NULL,
+  [ChangedBy]    NVARCHAR(128)   NULL DEFAULT SUSER_SNAME(),
+  [ChangeDetail] XML             NULL,
+  PERIOD FOR SYSTEM_TIME (ChangedDate, EndDate),
+  CONSTRAINT PK_AuditLog PRIMARY KEY CLUSTERED (AuditID)
+) WITH (SYSTEM_VERSIONING = ON (HISTORY_TABLE = dbo.AuditLogHistory));
+"""
+    },
+    "GeoLocations": {
+        "name": "GeoLocations",
+        "object_type": "table",
+        "description": "Geospatial table with geography type and spatial index — needs major rework",
+        "column_count": 7,
+        "row_count": 320000,
+        "has_triggers": True,
+        "index_count": 3,
+        "fk_count": 1,
+        "check_count": 0,
+        "code": """
+CREATE TABLE [dbo].[GeoLocations] (
+  [LocationID]   INT            IDENTITY(1,1) NOT NULL,
+  [LocationName] NVARCHAR(200)  NOT NULL,
+  [GeoPoint]     GEOGRAPHY      NOT NULL,
+  [GeoArea]      GEOMETRY       NULL,
+  [Altitude]     FLOAT          NULL,
+  [RegionCode]   NVARCHAR(10)   NOT NULL,
+  [LastUpdated]  DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
+  CONSTRAINT PK_GeoLocations PRIMARY KEY CLUSTERED (LocationID),
+  CONSTRAINT FK_Geo_Region FOREIGN KEY (RegionCode) REFERENCES Regions(RegionCode)
+);
+CREATE SPATIAL INDEX SIX_GeoLocations_Point ON [dbo].[GeoLocations](GeoPoint);
+CREATE TRIGGER trg_Geo_Validate ON [dbo].[GeoLocations] AFTER INSERT AS
+BEGIN
+  IF EXISTS(SELECT 1 FROM inserted WHERE GeoPoint.STIsValid() = 0)
+    RAISERROR('Invalid geography point', 16, 1);
+END;
+"""
+    },
+    "DocumentStore": {
+        "name": "DocumentStore",
+        "object_type": "table",
+        "description": "FILESTREAM-backed document storage with hierarchyid — needs major rework",
+        "column_count": 8,
+        "row_count": 45000,
+        "has_triggers": False,
+        "index_count": 2,
+        "fk_count": 0,
+        "check_count": 0,
+        "code": """
+CREATE TABLE [dbo].[DocumentStore] (
+  [DocID]        UNIQUEIDENTIFIER ROWGUIDCOL NOT NULL DEFAULT NEWSEQUENTIALID(),
+  [FolderPath]   HIERARCHYID      NOT NULL,
+  [FileName]     NVARCHAR(260)    NOT NULL,
+  [FileContent]  VARBINARY(MAX) FILESTREAM NULL,
+  [MimeType]     NVARCHAR(100)    NOT NULL,
+  [FileSize]     BIGINT           NOT NULL,
+  [UploadedBy]   NVARCHAR(128)    NOT NULL DEFAULT SUSER_SNAME(),
+  [UploadDate]   DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
+  CONSTRAINT PK_DocumentStore PRIMARY KEY CLUSTERED (DocID)
+) FILESTREAM_ON DocFileGroup;
+"""
+    },
+    "EmployeeSessions": {
+        "name": "EmployeeSessions",
+        "object_type": "table",
+        "description": "Memory-optimized session table with sql_variant",
+        "column_count": 6,
+        "row_count": 5000,
+        "has_triggers": False,
+        "index_count": 1,
+        "fk_count": 0,
+        "check_count": 0,
+        "code": """
+CREATE TABLE [dbo].[EmployeeSessions] (
+  [SessionID]    INT            IDENTITY(1,1) NOT NULL,
+  [EmployeeID]   INT            NOT NULL,
+  [LoginTime]    DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
+  [SessionData]  SQL_VARIANT    NULL,
+  [IPAddress]    NVARCHAR(45)   NOT NULL,
+  [IsExpired]    BIT            NOT NULL DEFAULT 0,
+  CONSTRAINT PK_EmpSessions PRIMARY KEY NONCLUSTERED (SessionID)
+) WITH (MEMORY_OPTIMIZED = ON, DURABILITY = SCHEMA_AND_DATA);
+"""
+    },
+}
+
+# ═════════════════════════════════════════════════════════════════════════════
 # ALL OBJECTS COMBINED — single lookup used by the API
 # ═════════════════════════════════════════════════════════════════════════════
 ALL_OBJECTS = {}
@@ -1069,4 +1298,6 @@ for _k, _v in STORED_PROCEDURES.items():
 for _k, _v in SQL_VIEWS.items():
     ALL_OBJECTS[_k] = _v
 for _k, _v in SQL_UDFS.items():
+    ALL_OBJECTS[_k] = _v
+for _k, _v in SQL_TABLES.items():
     ALL_OBJECTS[_k] = _v

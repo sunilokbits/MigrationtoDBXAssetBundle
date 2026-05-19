@@ -14,9 +14,12 @@ from datetime import datetime
 class DatabricksConnector:
     """Manages connections to a Databricks workspace via REST API."""
 
+    _DATABRICKS_RESOURCE_ID = "2ff814a6-3304-4ab8-85cb-cd0e6f879c1d"
+
     def __init__(self, host: str, token: str):
         self.host  = host.rstrip("/")
         self.token = token
+        self._aad_token = None
         self.headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type":  "application/json"
@@ -24,12 +27,32 @@ class DatabricksConnector:
         self.session = requests.Session()
         self.session.headers.update(self.headers)
 
+    # ── AAD fallback ──────────────────────────────────────────────────────────
+    def _try_aad_fallback(self) -> bool:
+        """Attempt to get an Azure AD token for Databricks and update session headers."""
+        if self._aad_token:
+            return True
+        try:
+            from azure.identity import DefaultAzureCredential
+            cred = DefaultAzureCredential()
+            tok = cred.get_token(f"{self._DATABRICKS_RESOURCE_ID}/.default")
+            self._aad_token = tok.token
+            self.session.headers["Authorization"] = f"Bearer {self._aad_token}"
+            return True
+        except Exception:
+            return False
+
     # ── Connection Test ───────────────────────────────────────────────────────
     def test_connection(self) -> dict:
-        """Verify token and host by calling the clusters list API."""
+        """Verify token and host by calling the clusters list API. Falls back to AAD if PAT fails."""
         try:
             url = f"{self.host}/api/2.0/clusters/list"
             resp = self.session.get(url, timeout=15)
+
+            # If PAT returns 401/403, try AAD token automatically
+            if resp.status_code in (401, 403):
+                if self._try_aad_fallback():
+                    resp = self.session.get(url, timeout=15)
 
             if resp.status_code == 200:
                 data   = resp.json()
@@ -78,6 +101,21 @@ class DatabricksConnector:
             }
         except Exception as e:
             return {"success": False, "message": str(e)}
+
+    # ── Delete Notebook ─────────────────────────────────────────────────────
+    def delete_notebook(self, notebook_path: str) -> dict:
+        """Delete a single notebook from Databricks workspace (non-recursive)."""
+        try:
+            resp = self.session.post(
+                f"{self.host}/api/2.0/workspace/delete",
+                json={"path": notebook_path, "recursive": False},
+                timeout=15
+            )
+            if resp.status_code in (200, 404):
+                return {"success": True, "path": notebook_path}
+            return {"success": False, "error": f"Delete failed ({resp.status_code}): {resp.text[:200]}"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
     # ── Upload Notebook ───────────────────────────────────────────────────────
     def upload_notebook(self, notebook_name: str, python_code: str, path: str = "/Shared/Migrations") -> dict:

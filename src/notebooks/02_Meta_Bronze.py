@@ -61,6 +61,20 @@ target_config = json.loads(job.get("target_config", "{}") or "{}")
 VOLUMES_CATALOG = target_config.get("volumes_catalog", "")
 BRONZE_CATALOG  = target_config.get("bronze_catalog", "")
 TGT_SCHEMA      = target_config.get("target_schema", "")
+
+# ─── Auto-derive bronze_catalog if missing ────────────────────────────────────
+# Bronze layer should always live in its own catalog OR at minimum its own schema,
+# never co-mingled with the metadata or silver layer.
+if not BRONZE_CATALOG:
+    BRONZE_CATALOG = "bronze"
+    print(f"⚠️  bronze_catalog not set — defaulting to '{BRONZE_CATALOG}'")
+try:
+    spark.sql(f"CREATE CATALOG IF NOT EXISTS `{BRONZE_CATALOG}`")
+    if TGT_SCHEMA:
+        spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{BRONZE_CATALOG}`.`{TGT_SCHEMA}`")
+except Exception as _ce:
+    print(f"⚠️  Could not auto-create bronze catalog/schema (may need admin): {_ce}")
+
 MULTI_CATALOG   = bool(VOLUMES_CATALOG and BRONZE_CATALOG and TGT_SCHEMA)
 
 if MULTI_CATALOG:
@@ -68,11 +82,26 @@ if MULTI_CATALOG:
     TARGET_SCHEMA  = TGT_SCHEMA
     TABLE_PREFIX   = ""
     LANDING_PATH   = f"/Volumes/{VOLUMES_CATALOG}/{TGT_SCHEMA}/landing"
-    spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{BRONZE_CATALOG}`.`{TGT_SCHEMA}`")
-    print(f"Multi-catalog mode: {VOLUMES_CATALOG} -> {BRONZE_CATALOG}.{TGT_SCHEMA}")
+    print(f"✅ Multi-catalog medallion: {VOLUMES_CATALOG} -> {BRONZE_CATALOG}.{TGT_SCHEMA} (no prefix)")
 else:
-    TARGET_CATALOG = target_config.get("catalog", CATALOG)
-    TARGET_SCHEMA  = target_config.get("schema", SCHEMA)
+    # Fallback: use target_config catalog/schema but NEVER the metadata catalog
+    _fallback_cat = target_config.get("catalog", "")
+    _meta_cat = target_config.get("metadata_catalog", CATALOG)
+    if _fallback_cat and _fallback_cat != _meta_cat and _fallback_cat != CATALOG:
+        TARGET_CATALOG = _fallback_cat
+    elif BRONZE_CATALOG:
+        TARGET_CATALOG = BRONZE_CATALOG
+    else:
+        TARGET_CATALOG = CATALOG
+        print(f"⚠️ WARNING: No bronze_catalog in target_config — falling back to metadata catalog {CATALOG}")
+    _fallback_sch = target_config.get("schema", "")
+    _meta_sch = target_config.get("metadata_schema", SCHEMA)
+    if _fallback_sch and _fallback_sch != _meta_sch and _fallback_sch != SCHEMA:
+        TARGET_SCHEMA = _fallback_sch
+    elif TGT_SCHEMA:
+        TARGET_SCHEMA = TGT_SCHEMA
+    else:
+        TARGET_SCHEMA = SCHEMA
     TABLE_PREFIX   = "bronze_"
 
 print(f"Job: {job['job_name']}")

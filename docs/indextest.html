@@ -1,0 +1,2408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bricksfactory — ADF to Databricks Lakeflow Migration</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <style>
+        /* ===== CSS Variables / Theme — Databricks Light ===== */
+        :root {
+            --bg-primary: #FFFFFF;
+            --bg-secondary: #F9FAFB;
+            --bg-card: #FFFFFF;
+            --bg-card-hover: #F3F4F6;
+            --bg-input: #F5F6F8;
+            --border-color: #E5E7EB;
+            --border-glow: #FF3621;
+            --text-primary: #1B1F2E;
+            --text-secondary: #5F6B7A;
+            --text-muted: #9CA3AF;
+            --accent-orange: #FF3621;
+            --accent-orange-light: #FF6E5A;
+            --accent-blue: #1E6FD9;
+            --accent-purple: #7C3AED;
+            --accent-green: #00875A;
+            --accent-red: #DC2626;
+            --accent-yellow: #CA8A04;
+            --accent-cyan: #0891B2;
+            --gradient-primary: linear-gradient(135deg, #FF3621 0%, #FF6E5A 100%);
+            --gradient-card: #FFFFFF;
+            --gradient-glow: linear-gradient(135deg, rgba(255,54,33,0.03), rgba(255,110,90,0.01));
+            --shadow-lg: 0 4px 24px rgba(0,0,0,0.08);
+            --shadow-glow: 0 0 20px rgba(255,54,33,0.04);
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 20px;
+        }
+
+        /* ===== Reset & Base ===== */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ===== Background — Databricks Light ===== */
+        .bg-grid {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            background: #F9FAFB;
+        }
+
+        /* ===== Scrollbar ===== */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #F3F4F6; }
+        ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }
+
+        /* ===== Nav ===== */
+        .navbar {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: #FFFFFF;
+            border-bottom: 1px solid #E5E7EB;
+            padding: 0 2rem;
+        }
+        .navbar-inner {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 64px;
+        }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+        }
+        .logo-icon {
+            width: 36px;
+            height: 36px;
+            background: #FF3621;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: white;
+            font-weight: 800;
+        }
+        .logo-text {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #1B1F2E;
+            letter-spacing: -0.5px;
+        }
+        .logo-badge {
+            font-size: 0.6rem;
+            font-weight: 600;
+            background: rgba(255,54,33,0.12);
+            color: #FF6E5A;
+            padding: 3px 10px;
+            border-radius: 20px;
+            border: 1px solid rgba(255,54,33,0.2);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .nav-links {
+            display: flex;
+            gap: 6px;
+        }
+        .nav-link {
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: none;
+            background: none;
+        }
+        .nav-link:hover, .nav-link.active {
+            color: var(--text-primary);
+            background: #F3F4F6;
+        }
+        .nav-link.active {
+            color: #FF3621;
+            background: rgba(255,54,33,0.06);
+        }
+
+        /* ===== Content ===== */
+        .app-container {
+            position: relative;
+            z-index: 1;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 2rem 4rem;
+        }
+
+        /* ===== Hero ===== */
+        .hero {
+            text-align: center;
+            padding: 4rem 0 3rem;
+        }
+        .hero h1 {
+            font-size: 3.4rem;
+            font-weight: 700;
+            letter-spacing: -2px;
+            line-height: 1.1;
+            margin-bottom: 1rem;
+        }
+        .hero h1 span {
+            color: #FF3621;
+        }
+        .hero p {
+            font-size: 1.15rem;
+            color: var(--text-secondary);
+            max-width: 640px;
+            margin: 0 auto 2rem;
+            line-height: 1.7;
+        }
+
+        /* ===== Stepper ===== */
+        .stepper {
+            display: flex;
+            justify-content: center;
+            gap: 0;
+            margin-bottom: 3rem;
+            position: relative;
+        }
+        .stepper::before {
+            content: '';
+            position: absolute;
+            top: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60%;
+            height: 2px;
+            background: var(--border-color);
+        }
+        .step-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            flex: 0 0 160px;
+            position: relative;
+            z-index: 1;
+        }
+        .step-circle {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: #FFFFFF;
+            border: 2px solid #E5E7EB;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1rem;
+            transition: all 0.4s;
+            color: #9CA3AF;
+        }
+        .step-item.active .step-circle {
+            border-color: #FF3621;
+            background: rgba(255,54,33,0.06);
+            color: #FF3621;
+            box-shadow: 0 0 12px rgba(255,54,33,0.1);
+        }
+        .step-item.completed .step-circle {
+            border-color: var(--accent-green);
+            background: rgba(0,169,114,0.1);
+            color: var(--accent-green);
+        }
+        .step-label {
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .step-item.active .step-label { color: var(--accent-orange); }
+        .step-item.completed .step-label { color: var(--accent-green); }
+
+        /* ===== Section Panels ===== */
+        .section-panel {
+            display: none;
+            animation: fadeIn 0.5s ease;
+        }
+        .section-panel.active { display: block; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ===== Cards ===== */
+        .card {
+            background: #FFFFFF;
+            border: 1px solid #E5E7EB;
+            border-radius: var(--radius-lg);
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            transition: all 0.25s ease;
+            position: relative;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+        .card:hover {
+            border-color: #D1D5DB;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+            transform: translateY(-1px);
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 1.5rem;
+        }
+        .card-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+        .card-icon.orange { background: #FEE2E2; color: #DC2626; }
+        .card-icon.blue { background: #DBEAFE; color: #1E6FD9; }
+        .card-icon.purple { background: #EDE9FE; color: #7C3AED; }
+        .card-icon.green { background: #D1FAE5; color: #065F46; }
+        .card-icon.cyan { background: #CFFAFE; color: #0891B2; }
+        .card-icon.red { background: #FEE2E2; color: #DC2626; }
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+        .card-subtitle {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+        }
+
+        /* ===== Upload Zone ===== */
+        .upload-zone {
+            border: 2px dashed #D1D5DB;
+            border-radius: var(--radius-xl);
+            padding: 4rem 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.25s;
+            background: #FAFAFA;
+            position: relative;
+            overflow: hidden;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: #FF3621;
+            background: rgba(255,54,33,0.03);
+        }
+        .upload-zone .icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.6;
+        }
+        .upload-zone h3 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        .upload-zone p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+        .upload-zone input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        /* ===== File List ===== */
+        .file-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255,54,33,0.05);
+            border: 1px solid rgba(255,54,33,0.15);
+            color: #C22617;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.82rem;
+            font-weight: 500;
+            margin: 4px;
+        }
+        .file-chip i { font-size: 0.75rem; }
+        .file-chip .remove {
+            cursor: pointer;
+            opacity: 0.6;
+            transition: opacity 0.2s;
+        }
+        .file-chip .remove:hover { opacity: 1; }
+
+        /* ===== Buttons ===== */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 28px;
+            border-radius: var(--radius-sm);
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: all 0.3s;
+            text-decoration: none;
+        }
+        .btn-primary {
+            background: #FF3621;
+            color: white;
+            box-shadow: 0 2px 12px rgba(255,54,33,0.2);
+        }
+        .btn-primary:hover {
+            background: #E0301D;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 20px rgba(255,54,33,0.3);
+        }
+        .btn-primary:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .btn-secondary {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+        .btn-secondary:hover {
+            border-color: #9CA3AF;
+            background: #F3F4F6;
+        }
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-secondary);
+            padding: 8px 16px;
+        }
+        .btn-ghost:hover { color: var(--text-primary); }
+
+        .btn-group {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin-top: 2rem;
+        }
+
+        /* ===== Stats Tiles ===== */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .stat-tile {
+            background: #FFFFFF;
+            border: 1px solid #E5E7EB;
+            border-radius: var(--radius-md);
+            padding: 1.25rem;
+            text-align: center;
+            transition: all 0.3s;
+        }
+        .stat-tile:hover {
+            border-color: #D1D5DB;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            transform: translateY(-1px);
+        }
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 800;
+            line-height: 1;
+            margin-bottom: 4px;
+        }
+        .stat-value.green { color: var(--accent-green); }
+        .stat-value.orange { color: var(--accent-orange); }
+        .stat-value.red { color: var(--accent-red); }
+        .stat-value.blue { color: var(--accent-blue); }
+        .stat-value.purple { color: var(--accent-purple); }
+        .stat-value.cyan { color: var(--accent-cyan); }
+        .stat-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        /* ===== Readiness Gauge ===== */
+        .readiness-gauge {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            padding: 2rem;
+        }
+        .gauge-ring {
+            position: relative;
+            width: 180px;
+            height: 180px;
+        }
+        .gauge-ring svg {
+            transform: rotate(-90deg);
+        }
+        .gauge-ring circle {
+            fill: none;
+            stroke-width: 10;
+        }
+        .gauge-bg { stroke: var(--border-color); }
+        .gauge-fill {
+            stroke-linecap: round;
+            transition: stroke-dashoffset 1.5s ease;
+        }
+        .gauge-value {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .gauge-number {
+            font-size: 3rem;
+            font-weight: 900;
+            line-height: 1;
+        }
+        .gauge-label-text {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* ===== Compatibility Chart ===== */
+        .compat-bar {
+            display: flex;
+            height: 12px;
+            border-radius: 6px;
+            overflow: hidden;
+            background: var(--bg-input);
+            margin: 1rem 0;
+        }
+        .compat-bar .segment {
+            transition: width 1s ease;
+            position: relative;
+        }
+        .compat-bar .segment.green { background: var(--accent-green); }
+        .compat-bar .segment.yellow { background: var(--accent-yellow); }
+        .compat-bar .segment.red { background: var(--accent-red); }
+        .compat-bar .segment.gray { background: var(--text-muted); }
+        .compat-legend {
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            margin-top: 0.5rem;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+        }
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        /* ===== Risk Cards ===== */
+        .risk-item {
+            display: flex;
+            gap: 12px;
+            padding: 1rem;
+            border-radius: var(--radius-sm);
+            margin-bottom: 0.75rem;
+            border-left: 3px solid;
+        }
+        .risk-item.high {
+            background: #FEF2F2;
+            border-left-color: var(--accent-red);
+        }
+        .risk-item.medium {
+            background: #FFFBEB;
+            border-left-color: var(--accent-yellow);
+        }
+        .risk-item.low {
+            background: #EFF6FF;
+            border-left-color: var(--accent-blue);
+        }
+        .risk-item.info {
+            background: #ECFDF5;
+            border-left-color: var(--accent-green);
+        }
+        .risk-severity {
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            white-space: nowrap;
+            height: fit-content;
+        }
+        .risk-severity.high { background: #FEE2E2; color: #991B1B; }
+        .risk-severity.medium { background: #FEF3C7; color: #92400E; }
+        .risk-severity.low { background: #DBEAFE; color: #1E40AF; }
+        .risk-severity.info { background: #D1FAE5; color: #065F46; }
+        .risk-content h4 { font-size: 0.95rem; margin-bottom: 4px; }
+        .risk-content p { font-size: 0.82rem; color: var(--text-secondary); line-height: 1.5; }
+        .risk-mitigation {
+            font-size: 0.78rem;
+            color: var(--accent-cyan);
+            margin-top: 6px;
+            font-style: italic;
+        }
+
+        /* ===== Dependency Graph ===== */
+        .dep-graph {
+            background: var(--bg-input);
+            border-radius: var(--radius-md);
+            padding: 2rem;
+            min-height: 200px;
+            overflow-x: auto;
+        }
+        .dep-graph svg {
+            width: 100%;
+            min-height: 150px;
+        }
+        .dep-node {
+            fill: var(--bg-card);
+            stroke: var(--border-color);
+            stroke-width: 1.5;
+            rx: 8;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        .dep-node:hover {
+            stroke: var(--accent-orange);
+            fill: var(--bg-card-hover);
+        }
+        .dep-node-text {
+            fill: var(--text-primary);
+            font-size: 11px;
+            font-family: 'DM Sans', sans-serif;
+            font-weight: 500;
+            text-anchor: middle;
+            dominant-baseline: central;
+            pointer-events: none;
+        }
+        .dep-edge {
+            stroke: var(--accent-orange);
+            stroke-width: 1.5;
+            fill: none;
+            marker-end: url(#arrowhead);
+            opacity: 0.5;
+        }
+        .dep-type-label {
+            fill: var(--text-muted);
+            font-size: 9px;
+            font-family: 'DM Sans', sans-serif;
+            text-anchor: middle;
+            dominant-baseline: central;
+            pointer-events: none;
+        }
+
+        /* ===== JSON Viewer ===== */
+        .json-viewer {
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 1.5rem;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+            font-size: 0.8rem;
+            line-height: 1.6;
+            max-height: 500px;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: var(--text-secondary);
+            position: relative;
+        }
+        .json-viewer .key { color: #1E6FD9; }
+        .json-viewer .string { color: #00875A; }
+        .json-viewer .number { color: #CA8A04; }
+        .json-viewer .boolean { color: #7C3AED; }
+        .json-viewer .null { color: #9CA3AF; }
+        .json-copy-btn {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .json-copy-btn:hover {
+            color: #FF3621;
+            border-color: rgba(255,54,33,0.3);
+        }
+
+        /* ===== Deploy Form ===== */
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+        .form-label {
+            display: block;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+        .form-input {
+            width: 100%;
+            padding: 12px 16px;
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            font-family: 'DM Sans', sans-serif;
+            transition: all 0.2s;
+        }
+        .form-input:focus {
+            outline: none;
+            border-color: #FF3621;
+            box-shadow: 0 0 0 3px rgba(255,54,33,0.1);
+        }
+        .form-input::placeholder { color: var(--text-muted); }
+        .form-hint {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* ===== Edition Selector ===== */
+        .edition-selector {
+            display: flex; gap: 10px; flex-wrap: wrap;
+        }
+        .edition-btn {
+            flex: 1 1 22%;
+            min-width: 100px;
+            display: flex; flex-direction: column; align-items: center; gap: 6px;
+            padding: 14px 10px;
+            background: #FFFFFF;
+            border: 2px solid #E5E7EB;
+            border-radius: var(--radius-md);
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.82rem;
+            transition: all 0.2s;
+        }
+        .edition-btn i { font-size: 1.5rem; opacity: 0.5; transition: all 0.2s; }
+        .edition-btn:hover { border-color: #0891B2; background: #F0FDFA; }
+        .edition-btn:hover i { opacity: 0.8; }
+        .edition-btn.active {
+            border-color: #0891B2;
+            background: #F0FDFA;
+            color: var(--text-primary);
+            box-shadow: 0 0 0 3px rgba(8,145,178,0.1);
+        }
+        .edition-btn.active i { opacity: 1; color: #0891B2; }
+        .edition-btn small { font-size: 0.7rem; color: var(--text-muted); }
+        .edition-info-banner {
+            margin-bottom: 1rem;
+            padding: 16px;
+            border-radius: var(--radius-md);
+            border: 1px solid #99F6E4;
+            background: #F0FDFA;
+        }
+
+        /* ===== Deploy Result ===== */
+        .deploy-result {
+            padding: 1.5rem;
+            border-radius: var(--radius-md);
+            margin-top: 1rem;
+        }
+        .deploy-result.success {
+            background: #ECFDF5;
+            border: 1px solid #A7F3D0;
+        }
+        .deploy-result.package {
+            background: #EFF6FF;
+            border: 1px solid #BFDBFE;
+        }
+        .deploy-result.error {
+            background: #FEF2F2;
+            border: 1px solid #FECACA;
+        }
+
+        /* ===== Telemetry ===== */
+        .telemetry-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .telem-card {
+            background: #FFFFFF;
+            border: 1px solid #E5E7EB;
+            border-radius: var(--radius-md);
+            padding: 1.5rem;
+            text-align: center;
+        }
+        .telem-icon {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .event-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .event-table th {
+            text-align: left;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .event-table td {
+            padding: 10px 16px;
+            font-size: 0.85rem;
+            border-bottom: 1px solid #F3F4F6;
+            color: var(--text-secondary);
+        }
+        .event-type-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.72rem;
+            font-weight: 600;
+        }
+
+        /* ===== Activity Type Badge ===== */
+        .act-type-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            background: #EDE9FE;
+            color: #5B21B6;
+        }
+
+        /* ===== Recommendation Banner ===== */
+        .recommendation-banner {
+            border-radius: var(--radius-md);
+            padding: 1.5rem;
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+        }
+        .recommendation-banner.auto_convert {
+            background: #ECFDF5;
+            border: 1px solid #A7F3D0;
+        }
+        .recommendation-banner.assisted_convert {
+            background: #FFFBEB;
+            border: 1px solid #FDE68A;
+        }
+        .recommendation-banner.manual_review {
+            background: #FEF2F2;
+            border: 1px solid #FECACA;
+        }
+        .recommendation-banner .rec-icon {
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+        .recommendation-banner h4 { margin-bottom: 4px; }
+        .recommendation-banner p { font-size: 0.85rem; color: var(--text-secondary); }
+
+        /* ===== Task List ===== */
+        .task-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .task-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            border-radius: var(--radius-sm);
+            margin-bottom: 4px;
+            transition: background 0.2s;
+        }
+        .task-row:hover { background: #F9FAFB; }
+        .task-key {
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 0.82rem;
+            color: #C22617;
+            min-width: 180px;
+        }
+        .task-type {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+        }
+        .task-deps {
+            font-size: 0.75rem;
+            color: var(--accent-cyan);
+            margin-left: auto;
+        }
+
+        /* ===== Spinner ===== */
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,54,33,0.15);
+            border-top: 2px solid #FF3621;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .processing-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            background: rgba(255,255,255,0.92);
+            backdrop-filter: blur(4px);
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+        .processing-overlay.show { display: flex; }
+        .processing-spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(255,54,33,0.1);
+            border-top: 4px solid #FF3621;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        .processing-text {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .processing-sub {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        /* ===== Toast ===== */
+        .toast-container {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            z-index: 300;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .toast {
+            padding: 14px 20px;
+            border-radius: var(--radius-sm);
+            font-size: 0.85rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease;
+            min-width: 300px;
+            box-shadow: var(--shadow-lg);
+        }
+        .toast.success { background: #ECFDF5; border: 1px solid #A7F3D0; color: #065F46; }
+        .toast.error { background: #FEF2F2; border: 1px solid #FECACA; color: #991B1B; }
+        .toast.info { background: #EFF6FF; border: 1px solid #BFDBFE; color: #1E40AF; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* ===== Two Column Layout ===== */
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; }
+
+        /* ===== Notebook Preview ===== */
+        .notebook-card {
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            margin-bottom: 0.75rem;
+            overflow: hidden;
+        }
+        .notebook-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+        }
+        .notebook-path {
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 0.8rem;
+            color: #C22617;
+        }
+        .notebook-note {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+        .notebook-body {
+            display: none;
+            padding: 1rem;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 0.78rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            color: var(--text-secondary);
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .notebook-body.open { display: block; }
+
+        /* ===== Connection Status Badge (Navbar) ===== */
+        .conn-status-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 5px 12px;
+            border-radius: 20px;
+            transition: all 0.3s;
+        }
+        .conn-status-badge.connected {
+            background: #ECFDF5;
+            color: #065F46;
+            border: 1px solid #A7F3D0;
+        }
+        .conn-status-badge.disconnected {
+            background: #F9FAFB;
+            color: var(--text-muted);
+            border: 1px solid #E5E7EB;
+            cursor: pointer;
+        }
+        .conn-status-badge.disconnected:hover {
+            color: #FF3621;
+            border-color: rgba(255,54,33,0.3);
+        }
+
+        /* ===== Responsive ===== */
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2rem; }
+            .grid-2, .grid-3 { grid-template-columns: 1fr; }
+            .telemetry-grid { grid-template-columns: repeat(2, 1fr); }
+            .stepper { flex-wrap: wrap; gap: 8px; }
+            .stepper::before { display: none; }
+            .step-item { flex: 0 0 auto; }
+            .navbar-inner { padding: 0 1rem; }
+            .app-container { padding: 0 1rem 4rem; }
+            .nav-links { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-grid"></div>
+
+    <!-- ===== Navbar ===== -->
+    <nav class="navbar">
+        <div class="navbar-inner">
+            <div class="logo">
+                <div class="logo-icon"><i class="fas fa-th-large"></i></div>
+                <span class="logo-text">Bricksfactory</span>
+                <span class="logo-badge">v1.0</span>
+            </div>
+            <div class="nav-links">
+                <button class="nav-link active" onclick="showSection('migrate')"><i class="fas fa-rocket"></i> Migrate</button>
+                <button class="nav-link" onclick="showSection('settings')"><i class="fas fa-plug"></i> Connection</button>
+                <button class="nav-link" onclick="showSection('telemetry')"><i class="fas fa-chart-bar"></i> Telemetry</button>
+            </div>
+            <div id="connStatusBadge" class="conn-status-badge disconnected" title="Databricks not configured">
+                <i class="fas fa-unlink"></i> <span id="connStatusText">Not Connected</span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ===== Processing Overlay ===== -->
+    <div class="processing-overlay" id="processingOverlay">
+        <div class="processing-spinner"></div>
+        <div class="processing-text" id="processingText">Processing...</div>
+        <div class="processing-sub" id="processingSub">This may take a moment</div>
+    </div>
+
+    <!-- ===== Toast Container ===== -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- ===== Main Content ===== -->
+    <div class="app-container">
+
+        <!-- ===== Migrate Section ===== -->
+        <div class="section-panel active" id="section-migrate">
+
+            <!-- Hero -->
+            <div class="hero">
+                <h1>ADF to Lakeflow<br><span>Orchestration Compiler</span></h1>
+                <p>Upload Azure Data Factory pipelines, analyze migration readiness, compile to Databricks Lakeflow jobs, and deploy — one intelligent workflow.</p>
+            </div>
+
+            <!-- Stepper -->
+            <div class="stepper" id="stepper">
+                <div class="step-item active" data-step="1">
+                    <div class="step-circle"><i class="fas fa-cloud-upload-alt"></i></div>
+                    <div class="step-label">Upload</div>
+                </div>
+                <div class="step-item" data-step="2">
+                    <div class="step-circle"><i class="fas fa-microscope"></i></div>
+                    <div class="step-label">Analyze</div>
+                </div>
+                <div class="step-item" data-step="3">
+                    <div class="step-circle"><i class="fas fa-exchange-alt"></i></div>
+                    <div class="step-label">Convert</div>
+                </div>
+                <div class="step-item" data-step="4">
+                    <div class="step-circle"><i class="fas fa-rocket"></i></div>
+                    <div class="step-label">Deploy</div>
+                </div>
+            </div>
+
+            <!-- ========== STEP 1: Upload ========== -->
+            <div class="step-content active" id="step-1">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon orange"><i class="fas fa-file-import"></i></div>
+                        <div>
+                            <div class="card-title">Upload ADF Pipeline(s)</div>
+                            <div class="card-subtitle">Drag & drop or click to select ADF pipeline JSON export files</div>
+                        </div>
+                    </div>
+                    <div class="upload-zone" id="uploadZone">
+                        <input type="file" id="fileInput" multiple accept=".json">
+                        <div class="icon"><i class="fas fa-cloud-upload-alt"></i></div>
+                        <h3>Drop ADF Pipeline JSON Files Here</h3>
+                        <p>Supports ARM templates, pipeline exports, and direct JSON formats</p>
+                    </div>
+                    <div id="fileList" style="margin-top: 1rem;"></div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" id="btnUpload" disabled onclick="uploadFiles()">
+                            <i class="fas fa-upload"></i> Upload & Continue
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== STEP 2: Analyze ========== -->
+            <div class="step-content" id="step-2" style="display:none;">
+                <div id="analysisResults"></div>
+                <div class="btn-group">
+                    <button class="btn btn-secondary" onclick="goToStep(1)"><i class="fas fa-arrow-left"></i> Back</button>
+                    <button class="btn btn-primary" id="btnConvert" onclick="convertPipeline()">
+                        <i class="fas fa-exchange-alt"></i> Convert to Lakeflow
+                    </button>
+                </div>
+            </div>
+
+            <!-- ========== STEP 3: Convert ========== -->
+            <div class="step-content" id="step-3" style="display:none;">
+                <div id="conversionResults"></div>
+                <div class="btn-group">
+                    <button class="btn btn-secondary" onclick="goToStep(2)"><i class="fas fa-arrow-left"></i> Back</button>
+                    <button class="btn btn-primary" id="btnDeploy" onclick="goToStep(4)">
+                        <i class="fas fa-rocket"></i> Proceed to Deploy
+                    </button>
+                </div>
+            </div>
+
+            <!-- ========== STEP 4: Deploy ========== -->
+            <div class="step-content" id="step-4" style="display:none;">
+                <div class="grid-2">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-icon green"><i class="fas fa-server"></i></div>
+                            <div>
+                                <div class="card-title">Databricks Workspace</div>
+                                <div class="card-subtitle">Uses saved connection settings, or enter manually below</div>
+                            </div>
+                        </div>
+
+                        <div id="deployConnStatus" style="margin-bottom:1.25rem;"></div>
+
+                        <div class="form-group">
+                            <label class="form-label"><i class="fas fa-globe" style="margin-right:6px; color:var(--accent-orange);"></i>Workspace URL</label>
+                            <input class="form-input" id="workspaceUrl" type="url" placeholder="https://adb-xxxx.azuredatabricks.net">
+                            <div class="form-hint">Auto-filled from Connection settings if configured</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label"><i class="fas fa-key" style="margin-right:6px; color:var(--accent-yellow);"></i>Access Token</label>
+                            <input class="form-input" id="accessToken" type="password" placeholder="dapi... (leave blank to use saved token)">
+                            <div class="form-hint">Leave blank to use the token saved in Connection settings</div>
+                        </div>
+                        <button class="btn btn-primary" style="width:100%;" onclick="deployPipeline()">
+                            <i class="fas fa-rocket"></i> Deploy to Databricks
+                        </button>
+                        <div style="margin-top:10px; display:flex; gap:8px; justify-content:center;">
+                            <button class="btn btn-ghost" onclick="deployPipeline()">
+                                <i class="fas fa-download"></i> Download Package
+                            </button>
+                            <button class="btn btn-ghost" onclick="showSection('settings'); document.querySelectorAll('.nav-link').forEach(l=>{l.classList.remove('active'); if(l.textContent.includes('Connection'))l.classList.add('active');});">
+                                <i class="fas fa-cog"></i> Configure Connection
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-icon cyan"><i class="fas fa-clipboard-check"></i></div>
+                            <div>
+                                <div class="card-title">Deployment Status</div>
+                                <div class="card-subtitle">Results will appear here after deployment</div>
+                            </div>
+                        </div>
+                        <div id="deployResults">
+                            <div style="text-align:center; padding:2rem; color:var(--text-muted);">
+                                <i class="fas fa-satellite-dish" style="font-size:2rem; margin-bottom:1rem; display:block; opacity:0.3;"></i>
+                                <p>Configure workspace credentials and click deploy, or download the deployment package for manual setup.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-secondary" onclick="goToStep(3)"><i class="fas fa-arrow-left"></i> Back</button>
+                    <button class="btn btn-primary" onclick="resetAll()"><i class="fas fa-redo"></i> New Migration</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== Settings / Connection Section ===== -->
+        <div class="section-panel" id="section-settings">
+            <div class="hero" style="padding-bottom:2rem;">
+                <h1>Databricks <span>Connection</span></h1>
+                <p>Configure and test your Databricks workspace connection for one-click deployment</p>
+            </div>
+
+            <div class="grid-2">
+                <!-- Connection Form -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon orange"><i class="fas fa-plug"></i></div>
+                        <div>
+                            <div class="card-title">Workspace Credentials</div>
+                            <div class="card-subtitle">Select your Databricks edition and enter connection details</div>
+                        </div>
+                    </div>
+
+                    <!-- Edition Selector -->
+                    <div class="form-group">
+                        <label class="form-label"><i class="fas fa-cloud" style="margin-right:6px; color:var(--accent-cyan);"></i>Databricks Edition</label>
+                        <div class="edition-selector" id="editionSelector">
+                            <button class="edition-btn active" data-edition="community" onclick="selectEdition('community')">
+                                <i class="fas fa-gift"></i>
+                                <span>Community<br><small>Free Edition</small></span>
+                            </button>
+                            <button class="edition-btn" data-edition="azure" onclick="selectEdition('azure')">
+                                <i class="fab fa-microsoft"></i>
+                                <span>Azure<br><small>Databricks</small></span>
+                            </button>
+                            <button class="edition-btn" data-edition="aws" onclick="selectEdition('aws')">
+                                <i class="fab fa-aws"></i>
+                                <span>AWS<br><small>Databricks</small></span>
+                            </button>
+                            <button class="edition-btn" data-edition="gcp" onclick="selectEdition('gcp')">
+                                <i class="fab fa-google"></i>
+                                <span>GCP<br><small>Databricks</small></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Community Edition Info Banner -->
+                    <div id="communityBanner" class="edition-info-banner community">
+                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                            <i class="fas fa-info-circle" style="font-size:1.2rem; color:var(--accent-cyan);"></i>
+                            <strong>Databricks Community Edition (Free)</strong>
+                        </div>
+                        <p style="font-size:0.82rem; color:var(--text-secondary); line-height:1.6; margin-bottom:8px;">
+                            Community Edition is free and great for learning. It uses a different URL pattern and has some limitations:
+                        </p>
+                        <ul style="font-size:0.8rem; color:var(--text-secondary); padding-left:1.2rem; line-height:1.8;">
+                            <li>URL: <code style="color:var(--accent-orange);">https://community.cloud.databricks.com</code></li>
+                            <li>Single-node clusters only (no autoscaling)</li>
+                            <li>Jobs API has limited functionality</li>
+                            <li>No serverless compute &mdash; converted jobs will use classic clusters</li>
+                            <li>Notebooks and basic job scheduling work fine</li>
+                        </ul>
+                        <p style="font-size:0.78rem; color:var(--accent-green); margin-top:8px;"><i class="fas fa-check" style="margin-right:4px;"></i>Bricksfactory fully supports Community Edition for analysis, conversion, and deployment!</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label"><i class="fas fa-globe" style="margin-right:6px; color:var(--accent-orange);"></i>Workspace URL</label>
+                        <input class="form-input" id="settingsWorkspaceUrl" type="url" placeholder="https://community.cloud.databricks.com">
+                        <div class="form-hint" id="urlHint">For Community Edition: <code style="color:var(--accent-orange);">https://community.cloud.databricks.com</code></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label"><i class="fas fa-key" style="margin-right:6px; color:var(--accent-yellow);"></i>Personal Access Token</label>
+                        <input class="form-input" id="settingsToken" type="password" placeholder="dapi1234abcd...">
+                        <div class="form-hint" id="tokenHint">Generate from Databricks &rarr; User Settings &rarr; Developer &rarr; Access Tokens</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label"><i class="fas fa-folder-open" style="margin-right:6px; color:var(--accent-blue);"></i>Notebook Root Path (optional)</label>
+                        <input class="form-input" id="settingsNotebookPath" type="text" placeholder="/Bricksfactory/migrated" value="/Bricksfactory/migrated">
+                        <div class="form-hint">Workspace folder where generated notebooks will be deployed</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label"><i class="fas fa-sitemap" style="margin-right:6px; color:var(--accent-purple);"></i>Cluster Policy ID (optional)</label>
+                        <input class="form-input" id="settingsClusterPolicy" type="text" placeholder="E.g. 0012345678ABCDEF">
+                        <div class="form-hint">If your org enforces cluster policies, enter the policy ID here</div>
+                    </div>
+
+                    <div style="display:flex; gap:12px; margin-top:1.5rem;">
+                        <button class="btn btn-primary" style="flex:1;" onclick="saveConnectionSettings()">
+                            <i class="fas fa-save"></i> Save Settings
+                        </button>
+                        <button class="btn btn-secondary" style="flex:1;" onclick="testConnection()">
+                            <i class="fas fa-vial"></i> Test Connection
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Connection Status + Help -->
+                <div>
+                    <div class="card" id="connTestResultCard">
+                        <div class="card-header">
+                            <div class="card-icon cyan"><i class="fas fa-stethoscope"></i></div>
+                            <div>
+                                <div class="card-title">Connection Status</div>
+                                <div class="card-subtitle">Test your connection to verify credentials</div>
+                            </div>
+                        </div>
+                        <div id="connTestResult">
+                            <div style="text-align:center; padding:2rem; color:var(--text-muted);">
+                                <i class="fas fa-plug" style="font-size:3rem; display:block; margin-bottom:1rem; opacity:0.2;"></i>
+                                <p style="font-size:0.9rem;">Click <strong>"Test Connection"</strong> to verify your Databricks workspace credentials.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- How to get Token - Community Edition -->
+                    <div class="card" id="helpCardCommunity">
+                        <div class="card-header">
+                            <div class="card-icon green"><i class="fas fa-graduation-cap"></i></div>
+                            <div>
+                                <div class="card-title">Get Started with Community Edition</div>
+                                <div class="card-subtitle">Free signup + token generation steps</div>
+                            </div>
+                        </div>
+                        <div style="margin-bottom:1rem; padding:12px; background:#ECFDF5; border:1px solid #A7F3D0; border-radius:var(--radius-sm);">
+                            <p style="font-size:0.85rem; color:var(--accent-green);"><i class="fas fa-star" style="margin-right:6px;"></i><strong>Don't have an account?</strong> Sign up free at <code style="color:var(--accent-orange);">community.cloud.databricks.com</code></p>
+                        </div>
+                        <h5 style="margin-bottom:8px; color:var(--text-primary);">Step 1: Sign Up / Log In</h5>
+                        <ol style="font-size:0.85rem; color:var(--text-secondary); padding-left:1.5rem; line-height:2; margin-bottom:1rem;">
+                            <li>Go to <strong>community.cloud.databricks.com</strong></li>
+                            <li>Click <strong>"Sign Up"</strong> (or log in if you have an account)</li>
+                            <li>Verify your email and complete registration</li>
+                        </ol>
+                        <h5 style="margin-bottom:8px; color:var(--text-primary);">Step 2: Generate Access Token</h5>
+                        <ol style="font-size:0.85rem; color:var(--text-secondary); padding-left:1.5rem; line-height:2;">
+                            <li>Once logged in, click your <strong>user icon</strong> (top-right)</li>
+                            <li>Select <strong>"Settings"</strong></li>
+                            <li>Go to <strong>"Developer"</strong> tab &rarr; <strong>"Access Tokens"</strong></li>
+                            <li>Click <strong>"Generate New Token"</strong></li>
+                            <li>Name it <em>Bricksfactory</em>, set lifetime (e.g., 90 days)</li>
+                            <li>Click <strong>"Generate"</strong> and copy the <code style="color:var(--accent-orange);">dapi...</code> token</li>
+                            <li>Paste the token in the field on the left</li>
+                        </ol>
+                        <div style="margin-top:1rem; padding:12px; background:#FFF7ED; border:1px solid #FED7AA; border-radius:var(--radius-sm);">
+                            <p style="font-size:0.82rem; color:var(--accent-orange-light);"><i class="fas fa-shield-alt" style="margin-right:6px;"></i><strong>Security:</strong> Token is only stored in-memory for this session. Never saved to disk.</p>
+                        </div>
+                    </div>
+
+                    <!-- How to get Token - Enterprise -->
+                    <div class="card" id="helpCardEnterprise" style="display:none;">
+                        <div class="card-header">
+                            <div class="card-icon blue"><i class="fas fa-info-circle"></i></div>
+                            <div>
+                                <div class="card-title">How to Get Your Token</div>
+                                <div class="card-subtitle">Steps for enterprise Databricks</div>
+                            </div>
+                        </div>
+                        <ol style="font-size:0.85rem; color:var(--text-secondary); padding-left:1.5rem; line-height:2;">
+                            <li>Open your <strong>Databricks workspace</strong> in the browser</li>
+                            <li>Click your <strong>user icon</strong> (top-right) &rarr; <strong>Settings</strong></li>
+                            <li>Go to <strong>Developer</strong> &rarr; <strong>Access Tokens</strong></li>
+                            <li>Click <strong>"Generate New Token"</strong></li>
+                            <li>Give it a name (e.g. <em>Bricksfactory</em>), set a lifetime, and click <strong>Generate</strong></li>
+                            <li>Copy the token (starts with <code style="color:var(--accent-orange);">dapi...</code>) and paste it above</li>
+                        </ol>
+                        <div style="margin-top:1rem; padding:12px; background:#FFF7ED; border:1px solid #FED7AA; border-radius:var(--radius-sm);">
+                            <p style="font-size:0.82rem; color:var(--accent-orange-light);"><i class="fas fa-shield-alt" style="margin-right:6px;"></i><strong>Security:</strong> Token is only stored in-memory for this session. Never saved to disk.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== Telemetry Section ===== -->
+        <div class="section-panel" id="section-telemetry">
+            <div class="hero" style="padding-bottom:2rem;">
+                <h1>Operations <span>Dashboard</span></h1>
+                <p>Real-time telemetry, audit trail, and operational metrics</p>
+            </div>
+            <div id="telemetryContent">
+                <div style="text-align:center; padding:4rem; color:var(--text-muted);">
+                    <i class="fas fa-chart-line" style="font-size:3rem; display:block; margin-bottom:1rem; opacity:0.3;"></i>
+                    <p>Telemetry data will appear after migration operations are performed.</p>
+                    <button class="btn btn-secondary" style="margin-top:1rem;" onclick="loadTelemetry()"><i class="fas fa-sync"></i> Refresh</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    /* ========================================================
+       Bricksfactory Frontend Application
+       ======================================================== */
+
+    const API = '';
+    let currentStep = 1;
+    let sessionId = null;
+    let uploadedFiles = [];
+    let analysisData = null;
+    let conversionData = null;
+
+    // ===== Navigation =====
+    function showSection(section) {
+        document.querySelectorAll('.section-panel').forEach(p => p.classList.remove('active'));
+        document.getElementById(`section-${section}`).classList.add('active');
+        document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+        event.target.closest('.nav-link').classList.add('active');
+        if (section === 'telemetry') loadTelemetry();
+        if (section === 'settings') loadConnectionSettings();
+    }
+
+    // Navigate to settings when badge is clicked
+    document.getElementById('connStatusBadge').addEventListener('click', () => {
+        document.querySelectorAll('.section-panel').forEach(p => p.classList.remove('active'));
+        document.getElementById('section-settings').classList.add('active');
+        document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+        document.querySelectorAll('.nav-link').forEach(l => { if (l.textContent.includes('Connection')) l.classList.add('active'); });
+        loadConnectionSettings();
+    });
+
+    // ===== Stepper =====
+    function updateStepper(step) {
+        document.querySelectorAll('.step-item').forEach(s => {
+            const sStep = parseInt(s.dataset.step);
+            s.classList.remove('active', 'completed');
+            if (sStep < step) s.classList.add('completed');
+            else if (sStep === step) s.classList.add('active');
+        });
+    }
+
+    function goToStep(step) {
+        document.querySelectorAll('.step-content').forEach(c => c.style.display = 'none');
+        document.getElementById(`step-${step}`).style.display = 'block';
+        currentStep = step;
+        updateStepper(step);
+        window.scrollTo({ top: 200, behavior: 'smooth' });
+    }
+
+    // ===== File Upload =====
+    const uploadZone = document.getElementById('uploadZone');
+    const fileInput = document.getElementById('fileInput');
+
+    uploadZone.addEventListener('dragover', e => {
+        e.preventDefault();
+        uploadZone.classList.add('dragover');
+    });
+    uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+    uploadZone.addEventListener('drop', e => {
+        e.preventDefault();
+        uploadZone.classList.remove('dragover');
+        handleFiles(e.dataTransfer.files);
+    });
+    fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+    function handleFiles(files) {
+        uploadedFiles = Array.from(files).filter(f => f.name.endsWith('.json'));
+        renderFileList();
+        document.getElementById('btnUpload').disabled = uploadedFiles.length === 0;
+    }
+
+    function renderFileList() {
+        const container = document.getElementById('fileList');
+        container.innerHTML = uploadedFiles.map((f, i) => `
+            <span class="file-chip">
+                <i class="fas fa-file-code"></i>
+                ${escapeHtml(f.name)}
+                <span class="remove" onclick="removeFile(${i})">&times;</span>
+            </span>
+        `).join('');
+    }
+
+    function removeFile(index) {
+        uploadedFiles.splice(index, 1);
+        renderFileList();
+        document.getElementById('btnUpload').disabled = uploadedFiles.length === 0;
+    }
+
+    async function uploadFiles() {
+        if (uploadedFiles.length === 0) return;
+        showProcessing('Uploading Pipelines', 'Parsing ADF pipeline definitions...');
+
+        const formData = new FormData();
+        uploadedFiles.forEach(f => formData.append('files', f));
+
+        try {
+            const res = await fetch(`${API}/api/upload`, { method: 'POST', body: formData });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Upload failed');
+
+            sessionId = data.session_id;
+            showToast('success', `${data.files.length} pipeline(s) uploaded successfully`);
+            await analyzePipeline();
+        } catch (err) {
+            hideProcessing();
+            showToast('error', err.message);
+        }
+    }
+
+    // ===== Analyze =====
+    async function analyzePipeline() {
+        showProcessing('Analyzing Pipeline', 'Evaluating complexity, compatibility, and risks...');
+        try {
+            const res = await fetch(`${API}/api/analyze/${sessionId}`, { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Analysis failed');
+
+            analysisData = data;
+            renderAnalysis(data);
+            goToStep(2);
+            showToast('success', 'Analysis complete');
+        } catch (err) {
+            showToast('error', err.message);
+        } finally {
+            hideProcessing();
+        }
+    }
+
+    function renderAnalysis(data) {
+        const container = document.getElementById('analysisResults');
+        let html = '';
+
+        data.results.forEach(result => {
+            const a = result.analysis;
+            const rs = a.readiness_score;
+            const gaugeColor = rs.color === 'green' ? '#00875A' : rs.color === 'yellow' ? '#CA8A04' : '#DC2626';
+            const circumference = 2 * Math.PI * 75;
+            const offset = circumference - (rs.score / 100) * circumference;
+
+            html += `
+            <h2 style="margin-bottom:1.5rem; font-size:1.4rem;">
+                <i class="fas fa-project-diagram" style="color:var(--accent-orange); margin-right:8px;"></i>
+                Pipeline: <span style="color:var(--accent-orange);">${escapeHtml(result.pipeline_name)}</span>
+            </h2>
+
+            <!-- Readiness + Stats Row -->
+            <div class="grid-2">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon ${rs.color === 'green' ? 'green' : rs.color === 'yellow' ? 'orange' : 'red'}">
+                            <i class="fas fa-tachometer-alt"></i>
+                        </div>
+                        <div>
+                            <div class="card-title">Migration Readiness</div>
+                            <div class="card-subtitle">Overall readiness for Databricks conversion</div>
+                        </div>
+                    </div>
+                    <div class="readiness-gauge">
+                        <div class="gauge-ring">
+                            <svg width="180" height="180">
+                                <circle class="gauge-bg" cx="90" cy="90" r="75"/>
+                                <circle class="gauge-fill" cx="90" cy="90" r="75"
+                                    stroke="${gaugeColor}"
+                                    stroke-dasharray="${circumference}"
+                                    stroke-dashoffset="${offset}"/>
+                            </svg>
+                            <div class="gauge-value">
+                                <div class="gauge-number" style="color:${gaugeColor}">${rs.score}</div>
+                                <div class="gauge-label-text">${rs.label}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon blue"><i class="fas fa-chart-pie"></i></div>
+                        <div>
+                            <div class="card-title">Pipeline Statistics</div>
+                            <div class="card-subtitle">Activity breakdown and complexity metrics</div>
+                        </div>
+                    </div>
+                    <div class="stats-grid">
+                        <div class="stat-tile">
+                            <div class="stat-value blue">${a.complexity.total_activities}</div>
+                            <div class="stat-label">Total Activities</div>
+                        </div>
+                        <div class="stat-tile">
+                            <div class="stat-value ${a.complexity.level === 'Low' ? 'green' : a.complexity.level === 'Medium' ? 'orange' : 'red'}">${a.complexity.score}</div>
+                            <div class="stat-label">Complexity Score</div>
+                        </div>
+                        <div class="stat-tile">
+                            <div class="stat-value purple">${a.complexity.max_nesting_depth}</div>
+                            <div class="stat-label">Max Depth</div>
+                        </div>
+                        <div class="stat-tile">
+                            <div class="stat-value cyan">${a.complexity.parameter_count}</div>
+                            <div class="stat-label">Parameters</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recommendation -->
+            ${renderRecommendation(a.recommendation)}
+
+            <!-- Compatibility -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon green"><i class="fas fa-check-double"></i></div>
+                    <div>
+                        <div class="card-title">Compatibility Assessment</div>
+                        <div class="card-subtitle">${a.compatibility.compatibility_percentage}% of activities are fully compatible</div>
+                    </div>
+                </div>
+                ${renderCompatibilityBar(a.compatibility)}
+                ${renderCompatibilityDetails(a.compatibility)}
+            </div>
+
+            <!-- Risks -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon red"><i class="fas fa-exclamation-triangle"></i></div>
+                    <div>
+                        <div class="card-title">Risk Assessment</div>
+                        <div class="card-subtitle">${a.risks.length} item(s) identified</div>
+                    </div>
+                </div>
+                ${a.risks.map(r => renderRiskItem(r)).join('')}
+            </div>
+
+            <!-- Dependency Graph -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon purple"><i class="fas fa-project-diagram"></i></div>
+                    <div>
+                        <div class="card-title">Activity Dependency Graph</div>
+                        <div class="card-subtitle">Visual representation of activity flow</div>
+                    </div>
+                </div>
+                <div class="dep-graph" id="depGraph-${escapeHtml(result.pipeline_name)}">
+                    ${renderDependencyGraph(a.dependency_graph)}
+                </div>
+            </div>
+            `;
+        });
+
+        container.innerHTML = html;
+    }
+
+    function renderRecommendation(rec) {
+        const icons = {
+            auto_convert: '<i class="fas fa-check-circle" style="color: var(--accent-green);"></i>',
+            assisted_convert: '<i class="fas fa-tools" style="color: var(--accent-yellow);"></i>',
+            manual_review: '<i class="fas fa-hand-paper" style="color: var(--accent-red);"></i>',
+        };
+        return `
+        <div class="recommendation-banner ${rec.action}" style="margin-bottom:1.5rem;">
+            <div class="rec-icon">${icons[rec.action] || ''}</div>
+            <div>
+                <h4>${escapeHtml(rec.title)}</h4>
+                <p>${escapeHtml(rec.description)}</p>
+                <p style="margin-top:6px;"><strong>Estimated Effort:</strong> ${rec.estimated_effort}</p>
+            </div>
+        </div>`;
+    }
+
+    function renderCompatibilityBar(compat) {
+        const s = compat.summary;
+        const total = (s.fully_supported + s.partially_supported + s.unsupported + s.unknown) || 1;
+        const gPct = (s.fully_supported / total * 100).toFixed(1);
+        const yPct = (s.partially_supported / total * 100).toFixed(1);
+        const rPct = (s.unsupported / total * 100).toFixed(1);
+        const grPct = (s.unknown / total * 100).toFixed(1);
+
+        return `
+        <div class="compat-bar">
+            <div class="segment green" style="width:${gPct}%"></div>
+            <div class="segment yellow" style="width:${yPct}%"></div>
+            <div class="segment red" style="width:${rPct}%"></div>
+            <div class="segment gray" style="width:${grPct}%"></div>
+        </div>
+        <div class="compat-legend">
+            <div class="legend-item"><div class="legend-dot" style="background:var(--accent-green)"></div>Fully Supported (${s.fully_supported})</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--accent-yellow)"></div>Partial (${s.partially_supported})</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--accent-red)"></div>Unsupported (${s.unsupported})</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--text-muted)"></div>Unknown (${s.unknown})</div>
+        </div>`;
+    }
+
+    function renderCompatibilityDetails(compat) {
+        const all = [
+            ...compat.fully_compatible,
+            ...compat.partially_compatible,
+            ...compat.incompatible,
+            ...compat.unknown,
+        ];
+        if (all.length === 0) return '';
+
+        const statusIcons = {
+            fully_supported: '<i class="fas fa-check-circle" style="color:var(--accent-green)"></i>',
+            partially_supported: '<i class="fas fa-exclamation-circle" style="color:var(--accent-yellow)"></i>',
+            unsupported: '<i class="fas fa-times-circle" style="color:var(--accent-red)"></i>',
+            needs_review: '<i class="fas fa-question-circle" style="color:var(--accent-yellow)"></i>',
+            unknown: '<i class="fas fa-question-circle" style="color:var(--text-muted)"></i>',
+        };
+
+        let rows = all.map(a => `
+            <tr>
+                <td>${statusIcons[a.status] || ''}</td>
+                <td style="font-weight:600;">${escapeHtml(a.name)}</td>
+                <td><span class="act-type-badge">${escapeHtml(a.type)}</span></td>
+                <td style="font-size:0.8rem; color:var(--text-muted);">${escapeHtml(a.note)}</td>
+            </tr>
+        `).join('');
+
+        return `
+        <table class="event-table" style="margin-top:1rem;">
+            <tr><th></th><th>Activity</th><th>Type</th><th>Note</th></tr>
+            ${rows}
+        </table>`;
+    }
+
+    function renderRiskItem(risk) {
+        return `
+        <div class="risk-item ${risk.severity}">
+            <span class="risk-severity ${risk.severity}">${risk.severity.toUpperCase()}</span>
+            <div class="risk-content">
+                <h4>${escapeHtml(risk.title)}</h4>
+                <p>${escapeHtml(risk.description)}</p>
+                ${risk.mitigation ? `<div class="risk-mitigation"><i class="fas fa-lightbulb"></i> ${escapeHtml(risk.mitigation)}</div>` : ''}
+            </div>
+        </div>`;
+    }
+
+    function renderDependencyGraph(graph) {
+        if (!graph || !graph.nodes || graph.nodes.length === 0) {
+            return '<p style="text-align:center; color:var(--text-muted); padding:2rem;">No dependency graph available</p>';
+        }
+
+        const nodes = graph.nodes;
+        const edges = graph.edges;
+        const nodeW = 160, nodeH = 44, padX = 40, padY = 60;
+
+        // Build adjacency for topological layering
+        const inDeg = {};
+        const adj = {};
+        nodes.forEach(n => { inDeg[n.id] = 0; adj[n.id] = []; });
+        edges.forEach(e => { if (inDeg[e.to] !== undefined) { inDeg[e.to]++; adj[e.from].push(e.to); } });
+
+        // BFS layering
+        const layers = [];
+        const visited = new Set();
+        let queue = nodes.filter(n => inDeg[n.id] === 0).map(n => n.id);
+        if (queue.length === 0) queue = [nodes[0].id];
+
+        while (queue.length > 0) {
+            layers.push([...queue]);
+            queue.forEach(n => visited.add(n));
+            const next = [];
+            queue.forEach(nId => {
+                (adj[nId] || []).forEach(child => {
+                    if (!visited.has(child) && !next.includes(child)) {
+                        next.push(child);
+                    }
+                });
+            });
+            queue = next;
+            if (queue.length === 0 && visited.size < nodes.length) {
+                const remaining = nodes.find(n => !visited.has(n.id));
+                if (remaining) queue = [remaining.id];
+            }
+        }
+
+        const positions = {};
+        layers.forEach((layer, li) => {
+            layer.forEach((nId, ni) => {
+                positions[nId] = {
+                    x: padX + ni * (nodeW + padX) + (layers[0].length - layer.length) * (nodeW + padX) / 2,
+                    y: padX + li * (nodeH + padY),
+                };
+            });
+        });
+
+        const width = Math.max(600, Math.max(...layers.map(l => l.length)) * (nodeW + padX) + padX);
+        const height = layers.length * (nodeH + padY) + padX;
+
+        const catColors = {
+            data_movement: '#1E6FD9', data_flow: '#7C3AED', compute: '#FF3621',
+            sql: '#0891B2', data_access: '#00875A', external: '#DC2626',
+            orchestration: '#eab308', control_flow: '#a855f7',
+        };
+
+        let svg = `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`;
+        svg += '<defs><marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="var(--accent-orange)" opacity="0.6"/></marker></defs>';
+
+        // Edges
+        edges.forEach(e => {
+            const from = positions[e.from];
+            const to = positions[e.to];
+            if (from && to) {
+                svg += `<line class="dep-edge" x1="${from.x + nodeW/2}" y1="${from.y + nodeH}" x2="${to.x + nodeW/2}" y2="${to.y}"/>`;
+            }
+        });
+
+        // Nodes
+        nodes.forEach(n => {
+            const pos = positions[n.id];
+            if (!pos) return;
+            const color = catColors[n.category] || '#64748b';
+            svg += `<rect class="dep-node" x="${pos.x}" y="${pos.y}" width="${nodeW}" height="${nodeH}" style="stroke:${color};"/>`;
+            const displayName = n.id.length > 18 ? n.id.substring(0, 16) + '...' : n.id;
+            svg += `<text class="dep-node-text" x="${pos.x + nodeW/2}" y="${pos.y + nodeH/2 - 6}">${escapeHtml(displayName)}</text>`;
+            svg += `<text class="dep-type-label" x="${pos.x + nodeW/2}" y="${pos.y + nodeH/2 + 10}">${escapeHtml(n.type)}</text>`;
+        });
+
+        svg += '</svg>';
+        return svg;
+    }
+
+    // ===== Convert =====
+    async function convertPipeline() {
+        showProcessing('Converting Pipeline', 'Generating Databricks Lakeflow job definition...');
+        try {
+            const res = await fetch(`${API}/api/convert/${sessionId}`, { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Conversion failed');
+
+            conversionData = data;
+            renderConversion(data);
+            goToStep(3);
+            showToast('success', 'Conversion complete — Lakeflow job generated');
+        } catch (err) {
+            showToast('error', err.message);
+        } finally {
+            hideProcessing();
+        }
+    }
+
+    function renderConversion(data) {
+        const container = document.getElementById('conversionResults');
+        let html = '';
+
+        data.conversions.forEach(conv => {
+            const job = conv.lakeflow_job;
+            const meta = job._metadata || {};
+            const tasks = job.tasks || [];
+
+            html += `
+            <h2 style="margin-bottom:1.5rem; font-size:1.4rem;">
+                <i class="fas fa-cogs" style="color:var(--accent-orange); margin-right:8px;"></i>
+                Lakeflow Job: <span style="color:var(--accent-orange);">${escapeHtml(job.name)}</span>
+            </h2>
+
+            <div class="stats-grid" style="grid-template-columns: repeat(5, 1fr);">
+                <div class="stat-tile">
+                    <div class="stat-value orange">${tasks.length}</div>
+                    <div class="stat-label">Total Tasks</div>
+                </div>
+                <div class="stat-tile">
+                    <div class="stat-value blue">${meta.total_source_activities || 0}</div>
+                    <div class="stat-label">Source Activities</div>
+                </div>
+                <div class="stat-tile">
+                    <div class="stat-value green">${meta.readiness_score || 0}</div>
+                    <div class="stat-label">Readiness Score</div>
+                </div>
+                <div class="stat-tile">
+                    <div class="stat-value purple">${(job.job_clusters || []).length}</div>
+                    <div class="stat-label">Job Clusters</div>
+                </div>
+                <div class="stat-tile">
+                    <div class="stat-value cyan">${(meta.warnings || []).length}</div>
+                    <div class="stat-label">Warnings</div>
+                </div>
+            </div>
+
+            ${(meta.warnings || []).length > 0 ? `
+            <div class="card" style="border-color: rgba(234,179,8,0.3);">
+                <div class="card-header">
+                    <div class="card-icon orange"><i class="fas fa-exclamation-circle"></i></div>
+                    <div>
+                        <div class="card-title">Conversion Warnings</div>
+                    </div>
+                </div>
+                ${meta.warnings.map(w => `<div class="risk-item medium"><span class="risk-severity medium">WARN</span><div class="risk-content"><p>${escapeHtml(w)}</p></div></div>`).join('')}
+            </div>` : ''}
+
+            <!-- Task List -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon purple"><i class="fas fa-tasks"></i></div>
+                    <div>
+                        <div class="card-title">Generated Tasks (${tasks.length})</div>
+                        <div class="card-subtitle">Databricks job task definitions</div>
+                    </div>
+                </div>
+                <div class="task-list">
+                    ${tasks.map(t => {
+                        const taskType = t.notebook_task ? 'Notebook' : t.spark_jar_task ? 'Spark JAR' : t.spark_python_task ? 'Spark Python' : t.pipeline_task ? 'DLT Pipeline' : t.run_job_task ? 'Run Job' : 'Task';
+                        const deps = (t.depends_on || []).map(d => d.task_key).join(', ');
+                        return `
+                        <div class="task-row">
+                            <i class="fas fa-cube" style="color:var(--accent-purple); font-size:0.85rem;"></i>
+                            <span class="task-key">${escapeHtml(t.task_key)}</span>
+                            <span class="act-type-badge">${taskType}</span>
+                            ${deps ? `<span class="task-deps"><i class="fas fa-link"></i> ${escapeHtml(deps)}</span>` : ''}
+                        </div>`;
+                    }).join('')}
+                </div>
+            </div>
+
+            <!-- Job JSON -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon cyan"><i class="fas fa-code"></i></div>
+                    <div>
+                        <div class="card-title">Job Definition JSON</div>
+                        <div class="card-subtitle">Databricks Jobs API compatible payload</div>
+                    </div>
+                </div>
+                <div class="json-viewer" id="jsonViewer">${syntaxHighlight(JSON.stringify(cleanJobForDisplay(job), null, 2))}<button class="json-copy-btn" onclick="copyJson()"><i class="fas fa-copy"></i> Copy</button></div>
+            </div>
+
+            <!-- Notebooks -->
+            ${renderNotebooks(tasks)}
+            `;
+        });
+
+        container.innerHTML = html;
+    }
+
+    function renderNotebooks(tasks) {
+        const notebooks = tasks.filter(t => t._notebook_content || t._conversion_note);
+        if (notebooks.length === 0) return '';
+
+        let html = `
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon green"><i class="fas fa-book"></i></div>
+                <div>
+                    <div class="card-title">Generated Notebooks (${notebooks.length})</div>
+                    <div class="card-subtitle">Click to expand notebook content</div>
+                </div>
+            </div>`;
+
+        notebooks.forEach((t, i) => {
+            const path = t.notebook_task?.notebook_path || t.task_key;
+            const content = t._notebook_content || `# Notebook placeholder\n# ${t._conversion_note || 'Implement logic here'}`;
+            const note = t._conversion_note || '';
+            html += `
+            <div class="notebook-card">
+                <div class="notebook-header" onclick="toggleNotebook(${i})">
+                    <span class="notebook-path">${escapeHtml(path)}</span>
+                    <span class="notebook-note">${escapeHtml(note)}</span>
+                </div>
+                <div class="notebook-body" id="nb-${i}">${escapeHtml(content)}</div>
+            </div>`;
+        });
+
+        html += '</div>';
+        return html;
+    }
+
+    function toggleNotebook(i) {
+        document.getElementById(`nb-${i}`).classList.toggle('open');
+    }
+
+    function cleanJobForDisplay(job) {
+        const clean = {};
+        for (const [k, v] of Object.entries(job)) {
+            if (k.startsWith('_')) continue;
+            if (Array.isArray(v)) {
+                clean[k] = v.map(item => {
+                    if (typeof item === 'object' && item !== null) {
+                        const c = {};
+                        for (const [ik, iv] of Object.entries(item)) {
+                            if (!ik.startsWith('_')) c[ik] = iv;
+                        }
+                        return c;
+                    }
+                    return item;
+                });
+            } else if (typeof v === 'object' && v !== null) {
+                const c = {};
+                for (const [ik, iv] of Object.entries(v)) {
+                    if (!ik.startsWith('_')) c[ik] = iv;
+                }
+                clean[k] = c;
+            } else {
+                clean[k] = v;
+            }
+        }
+        return clean;
+    }
+
+    function copyJson() {
+        if (!conversionData) return;
+        const job = conversionData.conversions[0].lakeflow_job;
+        const text = JSON.stringify(cleanJobForDisplay(job), null, 2);
+        navigator.clipboard.writeText(text).then(() => showToast('success', 'JSON copied to clipboard'));
+    }
+
+    // ===== Connection Settings =====
+    async function loadConnectionSettings() {
+        try {
+            const res = await fetch(`${API}/api/settings/connection`);
+            const data = await res.json();
+            if (data.configured) {
+                document.getElementById('settingsWorkspaceUrl').value = data.workspace_url || '';
+                document.getElementById('settingsNotebookPath').value = data.notebook_root_path || '/Bricksfactory/migrated';
+                document.getElementById('settingsClusterPolicy').value = data.cluster_policy_id || '';
+                if (data.token_set) {
+                    document.getElementById('settingsToken').placeholder = data.token_preview + ' (saved)';
+                }
+                updateConnBadge(true, data.workspace_url);
+            }
+        } catch (err) {
+            console.error('Load settings error:', err);
+        }
+    }
+
+    // === Edition Selector ===
+    let selectedEdition = 'community';
+    const editionConfig = {
+        community: { placeholder: 'https://community.cloud.databricks.com', urlHint: 'For Community Edition: <code style="color:var(--accent-orange);">https://community.cloud.databricks.com</code>', showCommunityHelp: true },
+        azure:     { placeholder: 'https://adb-123456789.12.azuredatabricks.net', urlHint: 'Found in your Azure Databricks portal URL bar', showCommunityHelp: false },
+        aws:       { placeholder: 'https://dbc-abc12345-1234.cloud.databricks.com', urlHint: 'Found in your AWS Databricks workspace URL', showCommunityHelp: false },
+        gcp:       { placeholder: 'https://12345678901234.5.gcp.databricks.com', urlHint: 'Found in your GCP Databricks workspace URL', showCommunityHelp: false },
+    };
+
+    function selectEdition(edition) {
+        selectedEdition = edition;
+        const cfg = editionConfig[edition];
+        // Update active button
+        document.querySelectorAll('.edition-btn').forEach(b => b.classList.toggle('active', b.dataset.edition === edition));
+        // URL placeholder & hint
+        document.getElementById('settingsWorkspaceUrl').placeholder = cfg.placeholder;
+        document.getElementById('urlHint').innerHTML = cfg.urlHint;
+        // Community banner
+        document.getElementById('communityBanner').style.display = edition === 'community' ? 'block' : 'none';
+        // Help cards
+        document.getElementById('helpCardCommunity').style.display = cfg.showCommunityHelp ? 'block' : 'none';
+        document.getElementById('helpCardEnterprise').style.display = cfg.showCommunityHelp ? 'none' : 'block';
+        // Pre-fill URL for community
+        if (edition === 'community') {
+            const urlField = document.getElementById('settingsWorkspaceUrl');
+            if (!urlField.value) urlField.value = 'https://community.cloud.databricks.com';
+        }
+    }
+
+    async function saveConnectionSettings() {
+        const url = document.getElementById('settingsWorkspaceUrl').value.trim();
+        const token = document.getElementById('settingsToken').value.trim();
+        const nbPath = document.getElementById('settingsNotebookPath').value.trim();
+        const policy = document.getElementById('settingsClusterPolicy').value.trim();
+
+        if (!url) { showToast('error', 'Workspace URL is required'); return; }
+        if (!token) { showToast('error', 'Access token is required'); return; }
+
+        try {
+            const res = await fetch(`${API}/api/settings/connection`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspace_url: url, token: token, notebook_root_path: nbPath, cluster_policy_id: policy }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Save failed');
+            showToast('success', 'Connection settings saved!');
+            updateConnBadge(true, url);
+            // Auto-fill deploy step fields
+            document.getElementById('workspaceUrl').value = url;
+            document.getElementById('accessToken').value = token;
+        } catch (err) {
+            showToast('error', err.message);
+        }
+    }
+
+    async function testConnection() {
+        const url = document.getElementById('settingsWorkspaceUrl').value.trim();
+        const token = document.getElementById('settingsToken').value.trim();
+
+        if (!url || !token) { showToast('error', 'Enter workspace URL and token first'); return; }
+
+        const resultDiv = document.getElementById('connTestResult');
+        resultDiv.innerHTML = '<div style="text-align:center; padding:2rem;"><div class="spinner" style="width:40px;height:40px;border-width:3px;"></div><p style="margin-top:1rem; color:var(--text-muted);">Testing connection...</p></div>';
+
+        try {
+            const res = await fetch(`${API}/api/settings/test-connection`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspace_url: url, token: token }),
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                let clusterHtml = '';
+                if (data.clusters && data.clusters.length > 0) {
+                    clusterHtml = '<div style="margin-top:1rem;"><h5 style="margin-bottom:8px;">Available Clusters:</h5>' +
+                        data.clusters.map(c => {
+                            const stateColor = c.state === 'RUNNING' ? 'var(--accent-green)' : c.state === 'TERMINATED' ? 'var(--text-muted)' : 'var(--accent-yellow)';
+                            return `<div class="task-row"><i class="fas fa-server" style="color:${stateColor};"></i><span class="task-key">${escapeHtml(c.name)}</span><span class="act-type-badge" style="background:${stateColor}20; color:${stateColor};">${c.state}</span></div>`;
+                        }).join('') + '</div>';
+                }
+                resultDiv.innerHTML = `
+                    <div class="deploy-result success">
+                        <h4 style="color:var(--accent-green); margin-bottom:8px;"><i class="fas fa-check-circle"></i> Connection Successful</h4>
+                        <p style="font-size:0.85rem; color:var(--text-secondary);">${escapeHtml(data.message)}</p>
+                        <p style="font-size:0.82rem; color:var(--text-muted); margin-top:6px;">Workspace: <strong style="color:var(--accent-orange);">${escapeHtml(data.workspace_url)}</strong></p>
+                        ${data.edition === 'community' ? '<p style="font-size:0.82rem; margin-top:4px;"><span class="act-type-badge" style="background:#CFFAFE; color:#155E75;"><i class="fas fa-gift" style="margin-right:4px;"></i>Community Edition</span></p>' : ''}
+                        ${clusterHtml}
+                    </div>`;
+                updateConnBadge(true, url);
+                showToast('success', 'Connection verified!');
+            } else {
+                resultDiv.innerHTML = `
+                    <div class="deploy-result error">
+                        <h4 style="color:var(--accent-red); margin-bottom:8px;"><i class="fas fa-times-circle"></i> Connection Failed</h4>
+                        <p style="font-size:0.85rem; color:var(--text-secondary);">${escapeHtml(data.error)}</p>
+                    </div>`;
+                updateConnBadge(false);
+                showToast('error', data.error);
+            }
+        } catch (err) {
+            resultDiv.innerHTML = `
+                <div class="deploy-result error">
+                    <h4 style="color:var(--accent-red); margin-bottom:8px;"><i class="fas fa-times-circle"></i> Connection Error</h4>
+                    <p style="font-size:0.85rem; color:var(--text-secondary);">${escapeHtml(err.message)}</p>
+                </div>`;
+            showToast('error', err.message);
+        }
+    }
+
+    function updateConnBadge(connected, url) {
+        const badge = document.getElementById('connStatusBadge');
+        const text = document.getElementById('connStatusText');
+        if (connected) {
+            badge.className = 'conn-status-badge connected';
+            badge.title = 'Connected to ' + (url || 'Databricks');
+            const short = url ? new URL(url).hostname.split('.')[0] : 'Databricks';
+            text.textContent = short;
+            badge.querySelector('i').className = 'fas fa-link';
+        } else {
+            badge.className = 'conn-status-badge disconnected';
+            badge.title = 'Databricks not configured';
+            text.textContent = 'Not Connected';
+            badge.querySelector('i').className = 'fas fa-unlink';
+        }
+    }
+
+    // Load saved connection on page load
+    (async function initConnection() {
+        try {
+            const res = await fetch(`${API}/api/settings/connection`);
+            const data = await res.json();
+            if (data.configured) {
+                updateConnBadge(true, data.workspace_url);
+                document.getElementById('workspaceUrl').value = data.workspace_url || '';
+            }
+        } catch (_) {}
+    })();
+
+    // ===== Deploy =====
+    async function deployPipeline() {
+        const workspaceUrl = document.getElementById('workspaceUrl').value.trim();
+        const token = document.getElementById('accessToken').value.trim();
+
+        showProcessing('Deploying', workspaceUrl ? 'Deploying to Databricks workspace...' : 'Generating deployment package...');
+
+        try {
+            const res = await fetch(`${API}/api/deploy/${sessionId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspace_url: workspaceUrl, token: token }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Deployment failed');
+
+            renderDeployResults(data);
+            showToast('success', 'Deployment complete');
+        } catch (err) {
+            showToast('error', err.message);
+        } finally {
+            hideProcessing();
+        }
+    }
+
+    function renderDeployResults(data) {
+        const container = document.getElementById('deployResults');
+        let html = '';
+
+        data.deployments.forEach(dep => {
+            const d = dep.deployment;
+            const isSuccess = d.status === 'deployed';
+            const isPackage = d.status === 'package_generated';
+            const isNotebooks = d.status === 'notebooks_deployed';
+
+            if (isSuccess) {
+                html += `
+                <div class="deploy-result success">
+                    <h4 style="color:var(--accent-green); margin-bottom:8px;"><i class="fas fa-check-circle"></i> Deployed Successfully</h4>
+                    <p style="font-size:0.85rem; color:var(--text-secondary);">${escapeHtml(d.message)}</p>
+                    ${d.job_url ? `<p style="margin-top:8px;"><a href="${escapeHtml(d.job_url)}" target="_blank" style="color:var(--accent-orange);">View Job in Databricks <i class="fas fa-external-link-alt"></i></a></p>` : ''}
+                </div>`;
+            } else if (isNotebooks) {
+                const upCount = (d.notebooks_uploaded || []).length;
+                const failCount = (d.notebooks_failed || []).length;
+                html += `
+                <div class="deploy-result success">
+                    <h4 style="color:var(--accent-green); margin-bottom:8px;"><i class="fas fa-book"></i> Notebooks Deployed to Community Edition</h4>
+                    <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:12px;">${escapeHtml(d.message)}</p>
+                    <div style="display:flex; gap:12px; margin-bottom:12px;">
+                        <span class="act-type-badge" style="background:#D1FAE5; color:#065F46;"><i class="fas fa-check"></i> ${upCount} uploaded</span>
+                        ${failCount > 0 ? `<span class="act-type-badge" style="background:#FEE2E2; color:#991B1B;"><i class="fas fa-times"></i> ${failCount} failed</span>` : ''}
+                        <span class="act-type-badge" style="background:#CFFAFE; color:#155E75;"><i class="fas fa-gift"></i> Community Edition</span>
+                    </div>
+                    ${(d.notebooks_uploaded || []).length > 0 ? `
+                    <div style="margin-bottom:12px;">
+                        <h5 style="margin-bottom:8px; color:var(--text-primary);">Uploaded Notebooks:</h5>
+                        ${d.notebooks_uploaded.map(n => `
+                            <div class="task-row">
+                                <i class="fas fa-book" style="color:var(--accent-green);"></i>
+                                <span class="task-key">${escapeHtml(n.path)}</span>
+                                ${n.notebook_url ? `<a href="${escapeHtml(n.notebook_url)}" target="_blank" style="color:var(--accent-orange); font-size:0.82rem;">Open <i class="fas fa-external-link-alt"></i></a>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>` : ''}
+                    ${(d.notebooks_failed || []).length > 0 ? `
+                    <div style="margin-bottom:12px;">
+                        <h5 style="margin-bottom:8px; color:var(--accent-red);">Failed:</h5>
+                        ${d.notebooks_failed.map(n => `
+                            <div class="task-row">
+                                <i class="fas fa-times-circle" style="color:var(--accent-red);"></i>
+                                <span class="task-key">${escapeHtml(n.path)}</span>
+                                <span style="font-size:0.8rem; color:var(--text-muted);">${escapeHtml(n.error || '')}</span>
+                            </div>
+                        `).join('')}
+                    </div>` : ''}
+                    <h5 style="margin-bottom:8px; color:var(--text-primary);">Next Steps:</h5>
+                    <ol style="font-size:0.82rem; color:var(--text-secondary); padding-left:1.5rem; line-height:1.8;">
+                        ${Object.values(d.deployment_instructions || {}).map(s => `<li>${escapeHtml(s)}</li>`).join('')}
+                    </ol>
+                </div>`;
+            } else if (isPackage) {
+                html += `
+                <div class="deploy-result package">
+                    <h4 style="color:var(--accent-blue); margin-bottom:8px;"><i class="fas fa-box"></i> Deployment Package Ready</h4>
+                    <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:12px;">${escapeHtml(d.message)}</p>
+                    <h5 style="margin-bottom:8px;">Deployment Steps:</h5>
+                    <ol style="font-size:0.82rem; color:var(--text-secondary); padding-left:1.5rem; line-height:1.8;">
+                        ${Object.values(d.deployment_instructions || {}).map(s => `<li>${escapeHtml(s)}</li>`).join('')}
+                    </ol>
+                    ${d.notebooks && d.notebooks.length > 0 ? `
+                    <div style="margin-top:12px;">
+                        <h5 style="margin-bottom:8px;">Notebooks to Upload (${d.notebooks.length}):</h5>
+                        ${d.notebooks.map(n => `<div class="file-chip"><i class="fas fa-book"></i> ${escapeHtml(n.path)}</div>`).join('')}
+                    </div>` : ''}
+                    <div style="margin-top:1rem;">
+                        <button class="btn btn-secondary" onclick="downloadPackage()">
+                            <i class="fas fa-download"></i> Download Package
+                        </button>
+                    </div>
+                </div>`;
+            } else {
+                html += `
+                <div class="deploy-result error">
+                    <h4 style="color:var(--accent-red); margin-bottom:8px;"><i class="fas fa-times-circle"></i> Deployment Failed</h4>
+                    <p style="font-size:0.85rem; color:var(--text-secondary);">${escapeHtml(d.message)}</p>
+                </div>`;
+            }
+        });
+
+        container.innerHTML = html;
+    }
+
+    function downloadPackage() {
+        if (!conversionData) return;
+        const job = conversionData.conversions[0].lakeflow_job;
+        const blob = new Blob([JSON.stringify(cleanJobForDisplay(job), null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${job.name || 'lakeflow_job'}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('success', 'Package downloaded');
+    }
+
+    // ===== Telemetry =====
+    async function loadTelemetry() {
+        try {
+            const [summaryRes, eventsRes] = await Promise.all([
+                fetch(`${API}/api/telemetry`),
+                fetch(`${API}/api/telemetry/events?limit=50`),
+            ]);
+            const summary = await summaryRes.json();
+            const events = await eventsRes.json();
+            renderTelemetry(summary, events);
+        } catch (err) {
+            console.error('Telemetry load error:', err);
+        }
+    }
+
+    function renderTelemetry(summary, events) {
+        const container = document.getElementById('telemetryContent');
+        const m = summary.metrics || {};
+
+        const eventTypeColors = {
+            pipeline_uploaded: { bg: '#DBEAFE', color: '#1E40AF' },
+            pipeline_analyzed: { bg: '#EDE9FE', color: '#5B21B6' },
+            pipeline_converted: { bg: '#FEE2E2', color: '#991B1B' },
+            pipeline_deployed: { bg: '#D1FAE5', color: '#065F46' },
+        };
+
+        let html = `
+        <div class="telemetry-grid">
+            <div class="telem-card">
+                <div class="telem-icon" style="color:var(--accent-blue);"><i class="fas fa-cloud-upload-alt"></i></div>
+                <div class="stat-value blue">${m.pipelines_uploaded || 0}</div>
+                <div class="stat-label">Uploaded</div>
+            </div>
+            <div class="telem-card">
+                <div class="telem-icon" style="color:var(--accent-purple);"><i class="fas fa-microscope"></i></div>
+                <div class="stat-value purple">${m.pipelines_analyzed || 0}</div>
+                <div class="stat-label">Analyzed</div>
+            </div>
+            <div class="telem-card">
+                <div class="telem-icon" style="color:var(--accent-orange);"><i class="fas fa-exchange-alt"></i></div>
+                <div class="stat-value orange">${m.pipelines_converted || 0}</div>
+                <div class="stat-label">Converted</div>
+            </div>
+            <div class="telem-card">
+                <div class="telem-icon" style="color:var(--accent-green);"><i class="fas fa-rocket"></i></div>
+                <div class="stat-value green">${m.pipelines_deployed || 0}</div>
+                <div class="stat-label">Deployed</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon cyan"><i class="fas fa-stream"></i></div>
+                <div>
+                    <div class="card-title">Audit Trail</div>
+                    <div class="card-subtitle">${summary.total_events || 0} total events recorded</div>
+                </div>
+                <button class="btn btn-ghost" style="margin-left:auto;" onclick="loadTelemetry()"><i class="fas fa-sync"></i></button>
+            </div>
+            <table class="event-table">
+                <tr><th>Event</th><th>Time</th><th>Details</th></tr>
+                ${events.map(e => {
+                    const ec = eventTypeColors[e.type] || { bg: 'rgba(100,116,139,0.15)', color: '#94a3b8' };
+                    const details = Object.entries(e.details || {}).map(([k,v]) => `${k}: ${v}`).join(', ');
+                    return `<tr>
+                        <td><span class="event-type-badge" style="background:${ec.bg}; color:${ec.color};">${e.type.replace('pipeline_', '')}</span></td>
+                        <td style="font-family:monospace; font-size:0.78rem;">${new Date(e.timestamp).toLocaleString()}</td>
+                        <td style="font-size:0.8rem;">${escapeHtml(details)}</td>
+                    </tr>`;
+                }).join('')}
+            </table>
+        </div>`;
+
+        container.innerHTML = html;
+    }
+
+    // ===== Reset =====
+    function resetAll() {
+        sessionId = null;
+        uploadedFiles = [];
+        analysisData = null;
+        conversionData = null;
+        document.getElementById('fileList').innerHTML = '';
+        document.getElementById('btnUpload').disabled = true;
+        document.getElementById('analysisResults').innerHTML = '';
+        document.getElementById('conversionResults').innerHTML = '';
+        document.getElementById('deployResults').innerHTML = `
+            <div style="text-align:center; padding:2rem; color:var(--text-muted);">
+                <i class="fas fa-satellite-dish" style="font-size:2rem; margin-bottom:1rem; display:block; opacity:0.3;"></i>
+                <p>Configure workspace credentials and click deploy, or download the deployment package for manual setup.</p>
+            </div>`;
+        document.getElementById('workspaceUrl').value = '';
+        document.getElementById('accessToken').value = '';
+        fileInput.value = '';
+        goToStep(1);
+        showToast('info', 'Ready for new migration');
+    }
+
+    // ===== Utilities =====
+    function showProcessing(title, sub) {
+        document.getElementById('processingText').textContent = title;
+        document.getElementById('processingSub').textContent = sub;
+        document.getElementById('processingOverlay').classList.add('show');
+    }
+    function hideProcessing() {
+        document.getElementById('processingOverlay').classList.remove('show');
+    }
+
+    function showToast(type, message) {
+        const container = document.getElementById('toastContainer');
+        const icons = { success: 'fa-check-circle', error: 'fa-exclamation-circle', info: 'fa-info-circle' };
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.innerHTML = `<i class="fas ${icons[type]}"></i> ${escapeHtml(message)}`;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+    }
+
+    function escapeHtml(str) {
+        if (typeof str !== 'string') return str;
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function syntaxHighlight(json) {
+        return json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?/g, match => {
+                let cls = 'string';
+                if (/:$/.test(match)) { cls = 'key'; match = match.replace(/:$/, '') + ':'; }
+                return `<span class="${cls}">${match}</span>`;
+            })
+            .replace(/\b(true|false)\b/g, '<span class="boolean">$1</span>')
+            .replace(/\b(null)\b/g, '<span class="null">$1</span>')
+            .replace(/\b(-?\d+\.?\d*)\b/g, '<span class="number">$1</span>');
+    }
+    </script>
+</body>
+</html>

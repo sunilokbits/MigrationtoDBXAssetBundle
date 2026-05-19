@@ -1,0 +1,22 @@
+{
+  "admin": {
+    "password": "scrypt:32768:8:1$k9d2yz6ymgGLlFvs$08c8e6729eced159a0639932e7eda00d3804073d05cc648c3509545ecd5a3c7d742d0f37388a1bf616419ce0024bb6734a23aea33168060404ece4fc11a32f16",
+    "role": "Admin",
+    "display_name": "Admin User"
+  },
+  "developer": {
+    "password": "scrypt:32768:8:1$vLk0C5Vdpvu2nrAg$4326363919351e3d645af35be012554a08fe7b034f69ad29fe6b16f92b3fe8e4f62e7c761c8fa4d0cc74ef5bbc1d079ddc614957424c1e96b1ce044423385455",
+    "role": "Developer",
+    "display_name": "Dev User"
+  },
+  "viewer": {
+    "password": "scrypt:32768:8:1$HwkYCt81EhUUJGdD$64130bffbd55460453c514af1403ed75da99a8eb79ae7cd901b12bbfbc077b98fa18aa4e82b440902d04b99794ae6ec1407ec3b29b33216ffae8ae0b93302903",
+    "role": "Viewer",
+    "display_name": "Viewer User"
+  },
+  "sunil": {
+    "password": "scrypt:32768:8:1$iRUUX36mDpREZ5tz$33e2e3bf0317351ba0776278b46d935cfff49d4625bdce8847261eb618db553e8ac7e8b21714ad986c978a4f453815e3fd687a93c5c5db34a6ce8978e57abdce",
+    "role": "Admin",
+    "display_name": "sunil kumar"
+  }
+}

@@ -1,21 +1,41 @@
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.pyc
 *.pyo
-.venv/
-.env
 *.egg-info/
 dist/
 build/
+.pytest_cache/
+
+# ── Virtual environment ──────────────────────────────────────────────────────
+.venv/
+.env
+
+# ── IDE / Editor ─────────────────────────────────────────────────────────────
 .idea/
 .vscode/
-*.log
-~$*
+*.swp
+*.swo
 
-# Sensitive config with credentials
+# ── OS / Office temp files ───────────────────────────────────────────────────
+~$*
+Thumbs.db
+.DS_Store
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+
+# ── Sensitive config (credentials) ───────────────────────────────────────────
 deployconfig.json
 migration_utility/deployconfig.json
 
-# Local cache & Databricks CLI
+# ── Runtime data / local state ───────────────────────────────────────────────
+migration_utility/migration_state.db
+migration_utility/migration_state.db-shm
+migration_utility/migration_state.db-wal
+migration_utility/schema_compare_results.json
 job_schedules.json
 migration_utility/job_schedules.json
+
+# ── Databricks CLI cache ────────────────────────────────────────────────────
 .databricks/

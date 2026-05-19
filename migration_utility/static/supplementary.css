@@ -1,0 +1,11 @@
+﻿.vslide{animation:vslideFadeIn .5s ease}
+@keyframes vslideFadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.vslide-ico{width:120px;height:120px;margin-bottom:24px;animation:vslideFloat 3s ease-in-out infinite}
+@keyframes vslideFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.vslide-title{font-size:1.5rem;font-weight:800;color:#fff;margin-bottom:8px;text-align:center;letter-spacing:-.02em}
+.vslide-sub{font-size:1rem;color:rgba(255,255,255,.7);text-align:center;max-width:520px;line-height:1.6;margin-bottom:18px}
+.vslide-bullets{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;max-width:480px;width:100%}
+.vslide-bullets li{display:flex;align-items:center;gap:10px;font-size:.88rem;color:rgba(255,255,255,.85);padding:8px 14px;border-radius:10px;background:rgba(255,255,255,.07);backdrop-filter:blur(4px);animation:vslideFadeIn .4s ease backwards}
+.vslide-bullets li:nth-child(2){animation-delay:.1s}.vslide-bullets li:nth-child(3){animation-delay:.2s}.vslide-bullets li:nth-child(4){animation-delay:.3s}
+.vslide-bullets li .vb-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.vslide-tag{display:inline-block;margin-top:14px;padding:5px 16px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
