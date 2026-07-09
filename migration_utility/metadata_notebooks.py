@@ -2475,6 +2475,11 @@ _BRONZE_CAT    = dbutils.widgets.get("bronze_catalog").strip()
 _SILVER_CAT    = dbutils.widgets.get("silver_catalog").strip()
 _TARGET_SCHEMA = dbutils.widgets.get("target_schema").strip()
 
+# Multi-catalog: override landing path with UC Volumes (must match extract notebook)
+if _VOLUMES_CAT and _TARGET_SCHEMA:
+    LANDING_PATH = f"/Volumes/{{_VOLUMES_CAT}}/{{_TARGET_SCHEMA}}/landing"
+    print(f"📦 Multi-catalog: Landing → UC Volumes: {{LANDING_PATH}}")
+
 # COMMAND ----------
 
 # MAGIC %md

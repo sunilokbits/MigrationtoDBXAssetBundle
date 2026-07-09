@@ -4,8 +4,9 @@ import os, json, requests, threading
 
 from .auth import login_required
 from log_config import get_logger
-from config_cache import get_config, save_config, reload_config, DEPLOY_CONFIG_PATH
+from config_cache import get_config, save_config, reload_config, DEPLOY_CONFIG_PATH, get_source_password, get_databricks_token
 from unity_catalog_executor import UnityCatalogExecutor
+from keyvault_helper import MASKED_VALUE, is_masked
 
 logger = get_logger(__name__)
 settings_bp = Blueprint("settings", __name__, url_prefix="/api/v1")
@@ -184,6 +185,20 @@ def save_deploy_config():
         cfg = request.get_json()
         if not cfg:
             return jsonify({"success": False, "error": "No configuration data provided"}), 400
+
+        # Preserve keyvault_name — the UI doesn't have a field for it,
+        # so incoming JSON will be missing it.  Always keep the existing value.
+        existing = get_config()
+        if "keyvault_name" not in cfg and existing.get("keyvault_name"):
+            cfg["keyvault_name"] = existing["keyvault_name"]
+
+        # Mask secrets — never persist real passwords/tokens in config file.
+        # The actual secrets are stored in Azure Key Vault.
+        if "databricks_token" in cfg:
+            cfg["databricks_token"] = MASKED_VALUE
+        if "source" in cfg and isinstance(cfg["source"], dict) and "password" in cfg["source"]:
+            cfg["source"]["password"] = MASKED_VALUE
+
         save_config(cfg)
         return jsonify({"success": True, "message": "Configuration saved to deployconfig.json"})
     except Exception as e:
@@ -212,9 +227,9 @@ def clean_metadata():
             return jsonify({"success": False, "error": "deployconfig.json not found."}), 400
 
         host  = cfg.get("databricks_host", "").rstrip("/")
-        token = cfg.get("databricks_token", "")
+        token = get_databricks_token()
         if not host or not token:
-            return jsonify({"success": False, "error": "Databricks host or token missing in config."}), 400
+            return jsonify({"success": False, "error": "Databricks host or token missing in config/Key Vault."}), 400
 
         # Use PAT token if available; the UnityCatalogExecutor will auto-fallback
         # to Azure AD (managed identity) if the PAT is missing or expired (401/403).
@@ -339,6 +354,9 @@ def test_databricks_connection():
         data = request.get_json(silent=True) or {}
         host  = (data.get("databricks_host") or "").strip().rstrip("/")
         token = (data.get("databricks_token") or "").strip()
+        # If token from UI is masked, resolve from Key Vault
+        if not token or is_masked(token):
+            token = get_databricks_token()
         if not host or not token:
             return jsonify({"success": False, "error": "Host URL and PAT Token are required"}), 400
         from databricks_connector import DatabricksConnector
@@ -371,6 +389,9 @@ def test_storage_credential():
         data = request.get_json(silent=True) or {}
         host  = (data.get("databricks_host") or "").strip().rstrip("/")
         token = (data.get("databricks_token") or "").strip()
+        # If token from UI is masked, resolve from Key Vault
+        if not token or is_masked(token):
+            token = get_databricks_token()
         cred_name = (data.get("storage_credential_name") or "").strip()
         test_url  = (data.get("test_url") or "").strip()
 
@@ -755,14 +776,22 @@ def deploy_infrastructure():
         # Validate required fields before attempting infra creation
         required = ["subscription_id", "resource_group", "region",
                      "storage_account", "access_connector",
-                     "databricks_host", "databricks_token"]
+                     "databricks_host"]
         missing = [f for f in required if not cfg.get(f)]
+        # Check databricks_token from Key Vault
+        dbr_token = get_databricks_token()
+        if not dbr_token:
+            missing.append("databricks_token")
         if missing:
             return jsonify({
                 "success": False,
                 "error": f"Missing required config fields: {', '.join(missing)}. "
                          "Go to Settings → save all fields first."
             }), 400
+
+        # Inject resolved token into cfg for downstream usage
+        cfg = dict(cfg)
+        cfg["databricks_token"] = dbr_token
 
         # Ensure optional sections have sane defaults
         cfg.setdefault("external_locations", {})
@@ -808,12 +837,20 @@ def deploy_infrastructure_stream():
     # Validate required fields
     required = ["subscription_id", "resource_group", "region",
                  "storage_account", "access_connector",
-                 "databricks_host", "databricks_token"]
+                 "databricks_host"]
     missing = [f for f in required if not cfg.get(f)]
+    # Check databricks_token from Key Vault
+    dbr_token = get_databricks_token()
+    if not dbr_token:
+        missing.append("databricks_token")
     if missing:
         def _err():
             yield 'data: ' + json.dumps({"event": "done", "success": False, "summary": f"Missing required config: {', '.join(missing)}. Save settings first."}) + '\n\n'
         return Response(_err(), mimetype='text/event-stream')
+
+    # Inject resolved token into cfg for downstream usage
+    cfg = dict(cfg)
+    cfg["databricks_token"] = dbr_token
 
     cfg.setdefault("external_locations", {})
     cfg.setdefault("catalogs", {})

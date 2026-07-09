@@ -43,12 +43,10 @@ def index():
 
 
 @pages_bp.route("/help")
-@login_required
 def help_page():
     return _serve("help.html")
 
 
 @pages_bp.route("/bom")
-@login_required
 def bom_page():
     return _serve("bom.html")

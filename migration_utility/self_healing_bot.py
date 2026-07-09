@@ -372,13 +372,18 @@ def run_health_check(connector=None, host: str = "", token: str = "",
     if source_config and source_config.get("server"):
         try:
             from data_migrator import _build_conn_str
+            from config_cache import get_source_password
+            from keyvault_helper import is_masked
             import pyodbc
+            _pw = source_config.get("password", "")
+            if not _pw or is_masked(_pw):
+                _pw = get_source_password()
             conn_str = _build_conn_str(
                 source_config.get("source_type", "sqlserver"),
                 source_config["server"],
                 source_config.get("database", ""),
                 source_config.get("username", ""),
-                source_config.get("password", ""),
+                _pw,
             )
             conn = pyodbc.connect(conn_str, timeout=10)
             cursor = conn.cursor()

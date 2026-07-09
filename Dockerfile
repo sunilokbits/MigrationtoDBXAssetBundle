@@ -23,9 +23,10 @@ https://packages.microsoft.com/debian/12/prod bookworm main" \
     curl -sL https://aka.ms/InstallAzureCLIDeb | bash && \
     apt-get update && \
     ACCEPT_EULA=Y apt-get install -y --no-install-recommends \
-        msodbcsql18 unixodbc libltdl7 && \
+        msodbcsql17 msodbcsql18 unixodbc libltdl7 && \
     rm -rf /var/lib/apt/lists/* && \
     # Sanity-check: the .so must be loadable
+    ls /opt/microsoft/msodbcsql17/lib64/ && \
     ls /opt/microsoft/msodbcsql18/lib64/ && \
     odbcinst -j && \
     az --version
@@ -44,4 +45,4 @@ WORKDIR /app/migration_utility
 
 EXPOSE 8000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "1", "--threads", "4", "--timeout", "120", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "8", "--timeout", "180", "app:app"]

@@ -4,6 +4,8 @@ from flask import Blueprint, request, jsonify
 from .auth import login_required
 from log_config import get_logger
 from sql_pool import get_connection
+from config_cache import get_source_password
+from keyvault_helper import is_masked
 
 logger = get_logger(__name__)
 source_bp = Blueprint("source", __name__, url_prefix="/api/v1")
@@ -19,19 +21,27 @@ def source_test_connection():
         database = (data.get("database") or "").strip()
         username = (data.get("username") or "").strip()
         password = data.get("password", "")
+        # If password is masked, resolve from Key Vault
+        if not password or is_masked(password):
+            password = get_source_password()
         if not all([server, database, username]):
             return jsonify({"success": False, "error": "server, database and username are required"}), 400
+        # Auto-append .database.windows.net for Azure SQL if not a full FQDN
+        if source_type in ("azuresql", "synapse") and "." not in server:
+            server = server + ".database.windows.net"
         try:
-            conn = get_connection(source_type, server, database, username, password, timeout=10)
+            conn = get_connection(source_type, server, database, username, password, timeout=15)
         except Exception as ce:
             msg = str(ce)
             hint = ""
             low = msg.lower()
-            if "im002" in low or "data source name" in low or "driver" in low:
-                hint = " — ODBC Driver 17/18 for SQL Server is not installed on this machine."
+            if "40925" in low or "current state" in low or "40613" in low:
+                hint = " — Database is paused (serverless auto-pause). It was resuming but didn't finish in time. Please try again in 30 seconds."
             elif "login failed" in low or "18456" in low:
                 hint = " — Username/password rejected by SQL Server."
-            elif "timeout" in low or "08001" in low or "could not open" in low:
+            elif "im002" in low or "data source name" in low:
+                hint = " — ODBC Driver 17/18 for SQL Server is not installed on this machine."
+            elif "timeout" in low or "08001" in low or "could not open" in low or "cannot reach" in low:
                 hint = " — Cannot reach server. Check firewall, server name, and that your IP is allow-listed in Azure SQL."
             elif "tls" in low or "ssl" in low or "certificate" in low:
                 hint = " — TLS/SSL handshake failed. Try Encrypt=yes;TrustServerCertificate=yes."
@@ -61,6 +71,9 @@ def source_load_objects():
         database = data.get("database", "").strip()
         username = data.get("username", "").strip()
         password = data.get("password", "")
+        # If password is masked, resolve from Key Vault
+        if not password or is_masked(password):
+            password = get_source_password()
         if not all([server, database, username]):
             return jsonify({"success": False, "error": "server, database and username are required"}), 400
         conn = get_connection(source_type, server, database, username, password)

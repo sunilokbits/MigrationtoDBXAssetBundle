@@ -636,13 +636,19 @@ def scan_live_source(source_config: dict) -> list:
     Returns list of analysis dicts.
     """
     from sql_pool import get_connection
+    from config_cache import get_source_password
+    from keyvault_helper import is_masked
 
+    _pw = source_config.get('password', '')
+    if not _pw or is_masked(_pw):
+        _pw = get_source_password()
     conn = get_connection(
         source_type=source_config.get('source_type', 'sqlserver'),
         server=source_config['server'],
         database=source_config['database'],
         username=source_config['username'],
-        password=source_config.get('password', ''),
+        password=_pw,
+        timeout=30,
     )
     cursor = conn.cursor()
     objects = []

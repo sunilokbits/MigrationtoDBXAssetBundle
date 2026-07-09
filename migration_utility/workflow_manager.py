@@ -25,6 +25,34 @@ logger = logging.getLogger(__name__)
 
 _DEPLOY_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "deployconfig.json")
 
+
+def _resolve_databricks_token(dcfg=None):
+    """Resolve Databricks token from Key Vault, then fall back to config."""
+    try:
+        from config_cache import get_databricks_token
+        val = get_databricks_token()
+        if val:
+            return val
+    except Exception:
+        pass
+    if dcfg:
+        return dcfg.get("databricks_token", "")
+    return ""
+
+
+def _resolve_source_password(dcfg=None):
+    """Resolve source password from Key Vault, then fall back to config."""
+    try:
+        from config_cache import get_source_password
+        val = get_source_password()
+        if val:
+            return val
+    except Exception:
+        pass
+    if dcfg:
+        return dcfg.get("source", {}).get("password", "")
+    return ""
+
 def _load_deploy_config() -> dict:
     """Read deployconfig.json for fallback Databricks credentials."""
     try:
@@ -319,7 +347,7 @@ def _restore_from_deploy_config():
     dcfg = _load_deploy_config()
     if dcfg:
         _dbr_host = _dbr_host or dcfg.get("databricks_host", "").rstrip("/") or None
-        _dbr_token = _dbr_token or dcfg.get("databricks_token") or None
+        _dbr_token = _dbr_token or _resolve_databricks_token(dcfg) or None
         _dbr_catalog = _dbr_catalog or dcfg.get("metadata_catalog") or None
         _dbr_schema = _dbr_schema or dcfg.get("metadata_schema") or None
         # If warehouse was persisted in config, use it immediately (no HTTP needed)
@@ -2007,11 +2035,11 @@ def _execute_job_run(run_id: str, job_id: str):
         # ── Resolve Databricks connection ──
         dcfg = _load_deploy_config()
         host  = _dbr_host or dcfg.get("databricks_host", "")
-        token = _dbr_token or dcfg.get("databricks_token", "")
+        token = _dbr_token or _resolve_databricks_token(dcfg)
         cat   = _dbr_catalog or dcfg.get("metadata_catalog", "") or "main"
         sch   = _dbr_schema or dcfg.get("metadata_schema", "") or "default"
         ws    = _notebooks_workspace_path or "/Shared/MetadataPipeline"
-        password = dcfg.get("source", {}).get("password", "") if dcfg else ""
+        password = _resolve_source_password(dcfg)
 
         if not host or not token:
             raise RuntimeError(
@@ -2082,7 +2110,13 @@ def _execute_job_run(run_id: str, job_id: str):
             except Exception as _fbe:
                 logger.warning("_execute_job_run: target_config fallback failed: %s", _fbe)
 
-        landing_path = tc.get("landing_path", "/mnt/landing")
+        # Use UC Volumes path when volumes_catalog is set (must match extract)
+        _vol_cat = tc.get("volumes_catalog", "")
+        _tgt_sch = tc.get("target_schema", "")
+        if _vol_cat and _tgt_sch:
+            landing_path = f"/Volumes/{_vol_cat}/{_tgt_sch}/landing"
+        else:
+            landing_path = tc.get("landing_path", "/mnt/landing")
 
         nb_params = {
             "job_id":       job_id,
@@ -2874,12 +2908,12 @@ def run_pipeline_on_databricks(
     # Fallback chain: explicit arg → in-memory global → deployconfig.json → hardcoded default
     dcfg = _load_deploy_config() if (not host or not token or not catalog or not schema) else {}
     host  = host or _dbr_host or dcfg.get("databricks_host", "")
-    token = token or _dbr_token or dcfg.get("databricks_token", "")
+    token = token or _dbr_token or _resolve_databricks_token(dcfg)
     ws    = workspace_path or _notebooks_workspace_path or "/Shared/MetadataPipeline"
     cat   = catalog or _dbr_catalog or dcfg.get("metadata_catalog", "") or "main"
     sch   = schema or _dbr_schema or dcfg.get("metadata_schema", "") or "default"
     if not password:
-        password = dcfg.get("source", {}).get("password", "") if dcfg else ""
+        password = _resolve_source_password(dcfg)
 
     if not host or not token:
         return {"success": False, "error": "Databricks host and token required"}
@@ -2957,9 +2991,13 @@ def run_pipeline_on_databricks(
     params["silver_catalog"]  = tgt_cfg.get("silver_catalog", "")
     params["target_schema"]   = tgt_cfg.get("target_schema", "")
 
-    # Override landing_path from target_config if available (the function
-    # default "/mnt/landing" is almost never correct for cloud deployments)
-    if tgt_cfg.get("landing_path"):
+    # Override landing_path: use UC Volumes path when volumes_catalog is set
+    # (must match where the extract notebook writes data)
+    _vol_cat = tgt_cfg.get("volumes_catalog", "")
+    _tgt_sch = tgt_cfg.get("target_schema", "")
+    if _vol_cat and _tgt_sch:
+        params["landing_path"] = f"/Volumes/{_vol_cat}/{_tgt_sch}/landing"
+    elif tgt_cfg.get("landing_path"):
         params["landing_path"] = tgt_cfg["landing_path"]
 
     # ── Hard validation: bronze_catalog MUST be set for DLT ──

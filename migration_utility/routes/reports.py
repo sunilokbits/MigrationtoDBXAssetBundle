@@ -5,7 +5,7 @@ from datetime import datetime
 
 from .auth import login_required
 from log_config import get_logger
-from config_cache import get_config
+from config_cache import get_config, get_databricks_token
 from unity_catalog_executor import UnityCatalogExecutor
 
 logger = get_logger(__name__)
@@ -148,7 +148,7 @@ def add_audit_event():
 def get_audit_execution_logs():
     cfg = get_config()
     dbx_host = cfg.get("databricks_host", "").rstrip("/")
-    dbx_token = cfg.get("databricks_token", "")
+    dbx_token = get_databricks_token()
     if not dbx_host or not dbx_token:
         return jsonify({"success": False, "logs": [], "error": "Databricks not configured."})
     log_cfg = cfg.get("logging", {})
@@ -216,7 +216,7 @@ def save_dq_summary():
 def get_reports_jobs():
     cfg = get_config()
     dbx_host = cfg.get("databricks_host", "").rstrip("/")
-    dbx_token = cfg.get("databricks_token", "")
+    dbx_token = get_databricks_token()
     if not dbx_host or not dbx_token:
         return jsonify({"success": False, "jobs": [], "error": "Databricks not configured."})
     catalogs = cfg.get("catalogs", {})

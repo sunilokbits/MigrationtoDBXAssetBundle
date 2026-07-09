@@ -4,9 +4,10 @@ import json
 
 from .auth import login_required
 from log_config import get_logger
-from config_cache import get_config
+from config_cache import get_config, get_databricks_token, get_source_password
 import workflow_manager as wfm
 from data_migrator import DataMigrator, _build_conn_str
+from keyvault_helper import is_masked
 
 logger = get_logger(__name__)
 workflow_bp = Blueprint("workflow", __name__, url_prefix="/api/v1")
@@ -23,6 +24,8 @@ def wf_list_tables():
         database = d.get("database", "").strip()
         username = d.get("username", "").strip()
         password = d.get("password", "")
+        if not password or is_masked(password):
+            password = get_source_password()
         if not all([server, database, username]):
             return jsonify({"success": False, "error": "server, database and username required"}), 400
         conn_str = _build_conn_str(source_type, server, database, username, password)
@@ -37,8 +40,11 @@ def wf_list_tables():
 @login_required
 def wf_metadata_init():
     d = request.get_json() or {}
+    token = d.get("token", "").strip()
+    if not token or is_masked(token):
+        token = get_databricks_token()
     return jsonify(wfm.init_metadata_flow(
-        host=d.get("host", "").strip(), token=d.get("token", "").strip(),
+        host=d.get("host", "").strip(), token=token,
         catalog=d.get("catalog", "main").strip(), schema=d.get("schema", "default").strip(),
         warehouse_id=d.get("warehouse_id", "").strip(),
     ))
@@ -52,7 +58,7 @@ def wf_auto_init():
         if not cfg:
             return jsonify({"success": False, "reason": "no_config"})
         host = (cfg.get("databricks_host") or "").strip().rstrip("/")
-        token = (cfg.get("databricks_token") or "").strip()
+        token = get_databricks_token()
         catalog = (cfg.get("metadata_catalog") or "").strip()
         schema = (cfg.get("metadata_schema") or "").strip()
         if not host or not token:
@@ -113,8 +119,11 @@ def wf_metadata_save_sources():
 @login_required
 def wf_deploy_notebooks():
     d = request.get_json() or {}
+    token = d.get("token", "").strip()
+    if not token or is_masked(token):
+        token = get_databricks_token()
     return jsonify(wfm.deploy_metadata_notebooks(
-        host=d.get("host", "").strip(), token=d.get("token", "").strip(),
+        host=d.get("host", "").strip(), token=token,
         catalog=d.get("catalog", "main").strip(), schema=d.get("schema", "default").strip(),
         landing_path=d.get("landing_path", "/mnt/landing").strip(),
         workspace_path=d.get("workspace_path", "/Shared/MetadataPipeline").strip(),
@@ -196,10 +205,16 @@ def wf_dq_checks():
 @login_required
 def wf_run_on_databricks(group_id):
     d = request.get_json() or {}
+    token = d.get("token", "").strip()
+    if not token or is_masked(token):
+        token = get_databricks_token()
+    password = d.get("password", "")
+    if not password or is_masked(password):
+        password = get_source_password()
     result = wfm.run_pipeline_on_databricks(
         group_id=group_id, host=d.get("host", "").strip(),
-        token=d.get("token", "").strip(), cluster_id=d.get("cluster_id", "").strip(),
-        load_type=d.get("load_type", "").strip(), password=d.get("password", ""),
+        token=token, cluster_id=d.get("cluster_id", "").strip(),
+        load_type=d.get("load_type", "").strip(), password=password,
         workspace_path=d.get("workspace_path", "").strip(),
         catalog=d.get("catalog", "").strip(), schema=d.get("schema", "").strip(),
         landing_path=d.get("landing_path", "/mnt/landing").strip(),
@@ -226,12 +241,26 @@ def wf_stats():
 def wf_list_clusters():
     host = request.args.get("host", "").strip()
     token = request.args.get("token", "").strip()
+    if not token or is_masked(token):
+        token = get_databricks_token()
     if not host or not token:
         return jsonify({"success": False, "error": "host and token required"})
     try:
         from databricks_connector import DatabricksConnector
         connector = DatabricksConnector(host, token)
-        return jsonify(connector.list_clusters())
+        result = connector.list_clusters()
+        # If token was rejected (403), clear cache and retry with fresh token from KV
+        if not result.get("success") and "403" in str(result.get("message", "")):
+            from keyvault_helper import clear_cache
+            clear_cache()
+            token = get_databricks_token()
+            if token:
+                connector = DatabricksConnector(host, token)
+                result = connector.list_clusters()
+        # Normalize error key for frontend
+        if not result.get("success") and "message" in result and "error" not in result:
+            result["error"] = result.pop("message")
+        return jsonify(result)
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
@@ -243,6 +272,8 @@ def wf_start_cluster():
     host = d.get("host", "").strip()
     token = d.get("token", "").strip()
     cluster_id = d.get("cluster_id", "").strip()
+    if not token or is_masked(token):
+        token = get_databricks_token()
     if not host or not token or not cluster_id:
         return jsonify({"success": False, "error": "host, token, and cluster_id required"})
     try:
@@ -372,6 +403,8 @@ def wf_get_dbr_output(run_id):
     body = request.get_json(force=True)
     host = (body.get("host") or "").strip()
     token = (body.get("token") or "").strip()
+    if not token or is_masked(token):
+        token = get_databricks_token()
     if not host or not token:
         return jsonify({"success": False, "message": "Databricks host and token required"}), 400
     run_info = wfm.get_run_status(run_id)

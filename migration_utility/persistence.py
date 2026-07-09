@@ -4,7 +4,11 @@ Stores: MIGRATION_JOBS, _DM_MODELS (data-modeling cache).
 """
 import sqlite3, json, os, threading
 
-_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "migration_state.db")
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Use persistent /home on Azure App Service; fall back to app dir locally
+_PERSISTENT_DIR = "/home/migration_data" if os.path.isdir("/home") and os.access("/home", os.W_OK) else _BASE_DIR
+os.makedirs(_PERSISTENT_DIR, exist_ok=True)
+_DB_PATH = os.path.join(_PERSISTENT_DIR, "migration_state.db")
 _local = threading.local()
 
 

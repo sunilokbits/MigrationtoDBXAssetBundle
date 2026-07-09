@@ -4,10 +4,11 @@ import os, json
 
 from .auth import login_required
 from log_config import get_logger
-from config_cache import get_config
+from config_cache import get_config, get_databricks_token
 from sp_converter import get_pyspark_code
 from databricks_connector import DatabricksConnector
 from unity_catalog_executor import UnityCatalogExecutor
+from keyvault_helper import is_masked
 
 logger = get_logger(__name__)
 databricks_bp = Blueprint("databricks", __name__, url_prefix="/api/v1")
@@ -17,7 +18,9 @@ def _uc_creds(data=None):
     cfg = get_config()
     d = data or {}
     host = (d.get("host") or "").strip() or cfg.get("databricks_host", "").rstrip("/")
-    token = (d.get("token") or "").strip() or cfg.get("databricks_token", "")
+    token = (d.get("token") or "").strip()
+    if not token or is_masked(token):
+        token = get_databricks_token()
     catalog = (d.get("catalog") or "").strip() or "main"
     schema = (d.get("schema") or "").strip() or "default"
     return host, token, catalog, schema
@@ -30,6 +33,9 @@ def test_databricks_connection():
         data = request.get_json()
         host = data.get("host", "").strip()
         token = data.get("token", "").strip()
+        # If token is masked, resolve from Key Vault
+        if not token or is_masked(token):
+            token = get_databricks_token()
         if not host or not token:
             return jsonify({"success": False, "error": "host and token are required"}), 400
         connector = DatabricksConnector(host, token)
@@ -51,6 +57,8 @@ def upload_notebook():
         data = request.get_json()
         host = data.get("host", "").strip()
         token = data.get("token", "").strip()
+        if not token or is_masked(token):
+            token = get_databricks_token()
         sp_name = data.get("sp_name", "").strip()
         workspace_path = data.get("workspace_path", "/Shared/Migrations").strip()
         if not all([host, token, sp_name]):
@@ -76,6 +84,8 @@ def upload_multiple_notebooks():
         data = request.get_json()
         host = data.get("host", "").strip()
         token = data.get("token", "").strip()
+        if not token or is_masked(token):
+            token = get_databricks_token()
         workspace_path = data.get("workspace_path", "/Shared/Migrations").strip()
         notebooks = data.get("notebooks", [])
         if not all([host, token, notebooks]):
@@ -103,6 +113,8 @@ def upload_helper_notebook():
         data = request.get_json()
         host = data.get("host", "").strip()
         token = data.get("token", "").strip()
+        if not token or is_masked(token):
+            token = get_databricks_token()
         pyspark_code = data.get("pyspark_code", "").strip()
         workspace_path = data.get("workspace_path", "/Shared/Migrations").strip()
         if not all([host, token, pyspark_code]):
@@ -122,7 +134,7 @@ def upload_helper_notebook():
 def uc_get_config():
     cfg = get_config()
     host = cfg.get("databricks_host", "").rstrip("/")
-    has_token = bool(cfg.get("databricks_token", ""))
+    has_token = bool(get_databricks_token())
     catalogs_cfg = cfg.get("catalogs", {})
     cat_schemas = []
     for cat_name, cat_cfg in catalogs_cfg.items():
@@ -139,7 +151,7 @@ def uc_catalog_schemas():
     import requests as _req
     cfg = get_config()
     host = cfg.get("databricks_host", "").rstrip("/")
-    token = cfg.get("databricks_token", "")
+    token = get_databricks_token()
     if not host or not token:
         return jsonify({"success": False, "error": "Databricks not configured"}), 400
 

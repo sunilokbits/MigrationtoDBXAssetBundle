@@ -4,7 +4,7 @@ import os, json, hashlib, requests as req
 
 from .auth import login_required
 from log_config import get_logger
-from config_cache import get_config
+from config_cache import get_config, get_databricks_token
 from unity_catalog_executor import UnityCatalogExecutor
 import data_modeling as dm
 import persistence as db
@@ -177,7 +177,7 @@ def dm_list_tables():
     d = request.get_json(force=True)
     cfg = get_config()
     host = cfg.get("databricks_host", "").rstrip("/")
-    token = cfg.get("databricks_token", "")
+    token = get_databricks_token()
     catalog = d.get("catalog", "").strip()
     schema = d.get("schema", "").strip()
     if not host or not token:
@@ -190,13 +190,147 @@ def dm_list_tables():
     return jsonify({"success": True, "tables": tables})
 
 
+@datamodel_bp.route("/datamodel/tables-multi", methods=["POST"])
+@login_required
+def dm_list_tables_multi():
+    """Load tables from multiple catalog.schema pairs at once."""
+    d = request.get_json(force=True)
+    cfg = get_config()
+    host = cfg.get("databricks_host", "").rstrip("/")
+    token = get_databricks_token()
+    selections = d.get("selections", [])  # [{catalog, schema}, ...]
+    if not host or not token:
+        return jsonify({"success": False, "error": "Databricks not configured"})
+    if not selections:
+        return jsonify({"success": False, "error": "At least one catalog.schema pair required"})
+    wh_id = _dm_get_warehouse(host, token)
+    result = []
+    for sel in selections:
+        cat = sel.get("catalog", "").strip()
+        sch = sel.get("schema", "").strip()
+        if not cat or not sch:
+            continue
+        executor = UnityCatalogExecutor(host, token, cat, sch)
+        tables = dm.list_available_tables(executor, cat, sch, wh_id)
+        for t in tables:
+            result.append({"table": t, "catalog": cat, "schema": sch, "fqn": f"{cat}.{sch}.{t}"})
+    return jsonify({"success": True, "tables": result})
+
+
+@datamodel_bp.route("/datamodel/generate-multi", methods=["POST"])
+@login_required
+def dm_generate_model_multi():
+    """Generate model from tables across multiple catalog.schema pairs."""
+    d = request.get_json(force=True)
+    cfg = get_config()
+    host = cfg.get("databricks_host", "").rstrip("/")
+    token = get_databricks_token()
+    # tables_selections: [{table, catalog, schema}, ...]
+    tables_selections = d.get("tables_selections", [])
+    if not host or not token:
+        return jsonify({"success": False, "error": "Databricks not configured"})
+    if not tables_selections:
+        return jsonify({"success": False, "error": "Select at least one table"})
+    wh_id = _dm_get_warehouse(host, token)
+    tables_meta = []
+    for sel in tables_selections:
+        cat = sel.get("catalog", "").strip()
+        sch = sel.get("schema", "").strip()
+        tname = sel.get("table", "").strip()
+        if not cat or not sch or not tname:
+            continue
+        executor = UnityCatalogExecutor(host, token, cat, sch)
+        meta = dm.fetch_table_metadata(executor, cat, sch, [tname], wh_id)
+        for m in meta:
+            # Prefix table_name with catalog.schema for cross-schema clarity
+            m["source_catalog"] = cat
+            m["source_schema"] = sch
+            m["fqn"] = f"{cat}.{sch}.{m['table_name']}"
+            tables_meta.append(m)
+    schema_choice = d.get("schema_choice", "auto")
+    model = dm.classify_tables(tables_meta, schema_choice)
+    er_json = dm.generate_er_json(model)
+    # Use first catalog/schema for DDL or "multi" placeholder
+    cats = list({s["catalog"] for s in tables_selections})
+    schs = list({s["schema"] for s in tables_selections})
+    ddl_cat = cats[0] if len(cats) == 1 else "multi_catalog"
+    ddl_sch = schs[0] if len(schs) == 1 else "multi_schema"
+    ddl = dm.generate_ddl(model, ddl_cat, ddl_sch)
+    key = hashlib.md5(json.dumps([s.get("table","") for s in tables_selections], sort_keys=True).encode()).hexdigest()[:12]
+    _save_model(key, model)
+    return jsonify({
+        "success": True, "model_id": key, "schema_type": model["schema_type"],
+        "facts": model["facts"], "dimensions": model["dimensions"],
+        "relationships": model["relationships"], "er_json": er_json, "ddl": ddl,
+    })
+
+
+@datamodel_bp.route("/datamodel/detect-changes", methods=["POST"])
+@login_required
+def dm_detect_changes():
+    """Compare current model DDL against live Databricks schema to detect drift."""
+    d = request.get_json(force=True)
+    model_id = d.get("model_id", "")
+    model = _get_model(model_id)
+    if model is None:
+        return jsonify({"success": False, "error": "Model not found"})
+    cfg = get_config()
+    host = cfg.get("databricks_host", "").rstrip("/")
+    token = get_databricks_token()
+    if not host or not token:
+        return jsonify({"success": False, "error": "Databricks not configured"})
+    wh_id = _dm_get_warehouse(host, token)
+    changes = []
+    all_tables = model.get("facts", []) + model.get("dimensions", [])
+    for tbl in all_tables:
+        tname = tbl["table_name"]
+        cat = tbl.get("source_catalog") or d.get("catalog", "main")
+        sch = tbl.get("source_schema") or d.get("schema", "default")
+        executor = UnityCatalogExecutor(host, token, cat, sch)
+        live_meta = dm.fetch_table_metadata(executor, cat, sch, [tname], wh_id)
+        if not live_meta:
+            changes.append({"table": tname, "type": "deleted", "detail": "Table no longer exists in source"})
+            continue
+        live_cols = {c["name"]: c for c in live_meta[0].get("columns", [])}
+        model_cols = {c["name"]: c for c in tbl.get("columns", [])}
+        # Detect added columns
+        for cname in live_cols:
+            if cname not in model_cols:
+                changes.append({"table": tname, "type": "column_added", "detail": f"New column: {cname} ({live_cols[cname].get('data_type','?')})"})
+        # Detect removed columns
+        for cname in model_cols:
+            if cname not in live_cols:
+                changes.append({"table": tname, "type": "column_removed", "detail": f"Column removed: {cname}"})
+        # Detect type changes
+        for cname in live_cols:
+            if cname in model_cols:
+                live_type = live_cols[cname].get("data_type", "").upper()
+                model_type = model_cols[cname].get("data_type", "").upper()
+                if live_type != model_type:
+                    changes.append({"table": tname, "type": "type_changed", "detail": f"{cname}: {model_type} → {live_type}"})
+    return jsonify({"success": True, "changes": changes, "has_changes": len(changes) > 0})
+
+
+@datamodel_bp.route("/datamodel/suggest-relationships", methods=["POST"])
+@login_required
+def dm_suggest_relationships():
+    """AI-powered relationship suggestions based on column name/type analysis."""
+    d = request.get_json(force=True)
+    model_id = d.get("model_id", "")
+    model = _get_model(model_id)
+    if model is None:
+        return jsonify({"success": False, "error": "Model not found"})
+    suggestions = dm.suggest_relationships(model)
+    return jsonify({"success": True, "suggestions": suggestions})
+
+
 @datamodel_bp.route("/datamodel/generate", methods=["POST"])
 @login_required
 def dm_generate_model():
     d = request.get_json(force=True)
     cfg = get_config()
     host = cfg.get("databricks_host", "").rstrip("/")
-    token = cfg.get("databricks_token", "")
+    token = get_databricks_token()
     catalog = d.get("catalog", "").strip()
     schema = d.get("schema", "").strip()
     table_names = d.get("tables", [])
@@ -240,6 +374,7 @@ def dm_edit_model():
         "success": True, "model_id": model_id, "schema_type": model["schema_type"],
         "facts": model["facts"], "dimensions": model["dimensions"],
         "relationships": model["relationships"], "er_json": er_json, "ddl": ddl,
+        "views": model.get("views", []),
     })
 
 
@@ -255,3 +390,43 @@ def dm_get_ddl():
         return jsonify({"success": False, "error": "Model not found"})
     ddl = dm.generate_ddl(model, catalog, schema)
     return jsonify({"success": True, "ddl": ddl})
+
+
+@datamodel_bp.route("/datamodel/views", methods=["POST"])
+@login_required
+def dm_list_views():
+    """List views from a Databricks catalog.schema."""
+    d = request.get_json(force=True)
+    cfg = get_config()
+    host = cfg.get("databricks_host", "").rstrip("/")
+    token = get_databricks_token()
+    catalog = d.get("catalog", "").strip()
+    schema = d.get("schema", "").strip()
+    if not host or not token:
+        return jsonify({"success": False, "error": "Databricks not configured"})
+    if not catalog or not schema:
+        return jsonify({"success": False, "error": "Catalog and schema required"})
+    executor = UnityCatalogExecutor(host, token, catalog, schema)
+    wh_id = _dm_get_warehouse(host, token)
+    views = dm.list_available_views(executor, catalog, schema, wh_id)
+    return jsonify({"success": True, "views": views})
+
+
+@datamodel_bp.route("/datamodel/metadata", methods=["POST"])
+@login_required
+def dm_save_metadata():
+    """Save diagram metadata (author, scope, design version, etc.)."""
+    d = request.get_json(force=True)
+    metadata = d.get("metadata", {})
+    # Store metadata in session-level model cache
+    from migration_utility.config_cache import get_config
+    import json, os
+    cache_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
+    os.makedirs(cache_dir, exist_ok=True)
+    meta_path = os.path.join(cache_dir, "dm_metadata.json")
+    try:
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})

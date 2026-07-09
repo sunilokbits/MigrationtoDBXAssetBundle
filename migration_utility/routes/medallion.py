@@ -6,6 +6,8 @@ from .auth import login_required
 from log_config import get_logger
 from databricks_connector import DatabricksConnector
 from medallion_notebooks import generate_all_medallion_notebooks
+from config_cache import get_databricks_token
+from keyvault_helper import is_masked
 
 logger = get_logger(__name__)
 medallion_bp = Blueprint("medallion", __name__, url_prefix="/api/v1")
@@ -51,6 +53,8 @@ def medallion_deploy():
         d = request.get_json()
         host = d.get("host", "").strip()
         token = d.get("token", "").strip()
+        if not token or is_masked(token):
+            token = get_databricks_token()
         workspace_path = d.get("workspace_path", "/Shared/Medallion").strip()
         notebooks = d.get("notebooks", [])
         if not all([host, token, notebooks]):
@@ -83,6 +87,8 @@ def medallion_run_pipeline():
         d = request.get_json()
         host = d.get("host", "").strip()
         token = d.get("token", "").strip()
+        if not token or is_masked(token):
+            token = get_databricks_token()
         workspace_path = d.get("workspace_path", "/Shared/Medallion").strip()
         cluster_id = d.get("cluster_id", "").strip()
         load_type = d.get("load_type", "full").strip()

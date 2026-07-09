@@ -6,13 +6,16 @@ from collections import OrderedDict
 
 from .auth import login_required
 from log_config import get_logger
-from config_cache import get_config
+from config_cache import get_config, get_databricks_token, get_source_password
 import workflow_manager as wfm
 from unity_catalog_executor import UnityCatalogExecutor
 
 logger = get_logger(__name__)
 scheduler_bp = Blueprint("scheduler", __name__, url_prefix="/api/v1")
-SCHEDULE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "job_schedules.json")
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_PERSISTENT_DIR = "/home/migration_data" if os.path.isdir("/home") and os.access("/home", os.W_OK) else _BASE_DIR
+os.makedirs(_PERSISTENT_DIR, exist_ok=True)
+SCHEDULE_PATH = os.path.join(_PERSISTENT_DIR, "job_schedules.json")
 _sch_file_lock = threading.Lock()          # guards concurrent JSON file writes
 
 
@@ -126,7 +129,7 @@ def sch_list_schedules():
 def sch_list_tables():
     cfg = get_config()
     dbx_host = cfg.get("databricks_host", "").rstrip("/")
-    dbx_token = cfg.get("databricks_token", "")
+    dbx_token = get_databricks_token()
     if not dbx_host or not dbx_token:
         return jsonify({"success": False, "tables": [], "error": "Databricks not configured."})
     catalogs = cfg.get("catalogs", {})
@@ -359,8 +362,8 @@ def sch_run_now(schedule_id):
                 job_names.append(job["job_name"])
     result = wfm.run_pipeline_on_databricks(
         group_id=group_id, host=cfg.get("databricks_host", ""),
-        token=cfg.get("databricks_token", ""),
-        password=cfg.get("source", {}).get("password", ""),
+        token=get_databricks_token(),
+        password=get_source_password(),
         catalog=cfg.get("metadata_catalog", ""),
         schema=cfg.get("metadata_schema", ""),
         recon_catalog=cfg.get("reconciliation", {}).get("catalog", "reconciliation"),
@@ -455,7 +458,7 @@ def _scheduler_tick_inner():
                 if _dbr_connector is None:
                     cfg = get_config()
                     _h = cfg.get("databricks_host", "")
-                    _t = cfg.get("databricks_token", "")
+                    _t = get_databricks_token()
                     if _h and _t:
                         from databricks_connector import DatabricksConnector
                         _dbr_connector = DatabricksConnector(_h, _t)
@@ -597,8 +600,8 @@ def _scheduler_tick_inner():
 
             result = wfm.run_pipeline_on_databricks(
                 group_id=group_id, host=cfg.get("databricks_host", ""),
-                token=cfg.get("databricks_token", ""),
-                password=cfg.get("source", {}).get("password", ""),
+                token=get_databricks_token(),
+                password=get_source_password(),
                 catalog=cfg.get("metadata_catalog", ""),
                 schema=cfg.get("metadata_schema", ""),
                 recon_catalog=cfg.get("reconciliation", {}).get("catalog", "reconciliation"),
@@ -654,15 +657,15 @@ def _scheduler_tick_inner():
 
 
 def _scheduler_loop():
-    """Background loop — runs _scheduler_tick every 30 seconds."""
+    """Background loop — runs _scheduler_tick every 60 seconds."""
     import time
-    logger.info("🕐 Background scheduler started (30s check interval)")
+    logger.info("🕐 Background scheduler started (60s check interval)")
     while _scheduler_running:
         try:
             _scheduler_tick()
         except Exception as exc:
             logger.error("Scheduler loop error: %s", exc)
-        time.sleep(30)
+        time.sleep(60)
     logger.info("🕐 Background scheduler stopped")
 
 

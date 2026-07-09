@@ -2937,6 +2937,7 @@ function _collectConfig(){
   });
   const folders=(G('cfgFolders').value||'').split('\n').map(s=>s.trim()).filter(Boolean);
   return {
+    keyvault_name: (_cachedDeployConfig||{}).keyvault_name||'',
     subscription_id: G('cfgSubId').value.trim(),
     resource_group:  G('cfgResourceGroup').value.trim(),
     region:          G('cfgRegion').value,
@@ -3194,9 +3195,12 @@ async function cfgTestSourceConn(){
   const srcType=G('cfgSrcType')?.value||'sqlserver';
   if(!server||!db||!user){toast('Fill in server, database and username','terr');return;}
   badge.textContent='Testing…';badge.style.background='#f59e0b';badge.style.color='#fff';
+  const controller=new AbortController();
+  const tid=setTimeout(()=>controller.abort(),90000);
   try{
     const r=await fetch('/api/v1/source/test-connection',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({source_type:srcType,server:server,database:db,username:user,password:pwd})});
+      body:JSON.stringify({source_type:srcType,server:server,database:db,username:user,password:pwd}),signal:controller.signal});
+    clearTimeout(tid);
     const ct = r.headers.get('content-type')||'';
     let d;
     if(ct.includes('application/json')){
@@ -3225,9 +3229,11 @@ async function cfgTestSourceConn(){
       throw new Error(d.error||('Connection failed (HTTP '+r.status+')'));
     }
   }catch(e){
+    clearTimeout(tid);
+    const msg=e.name==='AbortError'?'Connection test timed out (90s) — database may still be resuming, try again.':e.message;
     badge.textContent='Failed ✕';badge.style.background='#ef4444';badge.style.color='#fff';
     badge.className='cfg-conn-badge fail';
-    toast(e.message,'terr');
+    toast(msg,'terr');
     console.error('[Test Connection] error:', e);
   }
 }
@@ -3697,11 +3703,18 @@ let _dmModelId = null;  // cache key
 let _dmErJson = null;   // ER nodes/edges
 let _dmDdl = '';        // DDL text
 let _dmZoomLevel = 1;
+let _dmPanX = 0, _dmPanY = 0;
+var _dmSavedPositions = {};  // Preserve node positions across re-renders
 let _dmCatalogSchemas = [];
-let _dmAllTables = [];      // Full list currently loaded (unfiltered)
-let _dmSelectedTables = new Set();  // Persistent selection across filters
+let _dmAllTables = [];      // Full list — [{table, catalog, schema, fqn}] or legacy strings
+let _dmSelectedTables = new Map();  // fqn → {table, catalog, schema}
 let _dmTplVisible = true;
 let _dmInsightsVisible = true;
+let _dmMultiMode = false;
+let _dmSources = [];        // [{catalog, schema}] for multi-source mode
+let _dmNotation = 'crowsfoot'; // 'arrow' or 'crowsfoot'
+let _dmDetectedChanges = [];
+let _dmSuggestions = [];
 
 // ── AI role hints (pure client-side heuristic, no backend call) ────────────
 const _DM_FACT_RX = /(transaction|order|sale|invoice|payment|event|log|detail|line_?item|entry|fact|history|audit|session)/i;
@@ -3738,7 +3751,63 @@ function dmOnCatalogChange(){
   _dmCatalogSchemas.filter(c=>c.catalog===cat).forEach(cs=>{
     const o=document.createElement('option');o.value=cs.schema;o.textContent=cs.schema;sel.appendChild(o);
   });
-  _dmAllTables=[];_dmSelectedTables.clear();_dmRenderTableList();
+  if(!_dmMultiMode){_dmAllTables=[];_dmSelectedTables.clear();_dmRenderTableList();}
+}
+
+// ── Multi-Source Mode ──────────────────────────────────────────────────────
+function dmToggleMultiMode(){
+  _dmMultiMode=!_dmMultiMode;
+  G('dmMultiSourcePanel').style.display=_dmMultiMode?'':'none';
+  G('dmMultiModeBtn').textContent=_dmMultiMode?'✓ Multi-Source Active':'Multi-Source Mode';
+  G('dmMultiModeBtn').style.background=_dmMultiMode?'rgba(139,92,246,.1)':'';
+  if(_dmMultiMode && _dmSources.length===0){
+    const cat=G('dmCatalog').value, sch=G('dmSchema').value;
+    if(cat&&sch) dmAddSource();
+  }
+}
+
+function dmAddSource(){
+  const cat=G('dmCatalog').value, sch=G('dmSchema').value;
+  if(!cat||!sch){toast('Select catalog and schema first','terr');return;}
+  if(_dmSources.some(s=>s.catalog===cat&&s.schema===sch)){toast('Source already added','terr');return;}
+  _dmSources.push({catalog:cat,schema:sch});
+  _dmRenderSourceTags();
+  if(!_dmMultiMode){ _dmMultiMode=true; G('dmMultiSourcePanel').style.display=''; G('dmMultiModeBtn').textContent='✓ Multi-Source Active'; G('dmMultiModeBtn').style.background='rgba(139,92,246,.1)'; }
+  else toast(`Added ${cat}.${sch}`,'tok');
+}
+
+function dmRemoveSource(idx){ _dmSources.splice(idx,1); _dmRenderSourceTags(); }
+function dmClearSources(){ _dmSources=[]; _dmRenderSourceTags(); _dmAllTables=[]; _dmSelectedTables.clear(); _dmRenderTableList(); }
+
+function _dmRenderSourceTags(){
+  const el=G('dmSourceTags');
+  if(!_dmSources.length){
+    el.innerHTML='<span style="font-size:10px;color:var(--t4);padding:4px;">No sources added. Use dropdowns above to add catalog.schema pairs.</span>';
+  } else {
+    el.innerHTML=_dmSources.map((s,i)=>
+      '<span style="display:inline-flex;align-items:center;gap:4px;background:linear-gradient(135deg,rgba(139,92,246,.08),rgba(59,130,246,.06));border:1px solid rgba(139,92,246,.25);border-radius:16px;padding:3px 10px;font-size:10px;font-weight:600;color:#6D28D9;">'+
+      '📂 '+s.catalog+'.'+s.schema+
+      '<button onclick="dmRemoveSource('+i+')" style="background:none;border:none;cursor:pointer;color:#EF4444;font-size:12px;padding:0 2px;line-height:1;">×</button></span>'
+    ).join('');
+  }
+  G('dmMultiSourceCount').textContent=_dmSources.length+' source'+(_dmSources.length!==1?'s':'');
+}
+
+async function dmLoadTablesMulti(){
+  if(_dmMultiMode && _dmSources.length>0){
+    const box=G('dmTableList');
+    box.innerHTML='<div style="padding:24px;text-align:center;color:var(--t4);font-size:11px;">Loading tables from '+_dmSources.length+' sources…</div>';
+    try{
+      const r=await fetch('/api/v1/datamodel/tables-multi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({selections:_dmSources})});
+      const d=await r.json();
+      if(d.success&&d.tables&&d.tables.length){
+        _dmAllTables=d.tables;
+        _dmSelectedTables.clear();
+        _dmRenderTableList();
+        toast(d.tables.length+' tables loaded from '+_dmSources.length+' sources','tok');
+      }else{ _dmAllTables=[]; box.innerHTML='<div style="padding:24px;text-align:center;color:var(--t4);font-size:11px;">No tables found</div>'; }
+    }catch(e){box.innerHTML='<div style="padding:24px;text-align:center;color:#EF4444;font-size:11px;">Error loading tables</div>';toast('Failed to load tables','terr');}
+  } else { dmLoadTables(); }
 }
 
 async function dmLoadTables(){
@@ -3750,7 +3819,7 @@ async function dmLoadTables(){
     const r=await fetch('/api/v1/datamodel/tables',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({catalog:cat,schema:sch})});
     const d=await r.json();
     if(d.success&&d.tables&&d.tables.length){
-      _dmAllTables=d.tables.slice();
+      _dmAllTables=d.tables.map(t=>({table:t,catalog:cat,schema:sch,fqn:cat+'.'+sch+'.'+t}));
       _dmSelectedTables.clear();
       _dmRenderTableList();
     }else{
@@ -3760,53 +3829,71 @@ async function dmLoadTables(){
   }catch(e){box.innerHTML='<div style="padding:24px;text-align:center;color:#EF4444;font-size:11px;">Error loading tables</div>';toast('Failed to load tables','terr');}
 }
 
-// ── Render checkbox table list with AI role hints ──────────────────────────
+// ── Render checkbox table list with AI role hints + multi-source grouping ─────
 function _dmRenderTableList(){
   const box=G('dmTableList');
   const q=(G('dmTableSearch').value||'').toLowerCase().trim();
-  const filtered=_dmAllTables.filter(t=>!q || t.toLowerCase().includes(q));
-  if(!_dmAllTables.length){
-    box.innerHTML='<div style="padding:24px;text-align:center;color:var(--t4);font-size:11px;">Select catalog and schema to load tables…</div>';
+  const isMulti=_dmMultiMode && _dmSources.length>1;
+
+  // Normalize tables to objects
+  const tables=_dmAllTables.map(t=> typeof t==='string'?{table:t,catalog:G('dmCatalog').value||'',schema:G('dmSchema').value||'',fqn:(G('dmCatalog').value||'')+'.'+(G('dmSchema').value||'')+'.'+t}:t);
+  const filtered=tables.filter(t=>!q || t.table.toLowerCase().includes(q) || (t.fqn||'').toLowerCase().includes(q));
+
+  if(!tables.length){
+    box.innerHTML='<div style="padding:24px;text-align:center;color:var(--t4);font-size:11px;">Select catalog and schema to load tables\u2026</div>';
     _dmSyncHiddenSelect();_dmUpdateSelBadge();return;
   }
   if(!filtered.length){
-    box.innerHTML='<div style="padding:24px;text-align:center;color:var(--t4);font-size:11px;">No tables match “'+q+'”</div>';
+    box.innerHTML='<div style="padding:24px;text-align:center;color:var(--t4);font-size:11px;">No tables match "'+q+'"</div>';
     _dmSyncHiddenSelect();_dmUpdateSelBadge();return;
   }
   let html='';
-  filtered.forEach(t=>{
-    const hint=_dmRoleHint(t);
-    const checked=_dmSelectedTables.has(t);
-    const tesc=t.replace(/"/g,'&quot;');
-    html+='<label class="dm-tbl-row" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:12px;transition:background .15s;'+
-      (checked?'background:rgba(245,158,11,.08);':'')+'" '+
-      'onmouseover="this.style.background=\'rgba(148,163,184,.08)\'" '+
-      'onmouseout="this.style.background=\''+(checked?'rgba(245,158,11,.08)':'transparent')+'\'">'+
-      '<input type="checkbox" data-tname="'+tesc+'" '+(checked?'checked':'')+' onchange="_dmOnTableToggle(this)" style="margin:0;cursor:pointer;">'+
-      '<span style="flex:1;font-family:\'SF Mono\',Consolas,monospace;color:var(--t1);">'+t+'</span>'+
-      '<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;background:'+hint.color+'22;color:'+hint.color+';letter-spacing:.05em;">'+hint.label+'</span>'+
-      '</label>';
-  });
+  if(isMulti){
+    const groups={};
+    filtered.forEach(t=>{const key=t.catalog+'.'+t.schema;if(!groups[key])groups[key]=[];groups[key].push(t);});
+    Object.entries(groups).forEach(([key,tbls])=>{
+      html+='<div style="padding:4px 8px;font-size:10px;font-weight:700;color:#6D28D9;background:rgba(139,92,246,.05);border-radius:4px;margin:4px 0 2px;">\ud83d\udcc2 '+key+' <span style="color:var(--t4);font-weight:400;">('+tbls.length+')</span></div>';
+      tbls.forEach(t=>{ html+=_dmTableRowHtml(t); });
+    });
+  } else {
+    filtered.forEach(t=>{ html+=_dmTableRowHtml(t); });
+  }
   box.innerHTML=html;
   _dmSyncHiddenSelect();_dmUpdateSelBadge();
 }
 
+function _dmTableRowHtml(t){
+  const hint=_dmRoleHint(t.table);
+  const checked=_dmSelectedTables.has(t.fqn);
+  const fqnEsc=(t.fqn||'').replace(/"/g,'&quot;');
+  return '<label class="dm-tbl-row" style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:12px;transition:background .15s;'+
+    (checked?'background:rgba(245,158,11,.08);':'')+'" '+
+    'onmouseover="this.style.background=\'rgba(148,163,184,.08)\'" '+
+    'onmouseout="this.style.background=\''+(checked?'rgba(245,158,11,.08)':'transparent')+'\'">'+
+    '<input type="checkbox" data-fqn="'+fqnEsc+'" data-tname="'+(t.table||'').replace(/"/g,'&quot;')+'" data-cat="'+(t.catalog||'')+'" data-sch="'+(t.schema||'')+'" '+(checked?'checked':'')+' onchange="_dmOnTableToggle(this)" style="margin:0;cursor:pointer;">'+
+    '<span style="flex:1;font-family:\'SF Mono\',Consolas,monospace;color:var(--t1);font-size:11px;">'+t.table+'</span>'+
+    (_dmMultiMode?'<span style="font-size:9px;color:var(--t4);">'+t.catalog+'.'+t.schema+'</span>':'')+
+    '<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;background:'+hint.color+'22;color:'+hint.color+';letter-spacing:.05em;">'+hint.label+'</span>'+
+    '</label>';
+}
+
 function _dmOnTableToggle(el){
-  const t=el.getAttribute('data-tname');
-  if(el.checked) _dmSelectedTables.add(t); else _dmSelectedTables.delete(t);
+  const fqn=el.getAttribute('data-fqn');
+  const tname=el.getAttribute('data-tname');
+  const cat=el.getAttribute('data-cat');
+  const sch=el.getAttribute('data-sch');
+  if(el.checked) _dmSelectedTables.set(fqn,{table:tname,catalog:cat,schema:sch});
+  else _dmSelectedTables.delete(fqn);
   _dmSyncHiddenSelect();_dmUpdateSelBadge();
-  // Light row highlight
   const row=el.closest('.dm-tbl-row');
   if(row) row.style.background = el.checked ? 'rgba(245,158,11,.08)' : 'transparent';
 }
 
 function _dmSyncHiddenSelect(){
-  // Keep the hidden <select multiple id="dmTableSelect"> in sync so legacy
-  // paths (dmGenerate selectedOptions, dmLoadSample) still work if referenced.
   const sel=G('dmTableSelect');if(!sel)return;
   sel.innerHTML='';
-  _dmSelectedTables.forEach(t=>{
-    const o=document.createElement('option');o.value=t;o.textContent=t;o.selected=true;sel.appendChild(o);
+  _dmSelectedTables.forEach((v,fqn)=>{
+    const o=document.createElement('option');o.value=v.table;o.textContent=v.table;o.selected=true;sel.appendChild(o);
   });
 }
 
@@ -3820,14 +3907,17 @@ function _dmUpdateSelBadge(){
 function dmFilterTables(q){ _dmRenderTableList(); }
 function dmSelectAll(){
   const q=(G('dmTableSearch').value||'').toLowerCase().trim();
-  _dmAllTables.filter(t=>!q || t.toLowerCase().includes(q)).forEach(t=>_dmSelectedTables.add(t));
+  const tables=_dmAllTables.map(t=>typeof t==='string'?{table:t,catalog:G('dmCatalog').value||'',schema:G('dmSchema').value||'',fqn:(G('dmCatalog').value||'')+'.'+(G('dmSchema').value||'')+'.'+t}:t);
+  tables.filter(t=>!q||t.table.toLowerCase().includes(q)||(t.fqn||'').toLowerCase().includes(q)).forEach(t=>_dmSelectedTables.set(t.fqn,{table:t.table,catalog:t.catalog,schema:t.schema}));
   _dmRenderTableList();
 }
 function dmSelectNone(){ _dmSelectedTables.clear(); _dmRenderTableList(); }
 function dmInvertSelection(){
   const q=(G('dmTableSearch').value||'').toLowerCase().trim();
-  _dmAllTables.filter(t=>!q || t.toLowerCase().includes(q)).forEach(t=>{
-    if(_dmSelectedTables.has(t)) _dmSelectedTables.delete(t); else _dmSelectedTables.add(t);
+  const tables=_dmAllTables.map(t=>typeof t==='string'?{table:t,catalog:G('dmCatalog').value||'',schema:G('dmSchema').value||'',fqn:(G('dmCatalog').value||'')+'.'+(G('dmSchema').value||'')+'.'+t}:t);
+  tables.filter(t=>!q||t.table.toLowerCase().includes(q)||(t.fqn||'').toLowerCase().includes(q)).forEach(t=>{
+    if(_dmSelectedTables.has(t.fqn)) _dmSelectedTables.delete(t.fqn);
+    else _dmSelectedTables.set(t.fqn,{table:t.table,catalog:t.catalog,schema:t.schema});
   });
   _dmRenderTableList();
 }
@@ -3853,10 +3943,11 @@ function dmApplyTemplate(key){
     return;
   }
   _dmSelectedTables.clear();
-  _dmAllTables.forEach(t=>{ if(tpl.match.test(t)) _dmSelectedTables.add(t); });
+  const tables=_dmAllTables.map(t=>typeof t==='string'?{table:t,catalog:G('dmCatalog').value||'',schema:G('dmSchema').value||'',fqn:(G('dmCatalog').value||'')+'.'+(G('dmSchema').value||'')+'.'+t}:t);
+  tables.forEach(t=>{ if(tpl.match.test(t.table)) _dmSelectedTables.set(t.fqn,{table:t.table,catalog:t.catalog,schema:t.schema}); });
   _dmRenderTableList();
   if(_dmSelectedTables.size){
-    toast('Template applied — '+_dmSelectedTables.size+' matching tables selected. Click Generate.','tok');
+    toast('Template applied \u2014 '+_dmSelectedTables.size+' matching tables selected. Click Generate.','tok');
   }else{
     toast('No matching tables in this schema. Try "Load Sample Data" to see the template.','terr');
   }
@@ -3883,12 +3974,14 @@ function dmSaveCurrent(){
   const name=prompt('Name for this model snapshot:', (G('dmCatalog').value||'model')+'_'+new Date().toISOString().slice(0,10));
   if(!name)return;
   const list=_dmReadRecent();
+  const tableNames=[];
+  _dmSelectedTables.forEach(v=>tableNames.push(v.table));
   list.unshift({
     name:name, ts:new Date().toISOString(),
     catalog:G('dmCatalog').value, schema:G('dmSchema').value,
     schema_choice:G('dmSchemaChoice').value,
     schema_type:_dmModel.schema_type,
-    tables:Array.from(_dmSelectedTables),
+    tables:tableNames,
   });
   _dmWriteRecent(list);_dmRefreshRecentList();
   toast('Saved "'+name+'" to Recent Models','tok');
@@ -3902,9 +3995,13 @@ function dmLoadRecent(idx){
   (async()=>{
     await dmLoadTables();
     _dmSelectedTables.clear();
-    (m.tables||[]).forEach(t=>_dmSelectedTables.add(t));
+    const cat=m.catalog||'', sch=m.schema||'';
+    (m.tables||[]).forEach(t=>{
+      const fqn=cat+'.'+sch+'.'+t;
+      _dmSelectedTables.set(fqn,{table:t,catalog:cat,schema:sch});
+    });
     _dmRenderTableList();
-    toast('Loaded "'+m.name+'" — click Generate to rebuild','tok');
+    toast('Loaded "'+m.name+'" \u2014 click Generate to rebuild','tok');
   })();
   G('dmRecentSelect').value='';
 }
@@ -3934,17 +4031,18 @@ function _dmDeriveInsights(d){
   const hasDate = dims.some(x=>/(date|calendar|time)/i.test(x.table_name));
   if(facts.length && !hasDate){
     out.push({icon:'📅',tone:'warn',title:'No date dimension detected',
-      desc:'Facts typically need a Date/Calendar dim for time-based analytics. Consider adding one.'});
+      desc:'Facts typically need a Date/Calendar dim for time-based analytics. Consider adding one.',
+      action:'dmShowAddTableDialog',actionLabel:'+ Add Date Dim'});
   }
   // 2. Fact table without measures
   facts.forEach(f=>{
     const measures=(f.columns||[]).filter(c=>/^(int|bigint|decimal|numeric|float|double|money)/i.test(c.data_type||''));
     if(measures.length<2){
       out.push({icon:'📊',tone:'warn',title:'Thin measures in '+f.table_name,
-        desc:'Only '+measures.length+' numeric column(s) detected. Fact tables usually carry 2+ measures (amount, qty, etc.).'});
+        desc:'Only '+measures.length+' numeric column(s). Fact tables usually carry 2+ measures (amount, qty, etc.).'});
     }
   });
-  // 3. Suggested grain per fact (first PK/date combo)
+  // 3. Suggested grain per fact
   facts.forEach(f=>{
     const pk=(f.columns||[]).find(c=>c.is_pk);
     const dt=(f.columns||[]).find(c=>/(date|time|_at$)/i.test(c.name));
@@ -3958,25 +4056,86 @@ function _dmDeriveInsights(d){
     const hasAudit=(dm.columns||[]).some(c=>/(updated_at|modified|effective_date|valid_from)/i.test(c.name));
     out.push({icon:'🔁',tone:hasAudit?'ok':'info',
       title:'SCD for '+dm.table_name,
-      desc:hasAudit?'Audit columns found — SCD Type 2 recommended (track history).':'No audit columns — SCD Type 1 (overwrite) is simplest.'});
+      desc:hasAudit?'Audit columns found \u2014 SCD Type 2 recommended (track history).':'No audit columns \u2014 SCD Type 1 (overwrite) is simplest.'});
   });
   // 5. Orphan dims (no relationship)
   const related=new Set(rels.flatMap(r=>[r.from,r.to]));
   dims.forEach(dm=>{
     if(!related.has(dm.table_name)){
-      out.push({icon:'⚠️',tone:'warn',title:dm.table_name+' has no relationships',
-        desc:'This dimension is not connected to any fact. Add an FK to connect it, or remove it.'});
+      out.push({icon:'\u26a0\ufe0f',tone:'warn',title:dm.table_name+' has no relationships',
+        desc:'This dimension is not connected to any fact. Use 🧠 AI Suggest Relations to find connections.',
+        action:'dmSuggestRelationships',actionLabel:'🧠 Suggest'});
     }
   });
-  // 6. Large fact count
+  // 6. Large fact count \u2014 bus matrix
   if(facts.length>=3){
-    out.push({icon:'💡',tone:'info',title:'Multiple facts — consider a bus matrix',
+    out.push({icon:'💡',tone:'info',title:'Multiple facts \u2014 consider a bus matrix',
       desc:facts.length+' fact tables detected. Conformed dimensions across facts will boost analytics.'});
   }
   // 7. Star schema recommendation
   if(d.schema_type==='snowflake' && dims.length<5){
-    out.push({icon:'⭐',tone:'info',title:'Star may be simpler',
+    out.push({icon:'\u2b50',tone:'info',title:'Star may be simpler',
       desc:'Snowflake chosen but only '+dims.length+' dims. Star schema often performs better at this scale.'});
+  }
+  // 8. Wide fact table normalization suggestion
+  facts.forEach(f=>{
+    const cols=(f.columns||[]);
+    if(cols.length>15){
+      out.push({icon:'🛠\ufe0f',tone:'warn',title:'Wide fact: '+f.table_name+' ('+cols.length+' cols)',
+        desc:'Consider normalizing. Move descriptive columns to dimensions for better query performance.'});
+    }
+  });
+  // 9. Shared column detection (conformed dimension keys)
+  const allColNames={};
+  [...facts,...dims].forEach(t=>{
+    (t.columns||[]).forEach(c=>{
+      const k=c.name.toLowerCase();
+      if(!allColNames[k])allColNames[k]=[];
+      allColNames[k].push(t.table_name);
+    });
+  });
+  const sharedCols=Object.entries(allColNames).filter(([k,tbls])=>tbls.length>2 && !/_id$|_key$|_date$|_at$/i.test(k));
+  if(sharedCols.length>0){
+    out.push({icon:'🔗',tone:'info',title:'Shared columns detected (conformed dims)',
+      desc:'Columns like <b>'+sharedCols.slice(0,3).map(x=>x[0]).join(', ')+'</b> appear in '+sharedCols[0][1].length+'+ tables. These may be conformed dimension keys.'});
+  }
+  // 10. Nullable PK detection
+  const badPks=[];
+  [...facts,...dims].forEach(t=>{
+    (t.columns||[]).forEach(c=>{
+      if(c.is_pk && c.is_nullable) badPks.push(t.table_name+'.'+c.name);
+    });
+  });
+  if(badPks.length>0){
+    out.push({icon:'🚫',tone:'warn',title:'Nullable primary keys detected',
+      desc:'PKs should be NOT NULL: <b>'+badPks.slice(0,3).join(', ')+'</b>'+(badPks.length>3?' (+'+(badPks.length-3)+' more)':'')+'.'});
+  }
+  // 11. Partition suggestion for facts with date columns
+  facts.forEach(f=>{
+    const dateCols=(f.columns||[]).filter(c=>/(date|time|_at$|_ts$)/i.test(c.name));
+    if(dateCols.length>0){
+      out.push({icon:'\u26a1',tone:'ok',title:'Partition '+f.table_name+' by date',
+        desc:'Partition on <b>'+dateCols[0].name+'</b> for optimal Delta Lake query performance.'});
+    }
+  });
+  // 12. Relationship density score
+  const maxRels=facts.length*dims.length;
+  const density=maxRels>0?Math.round(rels.length/maxRels*100):0;
+  if(density<50 && rels.length>0 && maxRels>2){
+    out.push({icon:'📶',tone:'info',title:'Relationship density: '+density+'%',
+      desc:'Only '+rels.length+' of '+maxRels+' possible fact-dim connections exist. Use AI Suggest to find missing links.',
+      action:'dmSuggestRelationships',actionLabel:'🧠 Suggest'});
+  }
+  // 13. Indexing suggestion for FK columns
+  const fkCols=[];
+  facts.forEach(f=>{
+    (f.columns||[]).filter(c=>/_id$|_key$/i.test(c.name) && !c.is_pk).forEach(c=>{
+      fkCols.push(f.table_name+'.'+c.name);
+    });
+  });
+  if(fkCols.length>3){
+    out.push({icon:'🔍',tone:'ok',title:'Consider Z-ORDER on FK columns',
+      desc:'Z-ORDER BY on columns like <b>'+fkCols.slice(0,3).join(', ')+'</b> will speed up joins in Delta Lake.'});
   }
   return out;
 }
@@ -3985,7 +4144,7 @@ function _dmRenderInsights(d){
   if(!panel||!list)return;
   const items=_dmDeriveInsights(d);
   if(!items.length){
-    list.innerHTML='<div style="color:var(--t3);font-size:11px;padding:6px;">✓ No issues detected — model looks clean.</div>';
+    list.innerHTML='<div style="color:var(--t3);font-size:11px;padding:6px;">✔ No issues detected — model looks clean.</div>';
     badge.textContent='0 findings';return;
   }
   badge.textContent=items.length+' findings';
@@ -3994,11 +4153,12 @@ function _dmRenderInsights(d){
                  ok:  {bg:'rgba(16,185,129,.06)',bd:'rgba(16,185,129,.25)',c:'#047857'}};
   list.innerHTML=items.map(it=>{
     const p=palette[it.tone]||palette.info;
+    const actionHtml=it.action?'<button class="btn btn-ghost btn-xs" onclick="'+it.action+'()" style="font-size:9px;padding:2px 8px;border:1px solid '+p.c+'44;color:'+p.c+';border-radius:6px;margin-top:4px;">'+it.actionLabel+'</button>':'';
     return '<div style="background:'+p.bg+';border:1px solid '+p.bd+';border-radius:8px;padding:8px 10px;">'+
       '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">'+
       '<span style="font-size:14px;">'+it.icon+'</span>'+
       '<span style="font-size:11px;font-weight:700;color:'+p.c+';">'+it.title+'</span></div>'+
-      '<div style="font-size:10px;color:var(--t3);line-height:1.4;">'+it.desc+'</div></div>';
+      '<div style="font-size:10px;color:var(--t3);line-height:1.4;">'+it.desc+'</div>'+actionHtml+'</div>';
   }).join('');
 }
 function dmToggleInsights(){
@@ -4009,21 +4169,30 @@ function dmToggleInsights(){
 
 async function dmGenerate(){
   const cat=G('dmCatalog').value, sch=G('dmSchema').value;
-  const tables=Array.from(_dmSelectedTables);
-  if(!tables.length){toast('Select at least one table','terr');return;}
+  const selections=[];
+  _dmSelectedTables.forEach((v,fqn)=>{ selections.push({table:v.table,catalog:v.catalog,schema:v.schema}); });
+  if(!selections.length){toast('Select at least one table','terr');return;}
   const schemaChoice=G('dmSchemaChoice').value;
   G('dmStatusMsg').textContent='Analyzing tables...';
   G('dmGenerateBtn').disabled=true;
   try{
-    const r=await fetch('/api/v1/datamodel/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({catalog:cat,schema:sch,tables:tables,schema_choice:schemaChoice})});
+    // Use multi-generate if multiple catalogs/schemas, else single
+    const uniqueSources=new Set(selections.map(s=>s.catalog+'.'+s.schema));
+    let r;
+    if(uniqueSources.size>1){
+      r=await fetch('/api/v1/datamodel/generate-multi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tables_selections:selections,schema_choice:schemaChoice})});
+    } else {
+      const tableNames=selections.map(s=>s.table);
+      r=await fetch('/api/v1/datamodel/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({catalog:selections[0].catalog,schema:selections[0].schema,tables:tableNames,schema_choice:schemaChoice})});
+    }
     const d=await r.json();
     if(d.success){
       _dmModel=d;_dmModelId=d.model_id;_dmErJson=d.er_json;_dmDdl=d.ddl;
       G('dmResultArea').style.display='';
-      G('dmKpiTables').textContent=tables.length;
+      G('dmKpiTables').textContent=selections.length;
       G('dmKpiFacts').textContent=d.facts.length;
       G('dmKpiDims').textContent=d.dimensions.length;
-      G('dmKpiSchema').textContent=d.schema_type==='star'?'⭐ Star':'❄ Snowflake';
+      G('dmKpiSchema').textContent=d.schema_type==='star'?'\u2b50 Star':'\u2744 Snowflake';
       G('dmSchemaTypeBadge').textContent=d.schema_type.toUpperCase()+' SCHEMA';
       G('dmSchemaTypeBadge').style.background=d.schema_type==='star'?'rgba(245,158,11,.15)':'rgba(59,130,246,.15)';
       G('dmSchemaTypeBadge').style.color=d.schema_type==='star'?'#F59E0B':'#3B82F6';
@@ -4032,7 +4201,7 @@ async function dmGenerate(){
       _dmRenderInsights(d);
       G('dmDdlCode').textContent=d.ddl;
       G('dmStatusMsg').textContent='Model generated successfully!';
-      toast('Data model generated — '+d.schema_type.toUpperCase()+' schema with '+d.facts.length+' facts & '+d.dimensions.length+' dims','tok');
+      toast('Data model generated \u2014 '+d.schema_type.toUpperCase()+' schema with '+d.facts.length+' facts & '+d.dimensions.length+' dims','tok');
     }else{
       toast(d.error||'Generation failed','terr');
       G('dmStatusMsg').textContent=d.error||'Failed';
@@ -4050,8 +4219,9 @@ async function dmLoadSample(){
     const lr=await fetch('/api/v1/datamodel/sample-tables');
     const ld=await lr.json();
     if(ld.success&&ld.tables){
-      _dmAllTables=ld.tables.slice();
-      _dmSelectedTables=new Set(ld.tables);
+      _dmAllTables=ld.tables.map(t=>({table:t,catalog:'sample_catalog',schema:'sample_schema',fqn:'sample_catalog.sample_schema.'+t}));
+      _dmSelectedTables=new Map();
+      ld.tables.forEach(t=>_dmSelectedTables.set('sample_catalog.sample_schema.'+t,{table:t,catalog:'sample_catalog',schema:'sample_schema'}));
       G('dmCatalog').innerHTML='<option value="sample_catalog" selected>sample_catalog</option>';
       G('dmSchema').innerHTML='<option value="sample_schema" selected>sample_schema</option>';
       _dmRenderTableList();
@@ -4094,139 +4264,1271 @@ function dmSwitchSubTab(tab,btn){
   G('dmSubDDL').style.display=tab==='ddl'?'':'none';
 }
 
-// ── ER Diagram Rendering (SVG) ──────────────────────────────────────────────
+// ── ER Diagram Rendering (SVG) ─ Enhanced with Crow's Foot, Interactive Edges ───
 function dmRenderER(er){
   const g=G('dmErGroup');
   g.innerHTML='';
   if(!er||!er.nodes) return;
   const svg=G('dmErSvg');
-  _dmZoomLevel=1;
+  _dmZoomLevel=1; _dmPanX=0; _dmPanY=0;
   g.setAttribute('transform','translate(0,0) scale(1)');
 
-  // Auto-layout: facts in center row, dims around
+  // Restore saved positions from previous render
+  if(typeof _dmSavedPositions==='object'){
+    er.nodes.forEach(n=>{
+      if(_dmSavedPositions[n.id]){
+        n.x=_dmSavedPositions[n.id].x;
+        n.y=_dmSavedPositions[n.id].y;
+        n._autoLayout=false;
+      }
+    });
+  }
+
   const facts=er.nodes.filter(n=>n.type==='fact');
   const dims=er.nodes.filter(n=>n.type==='dimension');
-  const W=Math.max(svg.clientWidth||1100,900);
-  const H=460;
+  const views=er.nodes.filter(n=>n.type==='view');
+  const W=Math.max(svg.clientWidth||1400,1200);
+  const H=Math.max(900, (facts.length+dims.length+views.length)*80);
+  svg.setAttribute('height', H);
+  svg.setAttribute('width', Math.max(2400, W));
 
   // Position facts horizontally centered
-  const factW=180, factGap=40;
+  const factW=300, factGap=80;
   const totalFactW=facts.length*factW+(facts.length-1)*factGap;
-  let fx=(W-totalFactW)/2;
-  facts.forEach((n,i)=>{n.x=fx+i*(factW+factGap);n.y=H/2-40;});
+  let fx=Math.max(60,(W-totalFactW)/2);
+  facts.forEach((n,i)=>{if(n.x===undefined||n._autoLayout){n.x=fx+i*(factW+factGap);n.y=H/2-120;n._autoLayout=true;}});
 
-  // Position dims in a arc around facts
+  // Position dims spread around facts
   const cx=W/2, cy=H/2-20;
-  dims.forEach((n,i)=>{
-    const angle=Math.PI+Math.PI*(i+1)/(dims.length+1);
-    n.x=cx+Math.cos(angle)*Math.min(W/2.5,380)-90;
-    n.y=cy+Math.sin(angle)*Math.min(H/2.5,180)-30;
-  });
+  const rx=Math.min(W/2.2,600), ry=Math.min(H/2.4,320);
+  dims.forEach((n,i)=>{if(n.x===undefined||n._autoLayout){
+    const angle=Math.PI + Math.PI*(i+1)/(dims.length+1);
+    n.x=cx+Math.cos(angle)*rx-150;n.y=cy+Math.sin(angle)*ry-50;n._autoLayout=true;
+  }});
+
+  // Position views below
+  views.forEach((n,i)=>{if(n.x===undefined||n._autoLayout){n.x=80+i*360;n.y=H-180;n._autoLayout=true;}});
 
   // Draw edges first (behind nodes)
-  er.edges.forEach(e=>{
-    const from=er.nodes.find(n=>n.id===e.from);
-    const to=er.nodes.find(n=>n.id===e.to);
-    if(!from||!to)return;
-    const x1=from.x+90,y1=from.y+30,x2=to.x+90,y2=to.y+30;
-    const line=document.createElementNS('http://www.w3.org/2000/svg','line');
-    line.setAttribute('x1',x1);line.setAttribute('y1',y1);line.setAttribute('x2',x2);line.setAttribute('y2',y2);
-    line.setAttribute('stroke','#94A3B8');line.setAttribute('stroke-width','1.5');line.setAttribute('marker-end','url(#dmArrow)');
-    g.appendChild(line);
-    // Label
-    const lx=(x1+x2)/2,ly=(y1+y2)/2;
-    const txt=document.createElementNS('http://www.w3.org/2000/svg','text');
-    txt.setAttribute('x',lx);txt.setAttribute('y',ly-4);txt.setAttribute('text-anchor','middle');
-    txt.setAttribute('fill','#64748B');txt.setAttribute('font-size','9');txt.setAttribute('font-family','system-ui');
-    txt.textContent=e.label||'';g.appendChild(txt);
-  });
+  _dmDrawEdges(er, g);
 
-  // Draw nodes
+  // ── Metadata Info Panel (SQL Developer style) ──
+  _dmRenderMetadataPanel(er, g);
+
+  // Draw nodes — SQL Developer Data Modeler style
+  const nodeW=300;
   er.nodes.forEach(n=>{
     const isFact=n.type==='fact';
+    const isView=n.type==='view';
     const ng=document.createElementNS('http://www.w3.org/2000/svg','g');
     ng.setAttribute('transform','translate('+n.x+','+n.y+')');
+    ng.setAttribute('data-node-id', n.id);
     ng.style.cursor='move';
 
-    // Node box
     const cols=n.columns||[];
-    const boxH=Math.max(60, 28+cols.length*14+8);
+    const fkConstraints=cols.filter(c=>c.fk_table).map(c=>({col:c.name,ref:c.fk_table}));
+    const pkCols=cols.filter(c=>c.is_pk);
+
+    const rowH=22;
+    const hdrH=28;
+    const colSectionH=cols.length*rowH+6;
+    const constraintLines=[];
+    if(pkCols.length)constraintLines.push({icon:'P>',text:n.label+'_PK ('+pkCols.map(c=>c.name).join(', ')+')',color:'#7C3AED'});
+    fkConstraints.forEach(fk=>{constraintLines.push({icon:'F>',text:n.label+'_'+fk.ref+'_FK ('+fk.col+')',color:'#059669'});});
+    const constraintSectionH=constraintLines.length?(constraintLines.length*20+12):0;
+    const boxH=hdrH+colSectionH+constraintSectionH+4;
+
+    // Drop shadow
+    const shadow=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    shadow.setAttribute('x','2');shadow.setAttribute('y','2');
+    shadow.setAttribute('width',nodeW);shadow.setAttribute('height',boxH);
+    shadow.setAttribute('rx','2');shadow.setAttribute('fill','rgba(0,0,0,0.08)');
+    ng.appendChild(shadow);
+
+    // Main box — white with colored left border (SQL Developer style)
+    const borderColor=isView?'#D97706':isFact?'#BE185D':'#047857';
     const rect=document.createElementNS('http://www.w3.org/2000/svg','rect');
-    rect.setAttribute('width','180');rect.setAttribute('height',boxH);
-    rect.setAttribute('rx','8');rect.setAttribute('fill',isFact?'#EFF6FF':'#F0FDF4');
-    rect.setAttribute('stroke',isFact?'#3B82F6':'#10B981');rect.setAttribute('stroke-width','1.5');
+    rect.setAttribute('width',nodeW);rect.setAttribute('height',boxH);rect.setAttribute('rx','2');
+    rect.setAttribute('fill','#FFFFFF');
+    rect.setAttribute('stroke',borderColor);rect.setAttribute('stroke-width','1.5');
     ng.appendChild(rect);
 
-    // Header bar
+    // Header background (SQL Developer: teal for dims, pink for facts, amber for views)
+    const hdrBg=isView?'#FEF3C7':isFact?'#FCE7F3':'#D1FAE5';
     const hdr=document.createElementNS('http://www.w3.org/2000/svg','rect');
-    hdr.setAttribute('width','180');hdr.setAttribute('height','26');hdr.setAttribute('rx','8');
-    hdr.setAttribute('fill',isFact?'#3B82F6':'#10B981');
+    hdr.setAttribute('width',nodeW);hdr.setAttribute('height',hdrH);hdr.setAttribute('rx','2');
+    hdr.setAttribute('fill',hdrBg);
     ng.appendChild(hdr);
-    // Clip bottom corners of header
     const hdr2=document.createElementNS('http://www.w3.org/2000/svg','rect');
-    hdr2.setAttribute('y','12');hdr2.setAttribute('width','180');hdr2.setAttribute('height','14');
-    hdr2.setAttribute('fill',isFact?'#3B82F6':'#10B981');
-    ng.appendChild(hdr2);
+    hdr2.setAttribute('y',String(hdrH-2));hdr2.setAttribute('width',nodeW);hdr2.setAttribute('height','2');
+    hdr2.setAttribute('fill',hdrBg);ng.appendChild(hdr2);
+
+    // Header separator line
+    const hdrLine=document.createElementNS('http://www.w3.org/2000/svg','line');
+    hdrLine.setAttribute('x1','0');hdrLine.setAttribute('y1',hdrH);hdrLine.setAttribute('x2',nodeW);hdrLine.setAttribute('y2',hdrH);
+    hdrLine.setAttribute('stroke',borderColor);hdrLine.setAttribute('stroke-width','1');
+    ng.appendChild(hdrLine);
+
+    // Role badge (D/F/V)
+    const roleBadge=document.createElementNS('http://www.w3.org/2000/svg','text');
+    roleBadge.setAttribute('x','10');roleBadge.setAttribute('y',String(hdrH-8));
+    roleBadge.setAttribute('fill',borderColor);roleBadge.setAttribute('font-size','13');
+    roleBadge.setAttribute('font-weight','900');roleBadge.setAttribute('font-family','Consolas, monospace');
+    roleBadge.textContent=isView?'V':isFact?'F':'D';
+    ng.appendChild(roleBadge);
 
     // Table name
     const title=document.createElementNS('http://www.w3.org/2000/svg','text');
-    title.setAttribute('x','90');title.setAttribute('y','17');title.setAttribute('text-anchor','middle');
-    title.setAttribute('fill','white');title.setAttribute('font-size','11');title.setAttribute('font-weight','700');
-    title.setAttribute('font-family','system-ui');
-    title.textContent=(isFact?'⊞ ':'◈ ')+n.label;ng.appendChild(title);
+    title.setAttribute('x','28');title.setAttribute('y',String(hdrH-8));title.setAttribute('text-anchor','start');
+    title.setAttribute('fill','#1E293B');title.setAttribute('font-size','13');title.setAttribute('font-weight','700');
+    title.setAttribute('font-family','Segoe UI, system-ui, sans-serif');
+    title.textContent=n.label;ng.appendChild(title);
 
-    // Columns
+    // Edit dropdown icon (top right)
+    const editIcon=document.createElementNS('http://www.w3.org/2000/svg','text');
+    editIcon.setAttribute('x',String(nodeW-12));editIcon.setAttribute('y',String(hdrH-8));editIcon.setAttribute('text-anchor','end');
+    editIcon.setAttribute('fill',borderColor);editIcon.setAttribute('font-size','12');
+    editIcon.setAttribute('cursor','pointer');editIcon.textContent='\u25BC';
+    editIcon.addEventListener('click',ev=>{ev.stopPropagation();dmOpenTableEditor(n);});
+    ng.appendChild(editIcon);
+
+    // Columns section — SQL Developer style with P/F/* indicators
     cols.forEach((c,ci)=>{
+      const cy2=hdrH+6+ci*rowH;
+
+      // Key indicators: P=PK, F=FK, *=NOT NULL, U=Unique
+      let keyStr='';
+      if(c.is_pk)keyStr+='P';
+      if(c.fk_table)keyStr+='F';
+      if(!c.is_nullable&&!c.is_pk)keyStr+='*';
+      if(c.is_unique)keyStr+='U';
+
+      // Key indicator text
+      const keyTxt=document.createElementNS('http://www.w3.org/2000/svg','text');
+      keyTxt.setAttribute('x','8');keyTxt.setAttribute('y',String(cy2+15));
+      keyTxt.setAttribute('fill',c.is_pk?'#7C3AED':c.fk_table?'#059669':'#64748B');
+      keyTxt.setAttribute('font-size','12');keyTxt.setAttribute('font-family','Consolas, monospace');
+      keyTxt.setAttribute('font-weight','700');
+      keyTxt.textContent=keyStr;
+      ng.appendChild(keyTxt);
+
+      // NOT NULL red asterisk
+      if(!c.is_nullable){
+        const mand=document.createElementNS('http://www.w3.org/2000/svg','text');
+        mand.setAttribute('x','32');mand.setAttribute('y',String(cy2+15));
+        mand.setAttribute('fill','#DC2626');mand.setAttribute('font-size','13');
+        mand.setAttribute('font-family','Consolas, monospace');
+        mand.textContent='*';
+        ng.appendChild(mand);
+      }
+
+      // Column name
       const ct=document.createElementNS('http://www.w3.org/2000/svg','text');
-      ct.setAttribute('x','10');ct.setAttribute('y',40+ci*14);ct.setAttribute('fill','#334155');
-      ct.setAttribute('font-size','10');ct.setAttribute('font-family','monospace');
-      let prefix=c.is_pk?'🔑 ':c.fk_table?'🔗 ':'   ';
-      ct.textContent=prefix+c.name+' : '+(c.data_type||'STRING');
+      ct.setAttribute('x','42');ct.setAttribute('y',String(cy2+15));ct.setAttribute('fill','#1E293B');
+      ct.setAttribute('font-size','12');ct.setAttribute('font-family','Consolas, monospace');
+      ct.setAttribute('font-weight',c.is_pk?'700':'400');
+      ct.textContent=c.name;
       ng.appendChild(ct);
+
+      // Data type right-aligned (indigo color like SQL Developer)
+      const tt=document.createElementNS('http://www.w3.org/2000/svg','text');
+      tt.setAttribute('x',String(nodeW-10));tt.setAttribute('y',String(cy2+15));tt.setAttribute('text-anchor','end');
+      tt.setAttribute('fill','#4F46E5');tt.setAttribute('font-size','11');tt.setAttribute('font-family','Consolas, monospace');
+      tt.textContent=c.data_type||'VARCHAR';
+      ng.appendChild(tt);
+
+      // Comment tooltip
+      if(c.comment){
+        const ttip=document.createElementNS('http://www.w3.org/2000/svg','title');
+        ttip.textContent=c.comment;
+        ct.appendChild(ttip);
+      }
+
+      // Row separator (thin dotted line)
+      if(ci<cols.length-1){
+        const rowSep=document.createElementNS('http://www.w3.org/2000/svg','line');
+        rowSep.setAttribute('x1','4');rowSep.setAttribute('y1',String(cy2+rowH-1));
+        rowSep.setAttribute('x2',String(nodeW-4));rowSep.setAttribute('y2',String(cy2+rowH-1));
+        rowSep.setAttribute('stroke','#E2E8F0');rowSep.setAttribute('stroke-width','0.5');
+        ng.appendChild(rowSep);
+      }
     });
+
+    // Constraints section (PK/FK listed at bottom like SQL Developer)
+    if(constraintLines.length){
+      const cSepY=hdrH+colSectionH;
+      const cSep=document.createElementNS('http://www.w3.org/2000/svg','line');
+      cSep.setAttribute('x1','0');cSep.setAttribute('y1',String(cSepY));
+      cSep.setAttribute('x2',nodeW);cSep.setAttribute('y2',String(cSepY));
+      cSep.setAttribute('stroke',borderColor);cSep.setAttribute('stroke-width','0.8');
+      cSep.setAttribute('stroke-dasharray','3,2');
+      ng.appendChild(cSep);
+
+      constraintLines.forEach((cl,cli)=>{
+        const clY=cSepY+6+cli*20;
+        const clIcon=document.createElementNS('http://www.w3.org/2000/svg','text');
+        clIcon.setAttribute('x','8');clIcon.setAttribute('y',String(clY+14));
+        clIcon.setAttribute('fill',cl.color);clIcon.setAttribute('font-size','11');
+        clIcon.setAttribute('font-family','Consolas, monospace');clIcon.setAttribute('font-weight','700');
+        clIcon.textContent=cl.icon;
+        ng.appendChild(clIcon);
+
+        const clTxt=document.createElementNS('http://www.w3.org/2000/svg','text');
+        clTxt.setAttribute('x','28');clTxt.setAttribute('y',String(clY+14));
+        clTxt.setAttribute('fill',cl.color);clTxt.setAttribute('font-size','11');
+        clTxt.setAttribute('font-family','Consolas, monospace');
+        clTxt.textContent=cl.text.length>38?cl.text.substring(0,38)+'...':cl.text;
+        ng.appendChild(clTxt);
+      });
+    }
 
     // Drag support
-    let dragging=false, dx=0, dy=0, ox=n.x, oy=n.y;
-    ng.addEventListener('mousedown',ev=>{dragging=true;dx=ev.clientX-n.x;dy=ev.clientY-n.y;ev.preventDefault();});
-    svg.addEventListener('mousemove',ev=>{
-      if(!dragging)return;
-      n.x=ev.clientX-dx;n.y=ev.clientY-dy;
-      ng.setAttribute('transform','translate('+n.x+','+n.y+')');
-      // Redraw edges
-      dmUpdateEdges(er);
+    let dragging=false, ddx=0, ddy=0;
+    ng.addEventListener('mousedown',ev=>{
+      if(ev.button!==0)return;
+      if(ev.target===editIcon)return;
+      dragging=true;ddx=ev.clientX/_dmZoomLevel-n.x;ddy=ev.clientY/_dmZoomLevel-n.y;
+      ev.preventDefault();ev.stopPropagation();
+      svg.style.cursor='grabbing';
+      n._autoLayout=false;
     });
-    svg.addEventListener('mouseup',()=>{dragging=false;});
+    const onMove=ev=>{
+      if(!dragging)return;
+      n.x=ev.clientX/_dmZoomLevel-ddx;
+      n.y=ev.clientY/_dmZoomLevel-ddy;
+      ng.setAttribute('transform','translate('+n.x+','+n.y+')');
+      _dmDrawEdges(er, g);
+    };
+    const onUp=()=>{if(dragging){dragging=false;svg.style.cursor='grab';}};
+    svg.addEventListener('mousemove',onMove);
+    svg.addEventListener('mouseup',onUp);
+    svg.addEventListener('mouseleave',onUp);
+
+    // Double-click to open editor
+    ng.addEventListener('dblclick',ev=>{ev.stopPropagation();dmOpenTableEditor(n);});
+
+    // Right-click context menu
+    ng.addEventListener('contextmenu',ev=>{
+      ev.preventDefault();ev.stopPropagation();
+      _dmShowNodeContextMenu(n, ev);
+    });
 
     g.appendChild(ng);
   });
+
+  // Scroll-to-zoom on SVG
+  svg.onwheel=ev=>{
+    ev.preventDefault();
+    const factor=ev.deltaY<0?1.1:0.9;
+    _dmZoomLevel=Math.max(0.2,Math.min(4,_dmZoomLevel*factor));
+    g.setAttribute('transform','translate('+_dmPanX+','+_dmPanY+') scale('+_dmZoomLevel+')');
+  };
+
+  // Pan on SVG background drag
+  let _svgDragging=false, _sx=0, _sy=0;
+  svg.addEventListener('mousedown',ev=>{
+    if(ev.target===svg||ev.target.tagName==='svg'){
+      _svgDragging=true;_sx=ev.clientX-_dmPanX;_sy=ev.clientY-_dmPanY;svg.style.cursor='grabbing';
+    }
+  });
+  svg.addEventListener('mousemove',ev=>{
+    if(!_svgDragging)return;
+    _dmPanX=ev.clientX-_sx;_dmPanY=ev.clientY-_sy;
+    g.setAttribute('transform','translate('+_dmPanX+','+_dmPanY+') scale('+_dmZoomLevel+')');
+  });
+  svg.addEventListener('mouseup',()=>{_svgDragging=false;svg.style.cursor='grab';});
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INTERACTIVE TABLE EDITOR — Opens when clicking pencil icon or double-click
+// ═══════════════════════════════════════════════════════════════════════════════
+function dmOpenTableEditor(node, mode){
+  // Find table/view data in model
+  const isView=node.type==='view';
+  let tblData=null;
+  if(isView){
+    tblData=(_dmModel.views||[]).find(v=>v.view_name===node.id);
+  } else {
+    tblData=[...(_dmModel.facts||[]),...(_dmModel.dimensions||[])].find(t=>t.table_name===node.id);
+  }
+  if(!tblData&&!isView)return;
+
+  // Remove existing editor if open
+  const existing=document.getElementById('dmTableEditorPanel');
+  if(existing)existing.remove();
+
+  const panel=document.createElement('div');
+  panel.id='dmTableEditorPanel';
+  panel.style.cssText='position:fixed;top:60px;right:10px;width:460px;max-height:calc(100vh - 80px);overflow-y:auto;background:var(--bg1,#fff);border:2px solid '+(isView?'#F59E0B':node.type==='fact'?'#3B82F6':'#10B981')+';border-radius:14px;padding:18px;box-shadow:0 20px 60px rgba(0,0,0,.25);z-index:9999;';
+
+  const hdrColor=isView?'#F59E0B':node.type==='fact'?'#3B82F6':'#10B981';
+  const tableName=isView?tblData.view_name:tblData.table_name;
+  const cols=isView?(tblData.columns||[]):(tblData.columns||[]);
+
+  let html='<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">';
+  html+='<span style="font-size:16px;font-weight:800;color:'+hdrColor+';">'+(isView?'\ud83d\udc41 View':'\ud83d\udcdd Table')+': '+tableName+'</span>';
+  html+='<div style="margin-left:auto;display:flex;gap:6px;">';
+  if(!isView){
+    html+='<button class="btn btn-ghost btn-xs" onclick="dmERAddRelFrom(\''+tableName.replace(/'/g,"\\'")+'\')">\ud83d\udd17 Add FK</button>';
+  }
+  html+='<button class="btn btn-ghost btn-xs" onclick="document.getElementById(\'dmTableEditorPanel\').remove()" style="font-size:14px;">\u2715</button>';
+  html+='</div></div>';
+
+  // Table comment
+  const tblComment=tblData.comment||'';
+  html+='<div style="margin-bottom:10px;"><label style="font-size:10px;font-weight:600;color:var(--t3);">Table Comment</label>';
+  html+='<input class="inp" id="dmTblEdComment" value="'+_escAttr(tblComment)+'" placeholder="Describe this table..." style="font-size:11px;width:100%;" onchange="dmSaveTableComment(\''+_escJs(tableName)+'\',this.value)"></div>';
+
+  if(isView){
+    // View definition editor
+    html+='<div style="margin-bottom:10px;"><label style="font-size:10px;font-weight:600;color:var(--t3);">View SQL Definition</label>';
+    html+='<textarea class="inp" id="dmViewDefEditor" style="font-size:11px;width:100%;height:120px;font-family:monospace;" onchange="dmSaveViewDef(\''+_escJs(tableName)+'\',this.value)">'+_escHtml(tblData.definition||'')+'</textarea></div>';
+  }
+
+  // Columns table
+  html+='<div style="font-size:11px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:8px;">';
+  html+='<span>Columns ('+cols.length+')</span>';
+  html+='<button class="btn btn-ghost btn-xs" onclick="dmERAddColumn(\''+_escJs(tableName)+'\',\''+node.type+'\')">+ Add Column</button></div>';
+  html+='<table style="width:100%;border-collapse:collapse;font-size:10px;">';
+  html+='<thead><tr style="background:var(--bg2);"><th style="padding:4px;">Name</th><th style="padding:4px;">Type</th><th style="padding:4px;text-align:center;">PK</th><th style="padding:4px;text-align:center;">UQ</th><th style="padding:4px;text-align:center;">FK</th><th style="padding:4px;text-align:center;">Null</th><th style="padding:4px;">Comment</th><th style="padding:4px;"></th></tr></thead>';
+  html+='<tbody>';
+  cols.forEach((c,i)=>{
+    const tn=_escJs(tableName), cn=_escJs(c.name);
+    html+='<tr style="border-bottom:1px solid var(--border);">';
+    html+='<td style="padding:3px;"><input class="inp" value="'+_escAttr(c.name)+'" style="font-size:10px;width:80px;font-family:monospace;" onchange="dmEREditCol(\''+tn+'\',\''+cn+'\',\'name\',this.value)"></td>';
+    html+='<td style="padding:3px;"><select class="inp" style="font-size:10px;width:85px;" onchange="dmEREditCol(\''+tn+'\',\''+cn+'\',\'data_type\',this.value)">'+_dmTypeOptions(c.data_type)+'</select></td>';
+    html+='<td style="padding:3px;text-align:center;"><input type="checkbox" '+(c.is_pk?'checked':'')+' onchange="dmEREditCol(\''+tn+'\',\''+cn+'\',\'is_pk\',this.checked)"></td>';
+    html+='<td style="padding:3px;text-align:center;"><input type="checkbox" '+(c.is_unique?'checked':'')+' onchange="dmEREditCol(\''+tn+'\',\''+cn+'\',\'is_unique\',this.checked)"></td>';
+    html+='<td style="padding:3px;text-align:center;"><button class="btn btn-ghost btn-xs" onclick="dmERSetFK(\''+tn+'\',\''+cn+'\',\''+_escJs(c.fk_table||'')+'\')">'+( c.fk_table? '\ud83d\udd17'+c.fk_table:'\u2014')+'</button></td>';
+    html+='<td style="padding:3px;text-align:center;"><input type="checkbox" '+(c.is_nullable?'checked':'')+' onchange="dmEREditCol(\''+tn+'\',\''+cn+'\',\'is_nullable\',this.checked)"></td>';
+    html+='<td style="padding:3px;"><input class="inp" value="'+_escAttr(c.comment||'')+'" placeholder="..." style="font-size:9px;width:70px;" onchange="dmEREditCol(\''+tn+'\',\''+cn+'\',\'comment\',this.value)"></td>';
+    html+='<td style="padding:3px;"><button class="btn btn-ghost btn-xs" onclick="dmERDelCol(\''+tn+'\',\''+cn+'\')" style="color:#EF4444;font-size:10px;">\u2715</button></td>';
+    html+='</tr>';
+  });
+  html+='</tbody></table>';
+
+  panel.innerHTML=html;
+  document.body.appendChild(panel);
+
+  // Auto-focus add-column if mode requests it
+  if(mode==='addcol'){setTimeout(()=>dmERAddColumn(tableName,node.type),100);}
+}
+
+// Helper for HTML entity escaping in editor
+function _escAttr(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+function _escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function _escJs(s){return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
+
+function _dmTypeOptions(current){
+  const types=['STRING','INT','BIGINT','SMALLINT','TINYINT','DOUBLE','FLOAT','DECIMAL(18,2)','DECIMAL(10,2)','BOOLEAN','DATE','TIMESTAMP','BINARY','ARRAY<STRING>','MAP<STRING,STRING>'];
+  return types.map(t=>'<option value="'+t+'"'+(current&&current.toUpperCase()===t?' selected':'')+'>'+t+'</option>').join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ER EDITOR API CALLS — Column edits from the editor panel
+// ═══════════════════════════════════════════════════════════════════════════════
+async function dmEREditCol(tableName, colName, field, value){
+  await _dmEdit({column_edits:[{table_name:tableName, column_name:colName, field:field, value:value}]}, field+' updated');
+  // Re-open editor on same node after refresh
+  const node=(_dmErJson&&_dmErJson.nodes||[]).find(n=>n.id===tableName);
+  if(node)setTimeout(()=>dmOpenTableEditor(node),200);
+}
+
+async function dmERDelCol(tableName, colName){
+  if(!confirm('Delete column "'+colName+'" from '+tableName+'?'))return;
+  await _dmEdit({column_removes:[{table_name:tableName, column_name:colName}]}, 'Column deleted');
+  const node=(_dmErJson&&_dmErJson.nodes||[]).find(n=>n.id===tableName);
+  if(node)setTimeout(()=>dmOpenTableEditor(node),200);
+}
+
+function dmERAddColumn(tableName, nodeType){
+  const panel=document.getElementById('dmTableEditorPanel');
+  if(!panel)return;
+  // Inject add-column inline form
+  const existingAdd=document.getElementById('dmERAddColForm');
+  if(existingAdd)existingAdd.remove();
+  const div=document.createElement('div');
+  div.id='dmERAddColForm';
+  div.style.cssText='background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:8px;';
+  div.innerHTML='<div style="font-size:10px;font-weight:700;margin-bottom:4px;">New Column</div>'+
+    '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:end;">'+
+    '<div><label style="font-size:9px;">Name</label><input class="inp" id="dmERNewColName" placeholder="column_name" style="font-size:10px;width:100px;"></div>'+
+    '<div><label style="font-size:9px;">Type</label><select class="inp" id="dmERNewColType" style="font-size:10px;width:100px;">'+_dmTypeOptions('')+'</select></div>'+
+    '<label style="font-size:9px;"><input type="checkbox" id="dmERNewColPK"> PK</label>'+
+    '<label style="font-size:9px;"><input type="checkbox" id="dmERNewColUQ"> UQ</label>'+
+    '<label style="font-size:9px;"><input type="checkbox" id="dmERNewColNull" checked> Null</label>'+
+    '<div><label style="font-size:9px;">Comment</label><input class="inp" id="dmERNewColComment" placeholder="" style="font-size:9px;width:80px;"></div>'+
+    '<button class="btn btn-primary btn-xs" onclick="dmERSaveNewCol(\''+_escJs(tableName)+'\')">Add</button>'+
+    '<button class="btn btn-ghost btn-xs" onclick="document.getElementById(\'dmERAddColForm\').remove()">Cancel</button>'+
+    '</div>';
+  panel.appendChild(div);
+  document.getElementById('dmERNewColName').focus();
+}
+
+async function dmERSaveNewCol(tableName){
+  const name=document.getElementById('dmERNewColName').value.trim();
+  if(!name){toast('Column name required','terr');return;}
+  const col={
+    name:name,
+    data_type:document.getElementById('dmERNewColType').value,
+    is_pk:document.getElementById('dmERNewColPK').checked,
+    is_unique:document.getElementById('dmERNewColUQ').checked,
+    is_nullable:document.getElementById('dmERNewColNull').checked,
+    comment:document.getElementById('dmERNewColComment').value.trim()
+  };
+  await _dmEdit({column_adds:[{table_name:tableName, column:col}]}, 'Column "'+name+'" added');
+  const node=(_dmErJson&&_dmErJson.nodes||[]).find(n=>n.id===tableName);
+  if(node)setTimeout(()=>dmOpenTableEditor(node),200);
+}
+
+async function dmSaveTableComment(tableName, comment){
+  await _dmEdit({table_comments:[{table_name:tableName, comment:comment}]}, 'Comment saved');
+}
+
+async function dmSaveViewDef(viewName, definition){
+  await _dmEdit({view_edits:[{view_name:viewName, definition:definition}]}, 'View definition saved');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FK ASSIGNMENT — Set foreign key reference on a column
+// ═══════════════════════════════════════════════════════════════════════════════
+function dmERSetFK(tableName, colName, currentFK){
+  if(!_dmModel)return;
+  const allTables=[...(_dmModel.facts||[]),...(_dmModel.dimensions||[])].map(t=>t.table_name).filter(t=>t!==tableName);
+  const opts=allTables.map(t=>'<option value="'+t+'"'+(t===currentFK?' selected':'')+'>'+t+'</option>').join('');
+  const div=document.createElement('div');
+  div.id='dmFKSetterDlg';
+  div.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:99999;background:var(--bg1,#fff);border:2px solid #6366F1;border-radius:12px;padding:16px;width:320px;box-shadow:0 20px 60px rgba(0,0,0,.3);';
+  div.innerHTML='<div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#6366F1;">\ud83d\udd17 Set Foreign Key Reference</div>'+
+    '<div style="font-size:11px;margin-bottom:8px;color:var(--t2);">Column: <b>'+tableName+'.'+colName+'</b></div>'+
+    '<div style="margin-bottom:8px;"><label style="font-size:10px;font-weight:600;">References Table:</label>'+
+    '<select class="inp" id="dmFKTarget" style="width:100%;font-size:11px;"><option value="">\u2014 None (remove FK) \u2014</option>'+opts+'</select></div>'+
+    '<div style="display:flex;gap:6px;"><button class="btn btn-primary btn-xs" onclick="dmERSaveFK(\''+_escJs(tableName)+'\',\''+_escJs(colName)+'\')">Save</button>'+
+    '<button class="btn btn-ghost btn-xs" onclick="document.getElementById(\'dmFKSetterDlg\').remove()">Cancel</button></div>';
+  const old=document.getElementById('dmFKSetterDlg');if(old)old.remove();
+  document.body.appendChild(div);
+}
+
+async function dmERSaveFK(tableName, colName){
+  const target=document.getElementById('dmFKTarget').value;
+  document.getElementById('dmFKSetterDlg').remove();
+  const edits={column_edits:[{table_name:tableName, column_name:colName, field:'fk_table', value:target}]};
+  // Also add/update relationship if target is set
+  if(target){
+    edits.relationship_adds=[{from:tableName,to:target,type:'many-to-one',via_column:colName}];
+  }
+  await _dmEdit(edits, target?'FK set: '+colName+' -> '+target:'FK removed');
+  const node=(_dmErJson&&_dmErJson.nodes||[]).find(n=>n.id===tableName);
+  if(node)setTimeout(()=>dmOpenTableEditor(node),200);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ADD RELATIONSHIP FROM ER (from a specific table)
+// ═══════════════════════════════════════════════════════════════════════════════
+function dmERAddRelFrom(tableName){
+  if(!_dmModel)return;
+  const allTables=[...(_dmModel.facts||[]),...(_dmModel.dimensions||[])].map(t=>t.table_name).filter(t=>t!==tableName);
+  const fromCols=[...(_dmModel.facts||[]),...(_dmModel.dimensions||[])].find(t=>t.table_name===tableName);
+  const colOpts=(fromCols?.columns||[]).map(c=>'<option value="'+c.name+'">'+c.name+'</option>').join('');
+  const toOpts=allTables.map(t=>'<option value="'+t+'">'+t+'</option>').join('');
+
+  const div=document.createElement('div');
+  div.id='dmAddRelFromDlg';
+  div.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:99999;background:var(--bg1,#fff);border:2px solid #10B981;border-radius:12px;padding:16px;width:380px;box-shadow:0 20px 60px rgba(0,0,0,.3);';
+  div.innerHTML='<div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#10B981;">\ud83d\udd17 Create Relationship</div>'+
+    '<div style="font-size:11px;margin-bottom:8px;color:var(--t2);">From: <b>'+tableName+'</b></div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">'+
+    '<div><label style="font-size:10px;font-weight:600;">FK Column</label><select class="inp" id="dmRelFKCol" style="width:100%;font-size:11px;">'+colOpts+'</select></div>'+
+    '<div><label style="font-size:10px;font-weight:600;">To Table</label><select class="inp" id="dmRelToTbl" style="width:100%;font-size:11px;">'+toOpts+'</select></div>'+
+    '</div>'+
+    '<div style="margin-bottom:8px;"><label style="font-size:10px;font-weight:600;">Cardinality</label>'+
+    '<select class="inp" id="dmRelType" style="width:100%;font-size:11px;"><option value="many-to-one">Many-to-One (*..1)</option><option value="one-to-many">One-to-Many (1..*)</option><option value="one-to-one">One-to-One (1..1)</option><option value="many-to-many">Many-to-Many (*..*)</option></select></div>'+
+    '<div style="display:flex;gap:6px;"><button class="btn btn-primary btn-xs" onclick="dmERSaveRelFrom(\''+_escJs(tableName)+'\')">Create</button>'+
+    '<button class="btn btn-ghost btn-xs" onclick="document.getElementById(\'dmAddRelFromDlg\').remove()">Cancel</button></div>';
+  const old=document.getElementById('dmAddRelFromDlg');if(old)old.remove();
+  document.body.appendChild(div);
+}
+
+async function dmERSaveRelFrom(tableName){
+  const toTbl=document.getElementById('dmRelToTbl').value;
+  const fkCol=document.getElementById('dmRelFKCol').value;
+  const relType=document.getElementById('dmRelType').value;
+  document.getElementById('dmAddRelFromDlg').remove();
+  if(!toTbl){toast('Select a target table','terr');return;}
+  await _dmEdit({
+    relationship_adds:[{from:tableName,to:toTbl,type:relType,via_column:fkCol}],
+    column_edits:[{table_name:tableName,column_name:fkCol,field:'fk_table',value:toTbl}]
+  }, 'Relationship created: '+tableName+' -> '+toTbl);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NODE CONTEXT MENU (right-click)
+// ═══════════════════════════════════════════════════════════════════════════════
+function _dmShowNodeContextMenu(node, ev){
+  const old=document.getElementById('dmNodeCtxMenu');if(old)old.remove();
+  const menu=document.createElement('div');
+  menu.id='dmNodeCtxMenu';
+  menu.style.cssText='position:fixed;left:'+ev.clientX+'px;top:'+ev.clientY+'px;z-index:99999;background:var(--bg1,#fff);border:1px solid var(--border);border-radius:10px;padding:6px 0;box-shadow:0 8px 30px rgba(0,0,0,.2);min-width:180px;';
+  const items=[
+    {icon:'\u270E',label:'Edit Table',fn:()=>dmOpenTableEditor(node)},
+    {icon:'\ud83d\udd17',label:'Add Relationship',fn:()=>dmERAddRelFrom(node.id)},
+    {icon:'+',label:'Add Column',fn:()=>dmOpenTableEditor(node,'addcol')},
+    {icon:'\u2b50',label:'Toggle PK (first col)',fn:()=>{const c=(node.columns||[])[0];if(c)dmEREditCol(node.id,c.name,'is_pk',!c.is_pk);}},
+    {icon:'\ud83c\udfaf',label:'Set Unique Key',fn:()=>dmOpenTableEditor(node)},
+    {icon:'\ud83d\udcac',label:'Add Comment',fn:()=>dmOpenTableEditor(node)},
+    {icon:'\u2715',label:'Remove Table',fn:()=>dmRemoveTable(node.id),style:'color:#EF4444'},
+  ];
+  menu.innerHTML=items.map(it=>'<div style="padding:6px 14px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:8px;'+(it.style||'')+'" onmouseover="this.style.background=\'var(--bg2)\'" onmouseout="this.style.background=\'\'" onclick="this.parentElement.remove();('+_fnRef(it.fn)+')()"><span>'+it.icon+'</span><span>'+it.label+'</span></div>').join('');
+  document.body.appendChild(menu);
+  setTimeout(()=>{document.addEventListener('click',function _c(){menu.remove();document.removeEventListener('click',_c);},true);},50);
+}
+
+function _fnRef(fn){
+  // Store fn reference and return a global callable
+  if(!window._dmCtxFns)window._dmCtxFns=[];
+  const idx=window._dmCtxFns.length;
+  window._dmCtxFns.push(fn);
+  return 'window._dmCtxFns['+idx+']';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VIEWS — Load from Databricks / Create new
+// ═══════════════════════════════════════════════════════════════════════════════
+async function dmLoadViews(){
+  const cat=G('dmCatalog').value, sch=G('dmSchema').value;
+  if(!cat||!sch){toast('Select catalog & schema first','terr');return;}
+  toast('Loading views...','tok');
+  try{
+    const r=await fetch('/api/v1/datamodel/views',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({catalog:cat,schema:sch})});
+    const d=await r.json();
+    if(d.success){
+      const views=d.views||[];
+      if(!views.length){toast('No views found in '+cat+'.'+sch,'tok');return;}
+      // Add views to model
+      const adds=views.map(v=>({view_name:v.view_name,definition:v.definition||'',comment:'',columns:[]}));
+      await _dmEdit({view_adds:adds},'Loaded '+views.length+' view(s) from Databricks');
+    }else{toast(d.error||'Failed to load views','terr');}
+  }catch(e){toast('Error: '+e.message,'terr');}
+}
+
+function dmShowCreateViewDialog(){
+  if(!_dmModel){toast('Generate a model first','terr');return;}
+  const old=document.getElementById('dmCreateViewDlg');if(old)old.remove();
+  const allTables=[...(_dmModel.facts||[]),...(_dmModel.dimensions||[])].map(t=>t.table_name);
+  const div=document.createElement('div');
+  div.id='dmCreateViewDlg';
+  div.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:99999;background:var(--bg1,#fff);border:2px solid #F59E0B;border-radius:12px;padding:20px;width:480px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);';
+  div.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'+
+    '<span style="font-weight:700;font-size:14px;color:#F59E0B;">\ud83d\udc41 Create View</span>'+
+    '<button class="btn btn-ghost btn-xs" onclick="document.getElementById(\'dmCreateViewDlg\').remove()" style="font-size:14px;">\u2715</button></div>'+
+    '<div style="margin-bottom:8px;"><label style="font-size:10px;font-weight:600;">View Name</label>'+
+    '<input class="inp" id="dmNewViewName" placeholder="v_my_view" style="width:100%;font-size:11px;"></div>'+
+    '<div style="margin-bottom:8px;"><label style="font-size:10px;font-weight:600;">SQL Definition</label>'+
+    '<textarea class="inp" id="dmNewViewSQL" rows="6" style="width:100%;font-size:11px;font-family:monospace;" placeholder="SELECT col1, col2\nFROM table1\nJOIN table2 ON ..."></textarea></div>'+
+    '<div style="margin-bottom:8px;"><label style="font-size:10px;font-weight:600;">Comment (optional)</label>'+
+    '<input class="inp" id="dmNewViewComment" placeholder="Description..." style="width:100%;font-size:11px;"></div>'+
+    '<div style="display:flex;gap:8px;">'+
+    '<button class="btn btn-primary btn-sm" onclick="dmSaveNewView()" style="background:#F59E0B;border-color:#F59E0B;flex:1;">Create View</button>'+
+    '<button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'dmCreateViewDlg\').remove()">Cancel</button></div>';
+  document.body.appendChild(div);
+}
+
+async function dmSaveNewView(){
+  const name=document.getElementById('dmNewViewName').value.trim();
+  const sql=document.getElementById('dmNewViewSQL').value.trim();
+  const comment=document.getElementById('dmNewViewComment').value.trim();
+  if(!name){toast('View name required','terr');return;}
+  if(!sql){toast('SQL definition required','terr');return;}
+  await _dmEdit({view_adds:[{view_name:name,definition:sql,comment:comment,columns:[]}]},'View "'+name+'" created');
+  document.getElementById('dmCreateViewDlg').remove();
+}
+
+async function dmRemoveView(viewName){
+  if(!confirm('Remove view "'+viewName+'" from model?'))return;
+  await _dmEdit({view_removes:[{view_name:viewName}]},'View removed');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// METADATA INFO PANEL — Editable model metadata (SQL Developer style)
+// ═══════════════════════════════════════════════════════════════════════════════
+function _dmRenderMetadataPanel(er, g){
+  // Remove old metadata panels
+  g.querySelectorAll('.dm-meta-panel').forEach(el=>el.remove());
+
+  const meta=er.metadata||{};
+  const now=new Date().toISOString().replace('T',' ').substring(0,19)+' UTC';
+
+  // Initialize metadata defaults if not present
+  if(!er.metadata) er.metadata={};
+  if(!er.metadata.diagram) er.metadata.diagram=er.schema_type?er.schema_type.charAt(0).toUpperCase()+er.schema_type.slice(1)+' Model':'Data Model';
+  if(!er.metadata.author) er.metadata.author='Migration Studio';
+  if(!er.metadata.created_on) er.metadata.created_on=now;
+  if(!er.metadata.modified_on) er.metadata.modified_on=now;
+  if(!er.metadata.modified_by) er.metadata.modified_by='user';
+  if(!er.metadata.design) er.metadata.design='v1.0';
+  if(!er.metadata.model_type) er.metadata.model_type='RelationalModel';
+  if(!er.metadata.scope) er.metadata.scope='';
+
+  const m=er.metadata;
+
+  // ── Left panel: Diagram metadata table ──
+  const panelX=10, panelY=10;
+  const panelW=280, rowH2=20, hdrH2=22;
+  const fields=[
+    {label:'Diagram:', key:'diagram', value:m.diagram},
+    {label:'Author:', key:'author', value:m.author},
+    {label:'Created on:', key:'created_on', value:m.created_on},
+    {label:'Modified on:', key:'modified_on', value:m.modified_on},
+    {label:'Modified by:', key:'modified_by', value:m.modified_by},
+    {label:'Design:', key:'design', value:m.design},
+    {label:'Model:', key:'model_type', value:m.model_type},
+  ];
+  const panelH=hdrH2+fields.length*rowH2+4;
+
+  const pg=document.createElementNS('http://www.w3.org/2000/svg','g');
+  pg.classList.add('dm-meta-panel');
+  pg.setAttribute('transform','translate('+panelX+','+panelY+')');
+
+  // Background
+  const bg=document.createElementNS('http://www.w3.org/2000/svg','rect');
+  bg.setAttribute('width',panelW);bg.setAttribute('height',panelH);bg.setAttribute('rx','2');
+  bg.setAttribute('fill','#FFFFFF');bg.setAttribute('stroke','#1E293B');bg.setAttribute('stroke-width','1.5');
+  pg.appendChild(bg);
+
+  // Header row (dark background)
+  const hdrBg=document.createElementNS('http://www.w3.org/2000/svg','rect');
+  hdrBg.setAttribute('width',panelW);hdrBg.setAttribute('height',hdrH2);hdrBg.setAttribute('rx','2');
+  hdrBg.setAttribute('fill','#1E293B');
+  pg.appendChild(hdrBg);
+  const hdrBg2=document.createElementNS('http://www.w3.org/2000/svg','rect');
+  hdrBg2.setAttribute('y',String(hdrH2-2));hdrBg2.setAttribute('width',panelW);hdrBg2.setAttribute('height','2');
+  hdrBg2.setAttribute('fill','#1E293B');
+  pg.appendChild(hdrBg2);
+
+  // Header text
+  const hdrTxt=document.createElementNS('http://www.w3.org/2000/svg','text');
+  hdrTxt.setAttribute('x','8');hdrTxt.setAttribute('y',String(hdrH2-6));
+  hdrTxt.setAttribute('fill','#FFFFFF');hdrTxt.setAttribute('font-size','11');
+  hdrTxt.setAttribute('font-weight','700');hdrTxt.setAttribute('font-family','Segoe UI, system-ui, sans-serif');
+  hdrTxt.textContent='Diagram Properties';
+  pg.appendChild(hdrTxt);
+
+  // Field rows
+  const labelW=90;
+  fields.forEach((f,i)=>{
+    const ry=hdrH2+i*rowH2;
+
+    // Row separator
+    if(i>0){
+      const sep=document.createElementNS('http://www.w3.org/2000/svg','line');
+      sep.setAttribute('x1','0');sep.setAttribute('y1',String(ry));
+      sep.setAttribute('x2',panelW);sep.setAttribute('y2',String(ry));
+      sep.setAttribute('stroke','#E2E8F0');sep.setAttribute('stroke-width','0.5');
+      pg.appendChild(sep);
+    }
+
+    // Label column separator
+    const lsep=document.createElementNS('http://www.w3.org/2000/svg','line');
+    lsep.setAttribute('x1',String(labelW));lsep.setAttribute('y1',String(ry));
+    lsep.setAttribute('x2',String(labelW));lsep.setAttribute('y2',String(ry+rowH2));
+    lsep.setAttribute('stroke','#E2E8F0');lsep.setAttribute('stroke-width','0.5');
+    pg.appendChild(lsep);
+
+    // Label
+    const lbl=document.createElementNS('http://www.w3.org/2000/svg','text');
+    lbl.setAttribute('x','6');lbl.setAttribute('y',String(ry+14));
+    lbl.setAttribute('fill','#334155');lbl.setAttribute('font-size','10');
+    lbl.setAttribute('font-weight','600');lbl.setAttribute('font-family','Segoe UI, system-ui, sans-serif');
+    lbl.textContent=f.label;
+    pg.appendChild(lbl);
+
+    // Value (clickable to edit)
+    const val=document.createElementNS('http://www.w3.org/2000/svg','text');
+    val.setAttribute('x',String(labelW+6));val.setAttribute('y',String(ry+14));
+    val.setAttribute('fill','#1E293B');val.setAttribute('font-size','10');
+    val.setAttribute('font-family','Consolas, monospace');
+    val.setAttribute('cursor','pointer');
+    val.textContent=f.value||'—';
+    val.addEventListener('click',ev=>{
+      ev.stopPropagation();
+      _dmEditMetaField(er, f.key, f.label, g);
+    });
+    // Hover underline effect
+    val.addEventListener('mouseover',()=>{val.setAttribute('text-decoration','underline');val.setAttribute('fill','#2563EB');});
+    val.addEventListener('mouseout',()=>{val.setAttribute('text-decoration','none');val.setAttribute('fill','#1E293B');});
+    pg.appendChild(val);
+  });
+
+  g.appendChild(pg);
+
+  // ── Right panel: Scope of Model (editable note) ──
+  const scopeX=panelX+panelW+20, scopeY=panelY;
+  const scopeW=260;
+  const scopeLines=(m.scope||'').split('\n');
+  const scopeRowH=16;
+  const scopeBodyH=Math.max(scopeLines.length*scopeRowH+10, 100);
+  const scopeH=hdrH2+scopeBodyH;
+
+  const sg=document.createElementNS('http://www.w3.org/2000/svg','g');
+  sg.classList.add('dm-meta-panel');
+  sg.setAttribute('transform','translate('+scopeX+','+scopeY+')');
+
+  // Scope background with folded corner effect
+  const sBg=document.createElementNS('http://www.w3.org/2000/svg','path');
+  const foldSize=14;
+  sBg.setAttribute('d','M 0 0 L '+(scopeW-foldSize)+' 0 L '+scopeW+' '+foldSize+' L '+scopeW+' '+scopeH+' L 0 '+scopeH+' Z');
+  sBg.setAttribute('fill','#FFFDE7');sBg.setAttribute('stroke','#94A3B8');sBg.setAttribute('stroke-width','1');
+  sg.appendChild(sBg);
+
+  // Folded corner triangle
+  const fold=document.createElementNS('http://www.w3.org/2000/svg','path');
+  fold.setAttribute('d','M '+(scopeW-foldSize)+' 0 L '+(scopeW-foldSize)+' '+foldSize+' L '+scopeW+' '+foldSize+' Z');
+  fold.setAttribute('fill','#E2E8F0');fold.setAttribute('stroke','#94A3B8');fold.setAttribute('stroke-width','0.5');
+  sg.appendChild(fold);
+
+  // Scope header
+  const sHdr=document.createElementNS('http://www.w3.org/2000/svg','text');
+  sHdr.setAttribute('x','8');sHdr.setAttribute('y','15');
+  sHdr.setAttribute('fill','#1E293B');sHdr.setAttribute('font-size','11');
+  sHdr.setAttribute('font-weight','700');sHdr.setAttribute('font-family','Segoe UI, system-ui, sans-serif');
+  sHdr.textContent='Scope of Model:';
+  sg.appendChild(sHdr);
+
+  // Scope separator
+  const sSep=document.createElementNS('http://www.w3.org/2000/svg','line');
+  sSep.setAttribute('x1','0');sSep.setAttribute('y1',String(hdrH2));
+  sSep.setAttribute('x2',scopeW);sSep.setAttribute('y2',String(hdrH2));
+  sSep.setAttribute('stroke','#CBD5E1');sSep.setAttribute('stroke-width','0.5');
+  sg.appendChild(sSep);
+
+  // Scope content lines
+  if(m.scope){
+    scopeLines.forEach((line,li)=>{
+      const st=document.createElementNS('http://www.w3.org/2000/svg','text');
+      st.setAttribute('x','8');st.setAttribute('y',String(hdrH2+14+li*scopeRowH));
+      st.setAttribute('fill','#334155');st.setAttribute('font-size','10');
+      st.setAttribute('font-family','Segoe UI, system-ui, sans-serif');
+      st.textContent=line;
+      sg.appendChild(st);
+    });
+  } else {
+    const placeholder=document.createElementNS('http://www.w3.org/2000/svg','text');
+    placeholder.setAttribute('x','8');placeholder.setAttribute('y',String(hdrH2+14));
+    placeholder.setAttribute('fill','#94A3B8');placeholder.setAttribute('font-size','10');
+    placeholder.setAttribute('font-style','italic');
+    placeholder.setAttribute('font-family','Segoe UI, system-ui, sans-serif');
+    placeholder.textContent='Click to add scope description...';
+    sg.appendChild(placeholder);
+  }
+
+  // Click whole scope panel to edit
+  sg.style.cursor='pointer';
+  sg.addEventListener('click',ev=>{
+    ev.stopPropagation();
+    _dmEditMetaScope(er, g);
+  });
+  sg.addEventListener('mouseover',()=>{sBg.setAttribute('fill','#FFFBEB');});
+  sg.addEventListener('mouseout',()=>{sBg.setAttribute('fill','#FFFDE7');});
+
+  g.appendChild(sg);
+}
+
+// Edit a single metadata field via prompt
+function _dmEditMetaField(er, key, label, g){
+  const current=er.metadata[key]||'';
+  const newVal=prompt('Edit '+label.replace(':','')+':',current);
+  if(newVal===null)return;
+  er.metadata[key]=newVal;
+  er.metadata.modified_on=new Date().toISOString().replace('T',' ').substring(0,19)+' UTC';
+  // Re-render metadata panel
+  _dmRenderMetadataPanel(er, g);
+  // Persist to backend
+  _dmSaveMetadata(er.metadata);
+}
+
+// Edit scope via textarea modal
+function _dmEditMetaScope(er, g){
+  const current=er.metadata.scope||'';
+  // Create a modal overlay
+  let overlay=document.getElementById('dmScopeEditOverlay');
+  if(overlay)overlay.remove();
+  overlay=document.createElement('div');
+  overlay.id='dmScopeEditOverlay';
+  overlay.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:9999;';
+  const modal=document.createElement('div');
+  modal.style.cssText='background:#fff;border-radius:8px;padding:20px;width:440px;max-width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.2);';
+  modal.innerHTML='<div style="font-size:14px;font-weight:700;color:#1E293B;margin-bottom:12px;">Edit Scope of Model</div>'+
+    '<textarea id="dmScopeTextarea" style="width:100%;height:180px;border:1px solid #CBD5E1;border-radius:6px;padding:10px;font-size:12px;font-family:Segoe UI,system-ui,sans-serif;resize:vertical;outline:none;" placeholder="Enter scope description...\n- Hardware & SW\n- Services SKUs\n- Pricing Conditions">'+_escHtml(current)+'</textarea>'+
+    '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">'+
+    '<button onclick="document.getElementById(\'dmScopeEditOverlay\').remove()" style="padding:6px 16px;border:1px solid #CBD5E1;border-radius:6px;background:#fff;cursor:pointer;font-size:12px;">Cancel</button>'+
+    '<button id="dmScopeSaveBtn" style="padding:6px 16px;border:none;border-radius:6px;background:#2563EB;color:#fff;cursor:pointer;font-size:12px;font-weight:600;">Save</button>'+
+    '</div>';
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click',ev=>{if(ev.target===overlay)overlay.remove();});
+  document.getElementById('dmScopeSaveBtn').addEventListener('click',()=>{
+    const val=document.getElementById('dmScopeTextarea').value;
+    er.metadata.scope=val;
+    er.metadata.modified_on=new Date().toISOString().replace('T',' ').substring(0,19)+' UTC';
+    _dmRenderMetadataPanel(er, g);
+    _dmSaveMetadata(er.metadata);
+    overlay.remove();
+  });
+  document.getElementById('dmScopeTextarea').focus();
+}
+
+// Persist metadata to backend
+async function _dmSaveMetadata(metadata){
+  try{
+    await fetch('/api/v1/datamodel/metadata',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({metadata})
+    });
+  }catch(e){console.warn('Failed to save metadata:',e);}
+}
+
+function _dmDrawEdges(er, g){
+  // Remove old edge elements
+  g.querySelectorAll('.dm-edge-el').forEach(el=>el.remove());
+
+  const firstNodeG=g.querySelector('g[data-node-id]');
+  const nodeW=300;
+
+  er.edges.forEach((e,ei)=>{
+    const from=er.nodes.find(n=>n.id===e.from);
+    const to=er.nodes.find(n=>n.id===e.to);
+    if(!from||!to)return;
+
+    // Calculate box heights
+    const fromCols=from.columns||[];
+    const toCols=to.columns||[];
+    const fromH=28+fromCols.length*22+10;
+    const toH=28+toCols.length*22+10;
+
+    // Find best connection points (nearest edges)
+    const fromCx=from.x+nodeW/2, fromCy=from.y+fromH/2;
+    const toCx=to.x+nodeW/2, toCy=to.y+toH/2;
+    const dx=toCx-fromCx, dy=toCy-fromCy;
+
+    let x1,y1,x2,y2;
+    if(Math.abs(dx)>Math.abs(dy)){
+      // Connect left/right sides
+      if(dx>0){x1=from.x+nodeW;y1=fromCy;x2=to.x;y2=toCy;}
+      else{x1=from.x;y1=fromCy;x2=to.x+nodeW;y2=toCy;}
+    } else {
+      // Connect top/bottom
+      if(dy>0){x1=fromCx;y1=from.y+fromH;x2=toCx;y2=to.y;}
+      else{x1=fromCx;y1=from.y;x2=toCx;y2=to.y+toH;}
+    }
+
+    // Orthogonal path (SQL Developer style — right-angle connectors)
+    const mx=(x1+x2)/2, my=(y1+y2)/2;
+    let pathD;
+    if(Math.abs(dx)>Math.abs(dy)){
+      pathD='M '+x1+' '+y1+' L '+mx+' '+y1+' L '+mx+' '+y2+' L '+x2+' '+y2;
+    } else {
+      pathD='M '+x1+' '+y1+' L '+x1+' '+my+' L '+x2+' '+my+' L '+x2+' '+y2;
+    }
+
+    const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.classList.add('dm-edge-el');
+    path.setAttribute('d', pathD);
+    path.setAttribute('fill','none');
+    path.setAttribute('stroke','#475569');
+    path.setAttribute('stroke-width','1.5');
+    path.setAttribute('stroke-dasharray', e.label==='many-to-many'?'6,3':'none');
+
+    // Crow's foot markers
+    const relType=e.label||'many-to-one';
+    if(_dmNotation==='crowsfoot'){
+      if(relType.includes('many-to-one')){
+        path.setAttribute('marker-start','url(#dmCrowManyFill)');
+        path.setAttribute('marker-end','url(#dmCrowOne)');
+      } else if(relType.includes('one-to-many')){
+        path.setAttribute('marker-start','url(#dmCrowOneFill)');
+        path.setAttribute('marker-end','url(#dmCrowMany)');
+      } else if(relType.includes('one-to-one')){
+        path.setAttribute('marker-start','url(#dmCrowOneFill)');
+        path.setAttribute('marker-end','url(#dmCrowOne)');
+      } else if(relType.includes('many-to-many')){
+        path.setAttribute('marker-start','url(#dmCrowManyFill)');
+        path.setAttribute('marker-end','url(#dmCrowMany)');
+      }
+    } else {
+      path.setAttribute('marker-end','url(#dmArrow)');
+    }
+
+    // Click to edit
+    path.style.cursor='pointer';
+    path.addEventListener('click',ev=>{
+      ev.stopPropagation();
+      _dmShowEdgeEditor(e, ei, mx, my);
+    });
+
+    // Hover effect
+    path.addEventListener('mouseover',()=>{path.setAttribute('stroke','#2563EB');path.setAttribute('stroke-width','2.5');});
+    path.addEventListener('mouseout',()=>{path.setAttribute('stroke','#475569');path.setAttribute('stroke-width','1.5');});
+
+    if(firstNodeG) g.insertBefore(path,firstNodeG); else g.appendChild(path);
+
+    // Relationship label near midpoint
+    const lblX=mx+8, lblY=my-8;
+    const lbl=document.createElementNS('http://www.w3.org/2000/svg','text');
+    lbl.classList.add('dm-edge-el');
+    lbl.setAttribute('x',lblX);lbl.setAttribute('y',lblY);
+    lbl.setAttribute('text-anchor','middle');
+    lbl.setAttribute('fill','#6366F1');lbl.setAttribute('font-size','11');
+    lbl.setAttribute('font-family','Consolas, monospace');lbl.setAttribute('font-weight','600');
+    const relLabel=_dmNotation==='crowsfoot'?_dmCrowsFootLabel(e.label):e.label;
+    lbl.textContent=relLabel||'';
+    if(firstNodeG) g.insertBefore(lbl,firstNodeG); else g.appendChild(lbl);
+
+    // FK column label
+    if(e.via_column){
+      const fkLbl=document.createElementNS('http://www.w3.org/2000/svg','text');
+      fkLbl.classList.add('dm-edge-el');
+      fkLbl.setAttribute('x',String(x1+(dx>0?14:-14)));fkLbl.setAttribute('y',String(y1-6));
+      fkLbl.setAttribute('text-anchor',dx>0?'start':'end');
+      fkLbl.setAttribute('fill','#059669');fkLbl.setAttribute('font-size','10');
+      fkLbl.setAttribute('font-family','Consolas, monospace');
+      fkLbl.textContent=e.via_column;
+      if(firstNodeG) g.insertBefore(fkLbl,firstNodeG); else g.appendChild(fkLbl);
+    }
+  });
+}
+
+function _dmCrowsFootLabel(type){
+  if(!type)return '';
+  if(type==='many-to-one')return '*..1';
+  if(type==='one-to-many')return '1..*';
+  if(type==='one-to-one')return '1..1';
+  if(type==='many-to-many')return '*..*';
+  return type;
+}
+
+function _dmShowEdgeEditor(edge, edgeIdx, x, y){
+  // Show Foreign Key Properties dialog (SQL Developer style)
+  const existing=document.getElementById('dmFKPropsOverlay');
+  if(existing)existing.remove();
+
+  const fromNode=_dmErJson?_dmErJson.nodes.find(n=>n.id===edge.from):null;
+  const toNode=_dmErJson?_dmErJson.nodes.find(n=>n.id===edge.to):null;
+  const fromLabel=fromNode?fromNode.label:edge.from;
+  const toLabel=toNode?toNode.label:edge.to;
+  const fkName=edge.via_column?fromLabel+'_'+toLabel+'_FK':'FK_'+fromLabel+'_'+toLabel;
+
+  // Find PK columns of target table
+  const toCols=(toNode?toNode.columns:[]).filter(c=>c.is_pk);
+  const fromCols=(fromNode?fromNode.columns:[])||[];
+  const fkCols=fromCols.filter(c=>c.fk_table===edge.to);
+
+  const overlay=document.createElement('div');
+  overlay.id='dmFKPropsOverlay';
+  overlay.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;z-index:9999;';
+
+  const dlg=document.createElement('div');
+  dlg.style.cssText='background:#F0F0F0;border-radius:4px;width:680px;max-width:92%;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 12px 48px rgba(0,0,0,0.3);font-family:Segoe UI,system-ui,sans-serif;overflow:hidden;';
+
+  // Title bar
+  dlg.innerHTML=`
+    <div style="background:linear-gradient(180deg,#F8F8F8,#E8E8E8);border-bottom:1px solid #B0B0B0;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-size:12px;font-weight:600;color:#1E293B;">Foreign Key Properties - ${_escHtml(fkName)}</span>
+      <button id="dmFKCloseBtn" style="border:none;background:none;font-size:16px;cursor:pointer;color:#64748B;padding:0 4px;">&times;</button>
+    </div>
+    <div style="display:flex;flex:1;overflow:hidden;">
+      <!-- Left tabs -->
+      <div style="width:170px;background:#FFFFFF;border-right:1px solid #D0D0D0;padding:8px 0;flex-shrink:0;">
+        <div class="dmfk-tab dmfk-tab-active" data-tab="general" style="padding:5px 12px;font-size:11px;cursor:pointer;border-left:3px solid #2563EB;background:#EFF6FF;color:#1E293B;font-weight:600;">General</div>
+        <div class="dmfk-tab" data-tab="columns" style="padding:5px 12px;font-size:11px;cursor:pointer;border-left:3px solid transparent;color:#475569;">Dependent Columns Constraint</div>
+        <div class="dmfk-tab" data-tab="comments" style="padding:5px 12px;font-size:11px;cursor:pointer;border-left:3px solid transparent;color:#475569;">Comments</div>
+        <div class="dmfk-tab" data-tab="notes" style="padding:5px 12px;font-size:11px;cursor:pointer;border-left:3px solid transparent;color:#475569;">Notes</div>
+        <div class="dmfk-tab" data-tab="impact" style="padding:5px 12px;font-size:11px;cursor:pointer;border-left:3px solid transparent;color:#475569;">Impact Analysis</div>
+        <div class="dmfk-tab" data-tab="properties" style="padding:5px 12px;font-size:11px;cursor:pointer;border-left:3px solid transparent;color:#475569;">Dynamic Properties</div>
+        <div class="dmfk-tab" data-tab="userdefined" style="padding:5px 12px;font-size:11px;cursor:pointer;border-left:3px solid transparent;color:#475569;">User Defined Properties</div>
+        <div class="dmfk-tab" data-tab="summary" style="padding:5px 12px;font-size:11px;cursor:pointer;border-left:3px solid transparent;color:#475569;">Summary</div>
+      </div>
+      <!-- Right content -->
+      <div style="flex:1;padding:16px;overflow-y:auto;background:#FFFFFF;" id="dmFKTabContent">
+        <div style="text-align:center;font-size:12px;font-weight:600;color:#475569;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid #E2E8F0;">General</div>
+        <div style="display:grid;grid-template-columns:140px 1fr 100px 1fr;gap:8px 12px;align-items:center;font-size:11px;">
+          <label style="color:#475569;font-weight:600;">Name</label>
+          <input id="dmFKName" class="inp" style="font-size:11px;padding:4px 8px;grid-column:span 1;" value="${_escHtml(fkName)}">
+          <label style="color:#475569;font-weight:600;">Table</label>
+          <input class="inp" style="font-size:11px;padding:4px 8px;background:#F1F5F9;" value="${_escHtml(fromLabel)}" readonly>
+
+          <label style="color:#475569;font-weight:600;">PK / UK Index</label>
+          <select id="dmFKPKIndex" class="inp" style="font-size:11px;padding:4px 8px;">
+            <option value="${_escHtml(toLabel)}_PK">${_escHtml(toLabel)}_PK</option>
+          </select>
+          <label style="color:#475569;font-weight:600;">Delete Rule</label>
+          <select id="dmFKDeleteRule" class="inp" style="font-size:11px;padding:4px 8px;">
+            <option value="NO ACTION" selected>NO ACTION</option>
+            <option value="CASCADE">CASCADE</option>
+            <option value="SET NULL">SET NULL</option>
+            <option value="SET DEFAULT">SET DEFAULT</option>
+            <option value="RESTRICT">RESTRICT</option>
+          </select>
+
+          <label style="color:#475569;font-weight:600;">Source Table</label>
+          <input class="inp" style="font-size:11px;padding:4px 8px;background:#F1F5F9;" value="${_escHtml(fromLabel)}" readonly>
+          <label style="color:#475569;font-weight:600;">Target Table</label>
+          <input class="inp" style="font-size:11px;padding:4px 8px;background:#F1F5F9;" value="${_escHtml(toLabel)}" readonly>
+
+          <label style="color:#475569;font-weight:600;">Relationship Type</label>
+          <select id="dmFKRelType" class="inp" style="font-size:11px;padding:4px 8px;">
+            <option value="many-to-one" ${edge.label==='many-to-one'?'selected':''}>Many-to-One (*..1)</option>
+            <option value="one-to-many" ${edge.label==='one-to-many'?'selected':''}>One-to-Many (1..*)</option>
+            <option value="one-to-one" ${edge.label==='one-to-one'?'selected':''}>One-to-One (1..1)</option>
+            <option value="many-to-many" ${edge.label==='many-to-many'?'selected':''}>Many-to-Many (*..*)</option>
+          </select>
+          <label style="color:#475569;font-weight:600;">Update Rule</label>
+          <select id="dmFKUpdateRule" class="inp" style="font-size:11px;padding:4px 8px;">
+            <option value="NO ACTION" selected>NO ACTION</option>
+            <option value="CASCADE">CASCADE</option>
+            <option value="SET NULL">SET NULL</option>
+            <option value="RESTRICT">RESTRICT</option>
+          </select>
+        </div>
+
+        <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;font-size:11px;">
+          <label style="display:flex;align-items:center;gap:4px;color:#475569;"><input type="checkbox" id="dmFKMandatory" ${fkCols.some(c=>!c.is_nullable)?'checked':''}> Mandatory</label>
+          <label style="display:flex;align-items:center;gap:4px;color:#475569;"><input type="checkbox" id="dmFKDeprecated"> Deprecated</label>
+          <label style="display:flex;align-items:center;gap:4px;color:#475569;"><input type="checkbox" id="dmFKTransferable" checked> Transferable (Updatable)</label>
+          <label style="display:flex;align-items:center;gap:4px;color:#475569;"><input type="checkbox" id="dmFKGenerateDDL" checked> Generate in DDL</label>
+        </div>
+
+        <div style="margin-top:16px;font-size:11px;font-weight:600;color:#475569;border-bottom:1px solid #E2E8F0;padding-bottom:4px;">Associated Columns</div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:6px;">
+          <thead>
+            <tr style="background:#F1F5F9;">
+              <th style="text-align:left;padding:5px 8px;border:1px solid #E2E8F0;font-weight:600;color:#334155;">Referenced Column (PK)</th>
+              <th style="text-align:left;padding:5px 8px;border:1px solid #E2E8F0;font-weight:600;color:#334155;">Column (FK)</th>
+              <th style="text-align:center;padding:5px 8px;border:1px solid #E2E8F0;font-weight:600;color:#334155;">Mandatory</th>
+            </tr>
+          </thead>
+          <tbody id="dmFKColsBody">
+            ${fkCols.length?fkCols.map(c=>{
+              const refCol=toCols.length?toCols[0].name:'—';
+              return '<tr><td style="padding:4px 8px;border:1px solid #E2E8F0;">'+_escHtml(refCol)+'</td><td style="padding:4px 8px;border:1px solid #E2E8F0;">'+_escHtml(c.name)+'</td><td style="text-align:center;padding:4px 8px;border:1px solid #E2E8F0;"><input type="checkbox" '+(c.is_nullable?'':'checked')+'></td></tr>';
+            }).join(''):'<tr><td style="padding:4px 8px;border:1px solid #E2E8F0;color:#94A3B8;" colspan="3">No FK columns mapped yet. Use "+ Add Mapping" below.</td></tr>'}
+          </tbody>
+        </table>
+        <button id="dmFKAddMappingBtn" style="margin-top:6px;font-size:10px;padding:3px 10px;border:1px solid #3B82F6;border-radius:4px;background:#EFF6FF;color:#2563EB;cursor:pointer;">+ Add Mapping</button>
+      </div>
+    </div>
+    <!-- Bottom buttons -->
+    <div style="border-top:1px solid #B0B0B0;padding:10px 16px;display:flex;justify-content:flex-end;gap:8px;background:#F0F0F0;">
+      <button id="dmFKOKBtn" style="padding:5px 24px;font-size:11px;border:1px solid #3B82F6;border-radius:4px;background:#2563EB;color:#fff;cursor:pointer;font-weight:600;">OK</button>
+      <button id="dmFKApplyBtn" style="padding:5px 24px;font-size:11px;border:1px solid #3B82F6;border-radius:4px;background:#EFF6FF;color:#2563EB;cursor:pointer;font-weight:600;">Apply</button>
+      <button id="dmFKCancelBtn" style="padding:5px 24px;font-size:11px;border:1px solid #CBD5E1;border-radius:4px;background:#fff;color:#475569;cursor:pointer;">Cancel</button>
+    </div>
+  `;
+
+  overlay.appendChild(dlg);
+  document.body.appendChild(overlay);
+
+  // Tab switching logic
+  dlg.querySelectorAll('.dmfk-tab').forEach(tab=>{
+    tab.addEventListener('click',()=>{
+      dlg.querySelectorAll('.dmfk-tab').forEach(t=>{t.style.borderLeftColor='transparent';t.style.background='';t.style.fontWeight='400';t.classList.remove('dmfk-tab-active');});
+      tab.style.borderLeftColor='#2563EB';tab.style.background='#EFF6FF';tab.style.fontWeight='600';tab.classList.add('dmfk-tab-active');
+      const tabName=tab.getAttribute('data-tab');
+      _dmFKSwitchTab(tabName, edge, fromLabel, toLabel, fkName);
+    });
+  });
+
+  // Add column mapping button
+  document.getElementById('dmFKAddMappingBtn').addEventListener('click',()=>{
+    const tbody=document.getElementById('dmFKColsBody');
+    const fromOpts=fromCols.map(c=>'<option value="'+_escHtml(c.name)+'">'+_escHtml(c.name)+'</option>').join('');
+    const toOpts=toCols.map(c=>'<option value="'+_escHtml(c.name)+'">'+_escHtml(c.name)+'</option>').join('');
+    const row=document.createElement('tr');
+    row.innerHTML='<td style="padding:4px 8px;border:1px solid #E2E8F0;"><select class="inp" style="font-size:10px;padding:2px 4px;">'+toOpts+'</select></td><td style="padding:4px 8px;border:1px solid #E2E8F0;"><select class="inp" style="font-size:10px;padding:2px 4px;">'+fromOpts+'</select></td><td style="text-align:center;padding:4px 8px;border:1px solid #E2E8F0;"><input type="checkbox" checked></td>';
+    tbody.appendChild(row);
+  });
+
+  // Close handlers
+  document.getElementById('dmFKCloseBtn').addEventListener('click',()=>overlay.remove());
+  document.getElementById('dmFKCancelBtn').addEventListener('click',()=>overlay.remove());
+  overlay.addEventListener('click',ev=>{if(ev.target===overlay)overlay.remove();});
+
+  // Apply logic
+  const applyFn=()=>{
+    const newType=document.getElementById('dmFKRelType').value;
+    if(newType!==edge.label){
+      _dmApplyFKChanges(edgeIdx, edge, newType);
+    }
+  };
+  document.getElementById('dmFKApplyBtn').addEventListener('click',applyFn);
+  document.getElementById('dmFKOKBtn').addEventListener('click',()=>{applyFn();overlay.remove();});
+}
+
+function _dmFKSwitchTab(tabName, edge, fromLabel, toLabel, fkName){
+  const content=document.getElementById('dmFKTabContent');
+  if(!content)return;
+  if(tabName==='general')return; // Already rendered as default
+  if(tabName==='comments'){
+    content.innerHTML='<div style="text-align:center;font-size:12px;font-weight:600;color:#475569;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid #E2E8F0;">Comments</div><textarea id="dmFKComment" style="width:100%;height:200px;border:1px solid #CBD5E1;border-radius:4px;padding:10px;font-size:11px;font-family:Segoe UI,system-ui,sans-serif;resize:vertical;" placeholder="Add comments about this foreign key relationship...">'+(edge.comment||'')+'</textarea>';
+  } else if(tabName==='notes'){
+    content.innerHTML='<div style="text-align:center;font-size:12px;font-weight:600;color:#475569;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid #E2E8F0;">Notes</div><textarea style="width:100%;height:200px;border:1px solid #CBD5E1;border-radius:4px;padding:10px;font-size:11px;font-family:Segoe UI,system-ui,sans-serif;resize:vertical;" placeholder="Add design notes...">'+(edge.notes||'')+'</textarea>';
+  } else if(tabName==='summary'){
+    content.innerHTML='<div style="text-align:center;font-size:12px;font-weight:600;color:#475569;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid #E2E8F0;">Summary</div><div style="font-size:11px;color:#334155;line-height:1.8;"><table style="width:100%;border-collapse:collapse;"><tr><td style="padding:4px 8px;font-weight:600;border-bottom:1px solid #E2E8F0;width:140px;">FK Name:</td><td style="padding:4px 8px;border-bottom:1px solid #E2E8F0;">'+_escHtml(fkName)+'</td></tr><tr><td style="padding:4px 8px;font-weight:600;border-bottom:1px solid #E2E8F0;">Source Table:</td><td style="padding:4px 8px;border-bottom:1px solid #E2E8F0;">'+_escHtml(fromLabel)+'</td></tr><tr><td style="padding:4px 8px;font-weight:600;border-bottom:1px solid #E2E8F0;">Target Table:</td><td style="padding:4px 8px;border-bottom:1px solid #E2E8F0;">'+_escHtml(toLabel)+'</td></tr><tr><td style="padding:4px 8px;font-weight:600;border-bottom:1px solid #E2E8F0;">Relationship:</td><td style="padding:4px 8px;border-bottom:1px solid #E2E8F0;">'+_escHtml(edge.label||'many-to-one')+'</td></tr><tr><td style="padding:4px 8px;font-weight:600;border-bottom:1px solid #E2E8F0;">Via Column:</td><td style="padding:4px 8px;border-bottom:1px solid #E2E8F0;">'+_escHtml(edge.via_column||'—')+'</td></tr></table></div>';
+  } else if(tabName==='impact'){
+    content.innerHTML='<div style="text-align:center;font-size:12px;font-weight:600;color:#475569;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid #E2E8F0;">Impact Analysis</div><div style="font-size:11px;color:#475569;padding:20px;text-align:center;background:#F8FAFC;border-radius:6px;"><p style="margin:0 0 8px;">Changing or removing this FK will affect:</p><ul style="text-align:left;list-style:disc;padding-left:20px;margin:8px 0;"><li>Table <b>'+_escHtml(fromLabel)+'</b> — column constraints</li><li>Table <b>'+_escHtml(toLabel)+'</b> — referenced PK</li><li>DDL generation output</li><li>ER diagram relationships</li></ul></div>';
+  } else if(tabName==='columns'){
+    content.innerHTML='<div style="text-align:center;font-size:12px;font-weight:600;color:#475569;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid #E2E8F0;">Dependent Columns Constraint</div><div style="font-size:11px;color:#475569;padding:12px;background:#F8FAFC;border-radius:6px;"><p>Columns in <b>'+_escHtml(fromLabel)+'</b> that depend on this FK constraint:</p><ul style="margin:8px 0;padding-left:18px;">'+(edge.via_column?'<li><b>'+_escHtml(edge.via_column)+'</b> → references '+_escHtml(toLabel)+'</li>':'<li style="color:#94A3B8;">No dependent columns defined</li>')+'</ul></div>';
+  } else {
+    content.innerHTML='<div style="text-align:center;font-size:12px;font-weight:600;color:#475569;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid #E2E8F0;">'+tabName.charAt(0).toUpperCase()+tabName.slice(1)+'</div><div style="padding:30px;text-align:center;color:#94A3B8;font-size:11px;">No data configured for this section.</div>';
+  }
+}
+
+async function _dmApplyFKChanges(edgeIdx, edge, newType){
+  if(!_dmModel||!_dmModel.relationships)return;
+  // Use edge.from/to directly instead of index (more reliable)
+  const fromId=edge.from, toId=edge.to;
+  const rel=_dmModel.relationships.find(r=>r.from===fromId&&r.to===toId);
+  if(!rel){toast('Relationship not found','terr');return;}
+  // Preserve current node positions before re-render
+  _dmPreservePositions();
+  await _dmEdit({
+    relationship_removes:[{from:fromId,to:toId}],
+    relationship_adds:[{from:fromId,to:toId,type:newType,via_column:edge.via_column||rel.via_column||''}]
+  },'Relationship updated to '+newType);
+}
+
+// Preserve node positions so re-render doesn't reset them
+var _dmSavedPositions={};
+function _dmPreservePositions(){
+  if(!_dmErJson||!_dmErJson.nodes)return;
+  _dmErJson.nodes.forEach(n=>{
+    if(n.x!==undefined&&n.y!==undefined){
+      _dmSavedPositions[n.id]={x:n.x,y:n.y};
+    }
+  });
+}
+
+function dmToggleNotation(){
+  _dmNotation=_dmNotation==='crowsfoot'?'arrow':'crowsfoot';
+  const btn=G('dmNotationBtn');
+  if(btn) btn.textContent=_dmNotation==='crowsfoot'?'\u27c1 Crow\u2019s Foot':'\u2192 Arrow';
+  if(_dmErJson) dmRenderER(_dmErJson);
+}
+
+function dmAutoLayout(){
+  if(!_dmErJson) return;
+  dmRenderER(_dmErJson);
+  toast('Layout recalculated','tok');
+}
+
+function dmFitView(){
+  if(!_dmErJson||!_dmErJson.nodes||!_dmErJson.nodes.length)return;
+  const svg=G('dmErSvg');
+  const W=svg.clientWidth||900, H=parseInt(svg.getAttribute('height'))||460;
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  _dmErJson.nodes.forEach(n=>{
+    if(n.x<minX)minX=n.x; if(n.y<minY)minY=n.y;
+    if(n.x+200>maxX)maxX=n.x+200; if(n.y+100>maxY)maxY=n.y+100;
+  });
+  const cw=maxX-minX+40, ch=maxY-minY+40;
+  _dmZoomLevel=Math.min(W/cw, H/ch, 2);
+  _dmPanX=-minX*_dmZoomLevel+20;
+  _dmPanY=-minY*_dmZoomLevel+20;
+  G('dmErGroup').setAttribute('transform','translate('+_dmPanX+','+_dmPanY+') scale('+_dmZoomLevel+')');
 }
 
 function dmUpdateEdges(er){
   const g=G('dmErGroup');
-  // Remove old lines/text, keep node groups
-  g.querySelectorAll('line,text').forEach(el=>{
-    if(!el.closest('g[transform]'))el.remove();
-    else if(el.tagName==='line')el.remove();
-  });
-  // Re-insert above first g
-  const firstG=g.querySelector('g');
-  er.edges.forEach(e=>{
-    const from=er.nodes.find(n=>n.id===e.from);
-    const to=er.nodes.find(n=>n.id===e.to);
-    if(!from||!to)return;
-    const line=document.createElementNS('http://www.w3.org/2000/svg','line');
-    line.setAttribute('x1',from.x+90);line.setAttribute('y1',from.y+30);
-    line.setAttribute('x2',to.x+90);line.setAttribute('y2',to.y+30);
-    line.setAttribute('stroke','#94A3B8');line.setAttribute('stroke-width','1.5');
-    line.setAttribute('marker-end','url(#dmArrow)');
-    if(firstG) g.insertBefore(line,firstG); else g.appendChild(line);
-  });
+  _dmDrawEdges(er, g);
 }
 
 function dmZoom(factor){
-  if(factor===0){_dmZoomLevel=1;}else{_dmZoomLevel*=factor;}
+  if(factor===0){_dmZoomLevel=1;_dmPanX=0;_dmPanY=0;}
+  else{_dmZoomLevel*=factor;}
   _dmZoomLevel=Math.max(0.3,Math.min(3,_dmZoomLevel));
-  G('dmErGroup').setAttribute('transform','scale('+_dmZoomLevel+')');
+  G('dmErGroup').setAttribute('transform','translate('+_dmPanX+','+_dmPanY+') scale('+_dmZoomLevel+')');
+}
+
+// ── DDL Change Detection ───────────────────────────────────────────────────────────
+async function dmDetectChanges(){
+  if(!_dmModelId){toast('Generate a model first','terr');return;}
+  toast('Scanning for schema drift...','tok');
+  try{
+    const cat=G('dmCatalog').value||'main', sch=G('dmSchema').value||'default';
+    const r=await fetch('/api/v1/datamodel/detect-changes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model_id:_dmModelId,catalog:cat,schema:sch})});
+    const d=await r.json();
+    if(d.success){
+      _dmDetectedChanges=d.changes||[];
+      if(d.has_changes){
+        G('dmChangesAlert').style.display='';
+        G('dmChangeCount').textContent=_dmDetectedChanges.length+' changes';
+        G('dmChangesList').innerHTML=_dmDetectedChanges.map(c=>{
+          const icon=c.type==='column_added'?'\u2795':c.type==='column_removed'?'\u2796':c.type==='type_changed'?'\ud83d\udd04':'\u26a0\ufe0f';
+          return '<div style="padding:2px 0;">'+icon+' <b>'+c.table+'</b>: '+c.detail+'</div>';
+        }).join('');
+        toast(_dmDetectedChanges.length+' schema change(s) detected!','terr');
+      } else {
+        toast('\u2714 No schema drift detected - model is in sync','tok');
+        G('dmChangesAlert').style.display='none';
+      }
+    }else{toast(d.error||'Detection failed','terr');}
+  }catch(e){toast('Error: '+e.message,'terr');}
+}
+
+async function dmApplyDetectedChanges(){
+  if(!_dmDetectedChanges.length)return;
+  // Re-generate model to pick up live changes
+  toast('Refreshing model from live schema...','tok');
+  await dmGenerate();
+  G('dmChangesAlert').style.display='none';
+  _dmDetectedChanges=[];
+  toast('Model refreshed with latest schema','tok');
+}
+
+// ── AI Relationship Suggestions ─────────────────────────────────────────────────────
+async function dmSuggestRelationships(){
+  if(!_dmModelId){toast('Generate a model first','terr');return;}
+  toast('Analyzing column patterns for relationships...','tok');
+  try{
+    const r=await fetch('/api/v1/datamodel/suggest-relationships',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model_id:_dmModelId})});
+    const d=await r.json();
+    if(d.success){
+      _dmSuggestions=d.suggestions||[];
+      if(_dmSuggestions.length){
+        G('dmSuggestPanel').style.display='';
+        G('dmSuggestList').innerHTML=_dmSuggestions.map((s,i)=>{
+          const conf=Math.round(s.confidence*100);
+          const confColor=conf>=85?'#10B981':conf>=70?'#F59E0B':'#94A3B8';
+          return '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid rgba(0,0,0,.05);">'+
+            '<span style="font-size:10px;font-weight:700;color:'+confColor+';">'+conf+'%</span>'+
+            '<span style="font-size:10px;"><b>'+s.from+'</b> \u2192 <b>'+s.to+'</b> ('+s.type+')</span>'+
+            '<span style="font-size:9px;color:var(--t4);flex:1;">via '+s.via_column+'</span>'+
+            '<button class="btn btn-ghost btn-xs" onclick="dmAcceptSuggestion('+i+')" style="font-size:9px;color:#10B981;padding:1px 6px;">\u2714 Add</button>'+
+            '</div>';
+        }).join('');
+        toast(_dmSuggestions.length+' relationship suggestion(s) found','tok');
+      } else {
+        toast('No additional relationships suggested - model looks complete','tok');
+        G('dmSuggestPanel').style.display='none';
+      }
+    }else{toast(d.error||'Suggestion failed','terr');}
+  }catch(e){toast('Error: '+e.message,'terr');}
+}
+
+async function dmAcceptSuggestion(idx){
+  const s=_dmSuggestions[idx];if(!s)return;
+  await _dmEdit({relationship_adds:[{from:s.from,to:s.to,type:s.type}]},'Added: '+s.from+' \u2192 '+s.to);
+  _dmSuggestions.splice(idx,1);
+  if(_dmSuggestions.length===0) G('dmSuggestPanel').style.display='none';
+  else dmSuggestRelationships(); // Refresh list
+}
+
+async function dmAcceptAllSuggestions(){
+  if(!_dmSuggestions.length)return;
+  const adds=_dmSuggestions.map(s=>({from:s.from,to:s.to,type:s.type}));
+  await _dmEdit({relationship_adds:adds},'Added '+adds.length+' suggested relationships');
+  _dmSuggestions=[];
+  G('dmSuggestPanel').style.display='none';
 }
 
 // ── Table Details Rendering ─────────────────────────────────────────────────
@@ -4237,16 +5539,50 @@ function dmRenderDetails(d){
   // Dimensions
   const dDiv=G('dmDimsList');dDiv.innerHTML='';
   (d.dimensions||[]).forEach(dim=>{ dDiv.innerHTML+=dmTableCard(dim,'dimension'); });
-  // Relationships
+  // Relationships with editable cardinality
   const rb=G('dmRelsBody');rb.innerHTML='';
   (d.relationships||[]).forEach((r,i)=>{
+    const cardBg=r.type==='many-to-one'?'rgba(99,102,241,.1)':r.type==='one-to-many'?'rgba(16,185,129,.1)':r.type==='one-to-one'?'rgba(245,158,11,.1)':'rgba(239,68,68,.1)';
+    const cardColor=r.type==='many-to-one'?'#6366F1':r.type==='one-to-many'?'#10B981':r.type==='one-to-one'?'#F59E0B':'#EF4444';
+    const notation=r.type==='many-to-one'?'*..1':r.type==='one-to-many'?'1..*':r.type==='one-to-one'?'1..1':'*..*';
+    const fkCol=r.via_column||'\u2014';
     rb.innerHTML+='<tr style="border-bottom:1px solid var(--border);">'+
-      '<td style="padding:6px 10px;">'+r.from+'</td>'+
-      '<td style="padding:6px 10px;">'+r.to+'</td>'+
-      '<td style="padding:6px 10px;text-align:center;"><span style="font-size:10px;padding:2px 8px;border-radius:8px;background:rgba(99,102,241,.1);color:#6366F1;font-weight:600;">'+r.type+'</span></td>'+
-      '<td style="padding:6px 10px;text-align:center;"><button class="btn btn-ghost btn-xs" onclick="dmRemoveRel('+i+')" style="color:#EF4444;font-size:10px;">\u2715 Remove</button></td>'+
+      '<td style="padding:6px 10px;font-weight:600;font-size:11px;">'+r.from+'</td>'+
+      '<td style="padding:6px 10px;font-weight:600;font-size:11px;">'+r.to+'</td>'+
+      '<td style="padding:6px 10px;text-align:center;">'+
+        '<select class="inp" onchange="dmChangeRelType('+i+',this.value)" style="font-size:10px;padding:2px 6px;background:'+cardBg+';color:'+cardColor+';font-weight:700;border:1px solid '+cardColor+'44;border-radius:8px;">'+
+        '<option value="many-to-one"'+(r.type==='many-to-one'?' selected':'')+'>*..1 Many-to-One</option>'+
+        '<option value="one-to-many"'+(r.type==='one-to-many'?' selected':'')+'>1..* One-to-Many</option>'+
+        '<option value="one-to-one"'+(r.type==='one-to-one'?' selected':'')+'>1..1 One-to-One</option>'+
+        '<option value="many-to-many"'+(r.type==='many-to-many'?' selected':'')+'>*..* Many-to-Many</option>'+
+        '</select>'+
+      '</td>'+
+      '<td style="padding:6px 10px;text-align:center;font-size:10px;color:var(--t3);font-family:monospace;">'+fkCol+'</td>'+
+      '<td style="padding:6px 10px;text-align:center;"><button class="btn btn-ghost btn-xs" onclick="dmRemoveRel('+i+')" style="color:#EF4444;font-size:10px;">\u2715</button></td>'+
       '</tr>';
   });
+  // Views
+  const vDiv=G('dmViewsList');
+  if(vDiv){
+    const views=d.views||[];
+    if(!views.length){
+      vDiv.innerHTML='<div style="font-size:10px;color:var(--t4);padding:8px;">No views in model. Use "Load Views" or "Create View" to add.</div>';
+    } else {
+      vDiv.innerHTML=views.map(v=>{
+        const vnEsc=v.view_name.replace(/'/g,"\\'");
+        return '<div style="background:rgba(245,158,11,.06);border:1px solid #F59E0B22;border-radius:8px;padding:10px;">'+
+          '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">'+
+          '<span style="font-weight:700;font-size:12px;color:var(--t1);">\ud83d\udc41 '+v.view_name+'</span>'+
+          '<span style="font-size:9px;padding:1px 6px;border:1px solid #F59E0B;color:#F59E0B;border-radius:10px;">VIEW</span>'+
+          '<div style="margin-left:auto;display:flex;gap:4px;">'+
+          '<button class="btn btn-ghost btn-xs" onclick="dmRemoveView(\''+vnEsc+'\')" style="font-size:9px;color:#EF4444;">\u2715 Remove</button>'+
+          '</div></div>'+
+          (v.comment?'<div style="font-size:10px;color:var(--t3);margin-bottom:4px;"><i>'+v.comment+'</i></div>':'')+
+          '<pre style="font-size:9px;background:var(--bg2);padding:6px;border-radius:6px;max-height:80px;overflow:auto;white-space:pre-wrap;color:var(--t2);">'+
+          (v.definition||'-- No definition').replace(/</g,'&lt;')+'</pre></div>';
+      }).join('');
+    }
+  }
 }
 
 function dmTableCard(tbl,role){
@@ -4259,23 +5595,30 @@ function dmTableCard(tbl,role){
   html+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">';
   html+='<span style="font-weight:700;font-size:12px;color:var(--t1);">'+tn+'</span>';
   html+='<button class="btn btn-ghost btn-xs" onclick="dmToggleRole(\''+tnEsc+'\',\''+(role==='fact'?'dimension':'fact')+'\')" style="font-size:9px;padding:1px 6px;border:1px solid '+color+';color:'+color+';border-radius:10px;cursor:pointer;" title="Toggle role">'+role.toUpperCase()+'</button>';
+  if(tbl.comment){html+='<span style="font-size:9px;color:var(--t3);font-style:italic;" title="'+tbl.comment.replace(/"/g,'&quot;')+'">'+tbl.comment.substring(0,30)+(tbl.comment.length>30?'...':'')+'</span>';}
   html+='<div style="margin-left:auto;display:flex;gap:4px;">';
   html+='<button class="btn btn-ghost btn-xs" onclick="dmRenameTableDialog(\''+tnEsc+'\')" style="font-size:9px;color:var(--t3);" title="Rename table">\u270E Rename</button>';
   html+='<button class="btn btn-ghost btn-xs" onclick="dmRemoveTable(\''+tnEsc+'\')" style="font-size:9px;color:#EF4444;" title="Remove table">\u2715 Remove</button>';
   html+='</div></div>';
   // Column table
   html+='<table style="width:100%;font-size:10px;border-collapse:collapse;">';
-  html+='<thead><tr style="background:rgba(0,0,0,.03);"><th style="padding:3px 4px;text-align:left;font-weight:600;color:var(--t3);">Column</th><th style="padding:3px 4px;text-align:left;font-weight:600;color:var(--t3);">Type</th><th style="padding:3px 4px;text-align:center;font-weight:600;color:var(--t3);">PK</th><th style="padding:3px 4px;text-align:center;font-weight:600;color:var(--t3);">Null</th><th style="padding:3px 4px;text-align:center;font-weight:600;color:var(--t3);">Actions</th></tr></thead>';
+  html+='<thead><tr style="background:rgba(0,0,0,.03);"><th style="padding:3px 4px;text-align:left;font-weight:600;color:var(--t3);">Column</th><th style="padding:3px 4px;text-align:left;font-weight:600;color:var(--t3);">Type</th><th style="padding:3px 4px;text-align:center;font-weight:600;color:var(--t3);">PK</th><th style="padding:3px 4px;text-align:center;font-weight:600;color:var(--t3);">UQ</th><th style="padding:3px 4px;text-align:center;font-weight:600;color:var(--t3);">FK</th><th style="padding:3px 4px;text-align:center;font-weight:600;color:var(--t3);">Null</th><th style="padding:3px 4px;text-align:left;font-weight:600;color:var(--t3);">Comment</th><th style="padding:3px 4px;text-align:center;font-weight:600;color:var(--t3);">Actions</th></tr></thead>';
   html+='<tbody>';
   (tbl.columns||[]).forEach(c=>{
     const cnEsc=c.name.replace(/'/g,"\\'");
     const pk=c.is_pk;
+    const uq=c.is_unique;
+    const fk=c.fk_table;
     const nl=c.is_nullable;
+    const cmt=c.comment||'';
     html+='<tr style="border-bottom:1px solid rgba(0,0,0,.05);">';
-    html+='<td style="padding:3px 4px;">'+(pk?'<span style="color:#F59E0B;" title="PK">\ud83d\udd11</span> ':'')+c.name+'</td>';
+    html+='<td style="padding:3px 4px;">'+(pk?'<span style="color:#F59E0B;" title="PK">\ud83d\udd11</span> ':'')+(fk?'<span style="color:#6366F1;" title="FK\u2192'+fk+'">\ud83d\udd17</span> ':'')+c.name+'</td>';
     html+='<td style="padding:3px 4px;color:var(--t3);">'+c.data_type+'</td>';
     html+='<td style="padding:3px 4px;text-align:center;"><button class="btn btn-ghost btn-xs" onclick="dmToggleColPK(\''+tnEsc+'\',\''+cnEsc+'\','+(!pk)+')" style="font-size:9px;padding:0 4px;color:'+(pk?'#F59E0B':'var(--t4)')+';">'+(pk?'\u2605':'\u2606')+'</button></td>';
+    html+='<td style="padding:3px 4px;text-align:center;"><button class="btn btn-ghost btn-xs" onclick="dmToggleColUnique(\''+tnEsc+'\',\''+cnEsc+'\','+(!uq)+')" style="font-size:9px;padding:0 4px;color:'+(uq?'#8B5CF6':'var(--t4)')+';">'+(uq?'\ud83c\udfaf':'\u25cb')+'</button></td>';
+    html+='<td style="padding:3px 4px;text-align:center;"><button class="btn btn-ghost btn-xs" onclick="dmERSetFK(\''+tnEsc+'\',\''+cnEsc+'\',\''+(fk||'').replace(/'/g,"\\'")+'\')" style="font-size:9px;padding:0 4px;color:'+(fk?'#6366F1':'var(--t4)')+';">'+(fk?fk:'\u2014')+'</button></td>';
     html+='<td style="padding:3px 4px;text-align:center;"><button class="btn btn-ghost btn-xs" onclick="dmToggleColNull(\''+tnEsc+'\',\''+cnEsc+'\','+(!nl)+')" style="font-size:9px;padding:0 4px;color:'+(nl?'#10B981':'var(--t4)')+';">'+(nl?'\u2714':'\u2718')+'</button></td>';
+    html+='<td style="padding:3px 4px;font-size:9px;color:var(--t3);max-width:80px;overflow:hidden;text-overflow:ellipsis;" title="'+cmt.replace(/"/g,'&quot;')+'">'+cmt.substring(0,20)+(cmt.length>20?'...':'')+'</td>';
     html+='<td style="padding:3px 4px;text-align:center;display:flex;gap:2px;justify-content:center;">';
     html+='<button class="btn btn-ghost btn-xs" onclick="dmEditColDialog(\''+tnEsc+'\',\''+cnEsc+'\')" style="font-size:9px;padding:0 3px;color:var(--t3);" title="Edit">\u270E</button>';
     html+='<button class="btn btn-ghost btn-xs" onclick="dmRemoveCol(\''+tnEsc+'\',\''+cnEsc+'\')" style="font-size:9px;padding:0 3px;color:#EF4444;" title="Remove">\u2715</button>';
@@ -4291,6 +5634,11 @@ function dmTableCard(tbl,role){
 // ── Generic Edit API Helper ─────────────────────────────────────────────────
 async function _dmEdit(edits, successMsg){
   if(!_dmModelId){toast('Generate a model first','terr');return;}
+  // Save current positions before API call overwrites er_json
+  if(_dmErJson&&_dmErJson.nodes){
+    if(typeof _dmSavedPositions==='undefined')window._dmSavedPositions={};
+    _dmErJson.nodes.forEach(n=>{if(n.x!==undefined&&n.y!==undefined)_dmSavedPositions[n.id]={x:n.x,y:n.y};});
+  }
   try{
     const r=await fetch('/api/v1/datamodel/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       model_id:_dmModelId, edits:edits,
@@ -4324,6 +5672,16 @@ async function dmRemoveRel(idx){
   if(!_dmModel||!_dmModel.relationships)return;
   const rel=_dmModel.relationships[idx];if(!rel)return;
   await _dmEdit({relationship_removes:[{from:rel.from,to:rel.to}]},'Relationship removed');
+}
+
+async function dmChangeRelType(idx, newType){
+  if(!_dmModel||!_dmModel.relationships)return;
+  const rel=_dmModel.relationships[idx];if(!rel)return;
+  if(rel.type===newType)return;
+  await _dmEdit({
+    relationship_removes:[{from:rel.from,to:rel.to}],
+    relationship_adds:[{from:rel.from,to:rel.to,type:newType}]
+  },'Cardinality changed to '+newType);
 }
 
 function dmShowAddRelDialog(){
@@ -4372,15 +5730,17 @@ function dmEditColDialog(tableName,colName){
   // Build a small inline dialog
   const dlgId='dmColEditDlg_'+tableName+'_'+colName;
   let existing=document.getElementById(dlgId);if(existing)existing.remove();
-  const types=['STRING','INT','BIGINT','DOUBLE','FLOAT','DECIMAL(18,2)','BOOLEAN','DATE','TIMESTAMP','ARRAY<STRING>','MAP<STRING,STRING>'];
+  const types=['STRING','INT','BIGINT','SMALLINT','TINYINT','DOUBLE','FLOAT','DECIMAL(18,2)','DECIMAL(10,2)','BOOLEAN','DATE','TIMESTAMP','BINARY','ARRAY<STRING>','MAP<STRING,STRING>'];
   const typeOpts=types.map(t=>'<option value="'+t+'"'+(col.data_type.toUpperCase()===t?' selected':'')+'>'+t+'</option>').join('');
   const card=document.getElementById('dmCard_'+tableName);
   if(!card)return;
   const html='<div id="'+dlgId+'" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;margin-top:4px;">'+
     '<div style="font-size:10px;font-weight:700;margin-bottom:4px;">Edit Column: '+colName+'</div>'+
     '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:end;">'+
-    '<div><label style="font-size:9px;">Name</label><input class="inp" id="'+dlgId+'_name" value="'+col.name+'" style="font-size:10px;width:120px;"></div>'+
-    '<div><label style="font-size:9px;">Type</label><select class="inp" id="'+dlgId+'_type" style="font-size:10px;width:130px;">'+typeOpts+'</select></div>'+
+    '<div><label style="font-size:9px;">Name</label><input class="inp" id="'+dlgId+'_name" value="'+col.name+'" style="font-size:10px;width:100px;"></div>'+
+    '<div><label style="font-size:9px;">Type</label><select class="inp" id="'+dlgId+'_type" style="font-size:10px;width:110px;">'+typeOpts+'</select></div>'+
+    '<div><label style="font-size:9px;">Comment</label><input class="inp" id="'+dlgId+'_comment" value="'+(col.comment||'').replace(/"/g,'&quot;')+'" placeholder="Column comment" style="font-size:10px;width:120px;"></div>'+
+    '<label style="font-size:9px;"><input type="checkbox" id="'+dlgId+'_unique" '+(col.is_unique?'checked':'')+'>UQ</label>'+
     '<button class="btn btn-primary btn-xs" onclick="dmSaveColEdit(\''+tableName.replace(/'/g,"\\'")+'\',\''+colName.replace(/'/g,"\\'")+'\',\''+dlgId+'\')">Save</button>'+
     '<button class="btn btn-ghost btn-xs" onclick="document.getElementById(\''+dlgId+'\').remove()">Cancel</button>'+
     '</div></div>';
@@ -4390,20 +5750,27 @@ function dmEditColDialog(tableName,colName){
 async function dmSaveColEdit(tableName,oldColName,dlgId){
   const newName=document.getElementById(dlgId+'_name').value.trim();
   const newType=document.getElementById(dlgId+'_type').value;
+  const newComment=document.getElementById(dlgId+'_comment').value.trim();
+  const newUnique=document.getElementById(dlgId+'_unique').checked;
   if(!newName){toast('Column name required','terr');return;}
   const edits={column_edits:[]};
   if(newName!==oldColName)edits.column_edits.push({table_name:tableName,column_name:oldColName,field:'name',value:newName});
-  // Get current type to compare
   const allTbls=[...(_dmModel.facts||[]),...(_dmModel.dimensions||[])];
   const tbl=allTbls.find(t=>t.table_name===tableName);
   const col=tbl?(tbl.columns||[]).find(c=>c.name===oldColName):null;
   if(col&&col.data_type.toUpperCase()!==newType)edits.column_edits.push({table_name:tableName,column_name:newName||oldColName,field:'data_type',value:newType});
+  if(col&&(col.comment||'')!==newComment)edits.column_edits.push({table_name:tableName,column_name:newName||oldColName,field:'comment',value:newComment});
+  if(col&&!!col.is_unique!==newUnique)edits.column_edits.push({table_name:tableName,column_name:newName||oldColName,field:'is_unique',value:newUnique});
   if(edits.column_edits.length===0){document.getElementById(dlgId).remove();return;}
   await _dmEdit(edits,'Column updated');
 }
 
 async function dmToggleColPK(tableName,colName,newVal){
   await _dmEdit({column_edits:[{table_name:tableName,column_name:colName,field:'is_pk',value:newVal}]},'PK toggled');
+}
+
+async function dmToggleColUnique(tableName,colName,newVal){
+  await _dmEdit({column_edits:[{table_name:tableName,column_name:colName,field:'is_unique',value:newVal}]},'Unique constraint toggled');
 }
 
 async function dmToggleColNull(tableName,colName,newVal){
@@ -4420,15 +5787,17 @@ function dmAddColDialog(tableName){
   const dlgId='dmAddColDlg_'+tableName;
   let existing=document.getElementById(dlgId);if(existing)existing.remove();
   const card=document.getElementById('dmCard_'+tableName);if(!card)return;
-  const types=['STRING','INT','BIGINT','DOUBLE','FLOAT','DECIMAL(18,2)','BOOLEAN','DATE','TIMESTAMP'];
+  const types=['STRING','INT','BIGINT','SMALLINT','TINYINT','DOUBLE','FLOAT','DECIMAL(18,2)','DECIMAL(10,2)','BOOLEAN','DATE','TIMESTAMP','BINARY'];
   const typeOpts=types.map(t=>'<option value="'+t+'">'+t+'</option>').join('');
   const html='<div id="'+dlgId+'" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;margin-top:4px;">'+
     '<div style="font-size:10px;font-weight:700;margin-bottom:4px;">Add Column to '+tableName+'</div>'+
     '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:end;">'+
-    '<div><label style="font-size:9px;">Name</label><input class="inp" id="'+dlgId+'_name" placeholder="column_name" style="font-size:10px;width:120px;"></div>'+
-    '<div><label style="font-size:9px;">Type</label><select class="inp" id="'+dlgId+'_type" style="font-size:10px;width:130px;">'+typeOpts+'</select></div>'+
-    '<div><label style="font-size:9px;">PK</label><input type="checkbox" id="'+dlgId+'_pk"></div>'+
-    '<div><label style="font-size:9px;">Nullable</label><input type="checkbox" id="'+dlgId+'_null" checked></div>'+
+    '<div><label style="font-size:9px;">Name</label><input class="inp" id="'+dlgId+'_name" placeholder="column_name" style="font-size:10px;width:100px;"></div>'+
+    '<div><label style="font-size:9px;">Type</label><select class="inp" id="'+dlgId+'_type" style="font-size:10px;width:110px;">'+typeOpts+'</select></div>'+
+    '<label style="font-size:9px;"><input type="checkbox" id="'+dlgId+'_pk"> PK</label>'+
+    '<label style="font-size:9px;"><input type="checkbox" id="'+dlgId+'_uq"> UQ</label>'+
+    '<label style="font-size:9px;"><input type="checkbox" id="'+dlgId+'_null" checked> Null</label>'+
+    '<div><label style="font-size:9px;">Comment</label><input class="inp" id="'+dlgId+'_comment" placeholder="" style="font-size:9px;width:90px;"></div>'+
     '<button class="btn btn-primary btn-xs" onclick="dmSaveNewCol(\''+tableName.replace(/'/g,"\\'")+'\',\''+dlgId+'\')">Add</button>'+
     '<button class="btn btn-ghost btn-xs" onclick="document.getElementById(\''+dlgId+'\').remove()">Cancel</button>'+
     '</div></div>';
@@ -4439,9 +5808,11 @@ async function dmSaveNewCol(tableName,dlgId){
   const name=document.getElementById(dlgId+'_name').value.trim();
   const dtype=document.getElementById(dlgId+'_type').value;
   const pk=document.getElementById(dlgId+'_pk').checked;
+  const uq=document.getElementById(dlgId+'_uq').checked;
   const nl=document.getElementById(dlgId+'_null').checked;
+  const comment=document.getElementById(dlgId+'_comment').value.trim();
   if(!name){toast('Column name required','terr');return;}
-  await _dmEdit({column_adds:[{table_name:tableName,column:{name:name,data_type:dtype,is_pk:pk,is_nullable:nl}}]},'Column "'+name+'" added');
+  await _dmEdit({column_adds:[{table_name:tableName,column:{name:name,data_type:dtype,is_pk:pk,is_unique:uq,is_nullable:nl,comment:comment}}]},'Column "'+name+'" added');
 }
 
 // ── Add New Table Dialog ────────────────────────────────────────────────────
@@ -4470,13 +5841,15 @@ function dmShowAddTableDialog(){
 let _dmNewTblColIdx=0;
 function dmNewTblAddColRow(){
   const idx=_dmNewTblColIdx++;
-  const types=['STRING','INT','BIGINT','DOUBLE','FLOAT','DECIMAL(18,2)','BOOLEAN','DATE','TIMESTAMP'];
+  const types=['STRING','INT','BIGINT','SMALLINT','TINYINT','DOUBLE','FLOAT','DECIMAL(18,2)','DECIMAL(10,2)','BOOLEAN','DATE','TIMESTAMP','BINARY'];
   const typeOpts=types.map(t=>'<option value="'+t+'">'+t+'</option>').join('');
   const html='<div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;" id="dmNewTblColRow_'+idx+'">'+
     '<input class="inp dmNewTblColName" placeholder="col_name" style="font-size:10px;flex:1;">'+
-    '<select class="inp dmNewTblColType" style="font-size:10px;width:120px;">'+typeOpts+'</select>'+
+    '<select class="inp dmNewTblColType" style="font-size:10px;width:100px;">'+typeOpts+'</select>'+
     '<label style="font-size:8px;white-space:nowrap;"><input type="checkbox" class="dmNewTblColPK"> PK</label>'+
+    '<label style="font-size:8px;white-space:nowrap;"><input type="checkbox" class="dmNewTblColUQ"> UQ</label>'+
     '<label style="font-size:8px;white-space:nowrap;"><input type="checkbox" class="dmNewTblColNull" checked> Null</label>'+
+    '<input class="inp dmNewTblColComment" placeholder="comment" style="font-size:9px;width:80px;">'+
     '<button class="btn btn-ghost btn-xs" onclick="document.getElementById(\'dmNewTblColRow_'+idx+'\').remove()" style="color:#EF4444;font-size:10px;padding:0 3px;">\u2715</button>'+
     '</div>';
   G('dmNewTblCols').insertAdjacentHTML('beforeend',html);
@@ -4496,7 +5869,9 @@ async function dmSaveNewTable(){
       name:cn,
       data_type:row.querySelector('.dmNewTblColType').value,
       is_pk:row.querySelector('.dmNewTblColPK').checked,
-      is_nullable:row.querySelector('.dmNewTblColNull').checked
+      is_unique:row.querySelector('.dmNewTblColUQ').checked,
+      is_nullable:row.querySelector('.dmNewTblColNull').checked,
+      comment:row.querySelector('.dmNewTblColComment').value.trim()
     });
   }
   if(columns.length===0){toast('Add at least one column','terr');return;}

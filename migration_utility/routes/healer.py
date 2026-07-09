@@ -4,9 +4,10 @@ import os, json, time, requests as req
 
 from .auth import login_required
 from log_config import get_logger
-from config_cache import get_config
+from config_cache import get_config, get_databricks_token, get_source_password
 from databricks_connector import DatabricksConnector
 import self_healing_bot as healer
+from keyvault_helper import is_masked
 
 logger = get_logger(__name__)
 healer_bp = Blueprint("healer", __name__, url_prefix="/api/v1")
@@ -19,10 +20,10 @@ def healer_health_check():
         d = request.get_json() or {}
         host = d.get("host", "").strip()
         token = d.get("token", "").strip()
-        if not host or not token:
+        if not host or not token or is_masked(token):
             cfg = get_config()
             host = host or cfg.get("databricks_host", "").rstrip("/")
-            token = token or cfg.get("databricks_token", "")
+            token = get_databricks_token()
         connector = DatabricksConnector(host, token) if host and token else None
         server = d.get("server", "").strip()
         if not server:
@@ -34,7 +35,7 @@ def healer_health_check():
                     "source_type": src_cfg.get("source_type", "sqlserver"),
                     "server": server, "database": src_cfg.get("database", ""),
                     "username": src_cfg.get("username", ""),
-                    "password": src_cfg.get("password", ""),
+                    "password": get_source_password(),
                 }
         source_config = {
             "source_type": d.get("source_type", "sqlserver"),
@@ -72,6 +73,11 @@ def healer_heal():
         action = d.get("action", "notify")
         host = d.get("host", "").strip()
         token = d.get("token", "").strip()
+        if not token or is_masked(token):
+            token = get_databricks_token()
+        if not host:
+            cfg = get_config()
+            host = cfg.get("databricks_host", "").rstrip("/")
         context = d.get("context", {})
         connector = DatabricksConnector(host, token) if host and token else None
         return jsonify({"success": True, **healer.execute_heal(action, connector=connector, context=context)})
@@ -87,6 +93,11 @@ def healer_monitor_start():
         run_id = d.get("run_id")
         host = d.get("host", "").strip()
         token = d.get("token", "").strip()
+        if not token or is_masked(token):
+            token = get_databricks_token()
+        if not host:
+            cfg = get_config()
+            host = cfg.get("databricks_host", "").rstrip("/")
         auto_heal = d.get("auto_heal", True)
         if not run_id:
             return jsonify({"success": False, "error": "run_id is required"}), 400
@@ -103,6 +114,11 @@ def healer_monitor_check(monitor_id):
         d = request.get_json() or {}
         host = d.get("host", "").strip()
         token = d.get("token", "").strip()
+        if not token or is_masked(token):
+            token = get_databricks_token()
+        if not host:
+            cfg = get_config()
+            host = cfg.get("databricks_host", "").rstrip("/")
         connector = DatabricksConnector(host, token) if host and token else None
         return jsonify(healer.check_monitor(monitor_id, connector=connector))
     except Exception as e:
@@ -121,7 +137,7 @@ def healer_recent_runs():
     try:
         cfg = get_config()
         host = cfg.get("databricks_host", "").rstrip("/")
-        token = cfg.get("databricks_token", "")
+        token = get_databricks_token()
         if not host or not token:
             return jsonify({"success": False, "error": "Databricks not configured"}), 400
         resp = req.get(

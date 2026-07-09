@@ -196,13 +196,18 @@ def profile_table_live(source_config: dict, table: str, schema: str = "dbo",
         TABLESAMPLE when row count exceeds max_distinct_scan.
     """
     from sql_pool import get_connection
+    from config_cache import get_source_password
+    from keyvault_helper import is_masked
 
     t0 = time.time()
+    _pw = source_config.get("password", "")
+    if not _pw or is_masked(_pw):
+        _pw = get_source_password()
     conn = get_connection(
         source_type=source_config.get("source_type", "sqlserver"),
         server=source_config["server"], database=source_config["database"],
         username=source_config.get("username", ""),
-        password=source_config.get("password", ""),
+        password=_pw,
     )
     cur = conn.cursor()
 
@@ -444,11 +449,16 @@ def list_profilable_tables(source_config: dict = None, mode: str = "demo") -> li
 
     if mode == "live" and source_config:
         from sql_pool import get_connection
+        from config_cache import get_source_password
+        from keyvault_helper import is_masked
+        _pw = source_config.get("password", "")
+        if not _pw or is_masked(_pw):
+            _pw = get_source_password()
         conn = get_connection(
             source_type=source_config.get("source_type", "sqlserver"),
             server=source_config["server"], database=source_config["database"],
             username=source_config.get("username", ""),
-            password=source_config.get("password", ""),
+            password=_pw,
         )
         cur = conn.cursor()
         cur.execute("""

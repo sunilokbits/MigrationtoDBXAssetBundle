@@ -5,7 +5,7 @@ from datetime import datetime
 
 from .auth import login_required
 from log_config import get_logger
-from config_cache import get_config
+from config_cache import get_config, get_databricks_token, get_source_password
 from sql_pool import build_sql_conn_str, get_connection
 
 # Ensure sibling modules are importable
@@ -55,10 +55,14 @@ def _expected_dbx_type(data_type):
 # ── Column fetchers ───────────────────────────────────────────────────────────
 def _fetch_source_columns(source_cfg, schema_name):
     """Return {table_name: [{column, data_type, is_nullable}, ...]} from SQL Server."""
+    password = source_cfg.get("password", "")
+    from keyvault_helper import is_masked
+    if not password or is_masked(password):
+        password = get_source_password()
     conn = get_connection(
         source_cfg.get("source_type", "sqlserver"),
         source_cfg["server"], source_cfg["database"],
-        source_cfg["username"], source_cfg["password"],
+        source_cfg["username"], password,
     )
     cursor = conn.cursor()
     cursor.execute("""
@@ -159,7 +163,7 @@ def compare_schemas():
 
     source_cfg = cfg.get("source", {})
     dbx_host = cfg.get("databricks_host", "").rstrip("/")
-    dbx_token = cfg.get("databricks_token", "")
+    dbx_token = get_databricks_token()
 
     if not source_cfg.get("server"):
         return jsonify({"tables": [], "error": "Source DB not configured. Please set source connection first."}), 400
@@ -302,7 +306,7 @@ def get_recon_data():
     cfg = get_config()
 
     dbx_host  = cfg.get("databricks_host", "").rstrip("/")
-    dbx_token = cfg.get("databricks_token", "")
+    dbx_token = get_databricks_token()
     recon_cfg = cfg.get("reconciliation", {})
     recon_cat = recon_cfg.get("catalog", "reconciliation")
     recon_sch = recon_cfg.get("schema", "hr")

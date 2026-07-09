@@ -43,6 +43,8 @@ app.config["COMPRESS_MIMETYPES"] = [
 app.config["COMPRESS_MIN_SIZE"] = 512
 Compress(app)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "migration-studio-secret-change-me")
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_HTTPONLY"] = True
 
 # Register all blueprints
 app.register_blueprint(auth_bp)         # /login, /logout, /api/v1/auth/*
@@ -114,4 +116,4 @@ if __name__ == "__main__":
     app.debug = True
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
         start_scheduler()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True, threaded=True)

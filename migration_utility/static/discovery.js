@@ -114,11 +114,15 @@ async function discRunScan(){
   }
 
   try {
+    const controller = new AbortController();
+    const tid = setTimeout(()=>controller.abort(), 120000);
     const r = await fetch('/api/v1/discovery/scan', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
+    clearTimeout(tid);
     const d = await r.json();
     if(!d.success) throw new Error(d.error || 'Scan failed');
 
@@ -223,6 +227,7 @@ let _discDonut = null;
 let _discBar   = null;
 
 function _discRenderCharts(){
+  if(typeof Chart === 'undefined') return;
   _discRenderDonut();
   _discRenderBar();
 }

@@ -1038,6 +1038,7 @@
                 <option value="eastus2">East US 2</option>
                 <option value="westus">West US</option>
                 <option value="westus2">West US 2</option>
+                <option value="westus3">West US 3</option>
                 <option value="westeurope">West Europe</option>
                 <option value="northeurope">North Europe</option>
                 <option value="southeastasia">Southeast Asia</option>
@@ -1054,12 +1055,7 @@
             <div class="cfg-grid">
               <div><label class="lbl">Host URL <span class="cfg-req">*</span></label><input class="inp" id="cfgDbrHost" placeholder="https://adb-xxx.azuredatabricks.net" oninput="cfgUpdateStatus()"></div>
               <div><label class="lbl">PAT Token <span class="cfg-req">*</span></label>
-                <div style="position:relative;">
-                  <input class="inp" id="cfgDbrToken" type="password" placeholder="dapi..." style="padding-right:36px;" oninput="cfgUpdateStatus()">
-                  <button type="button" class="cfg-eye-btn" onclick="cfgTogglePw('cfgDbrToken',this)" title="Show/hide token">
-                    <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                  </button>
-                </div>
+                <input class="inp" id="cfgDbrToken" type="password" placeholder="dapi..." oninput="cfgUpdateStatus()">
               </div>
             </div>
             <div style="margin-top:8px;display:flex;align-items:center;gap:10px;">
@@ -1170,12 +1166,7 @@
           <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;margin-top:10px;align-items:end;">
             <div><label class="lbl">Username</label><input class="inp" id="cfgSrcUser" placeholder="sqladminuser"></div>
             <div><label class="lbl">Password</label>
-              <div style="position:relative;">
-                <input class="inp" id="cfgSrcPass" type="password" placeholder="........" style="padding-right:36px;">
-                <button type="button" class="cfg-eye-btn" onclick="cfgTogglePw('cfgSrcPass',this)" title="Show/hide password">
-                  <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                </button>
-              </div>
+                <input class="inp" id="cfgSrcPass" type="password" placeholder="........">
             </div>
             <button class="btn btn-primary btn-xs" onclick="cfgTestSourceConn()" id="btnCfgTestSrc" style="height:36px;padding:0 16px;white-space:nowrap;">
               <svg viewBox="0 0 24 24" style="width:12px;height:12px;margin-right:4px;"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
@@ -1897,136 +1888,6 @@
 
     <!-- ═══════════ AI WORKFLOW MANAGER — PIPELINE STUDIO ═══════════ -->
     <div id="pane-wf-pipelines" class="tab-pane">
-
-        <!-- Page Header -->
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
-          <button class="btn btn-ghost btn-xs" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'))" style="padding:4px 8px;">
-            <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="15 18 9 12 15 6"/></svg>
-          </button>
-          <div style="font-size:11px;color:var(--t4);">
-            <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">AI Workflow Manager</a>
-            <span style="margin:0 4px;">/</span>
-            <span style="color:var(--t1);font-weight:600;">Pipeline Studio</span>
-          </div>
-          <button class="btn btn-ghost btn-xs" onclick="wfRefreshAll()" style="margin-left:auto;">
-            <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-            Refresh All
-          </button>
-        </div>
-
-        <!-- Dynamic Interactive Medallion Diagram -->
-        <div class="card">
-          <div class="card-hd">
-            <div class="card-ico" style="color:var(--blue);"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></div>
-            <div class="card-title">Dynamic Medallion Architecture — Live Data Flow</div>
-            <button class="btn btn-ghost btn-xs" onclick="wfRefreshAll()" style="margin-left:auto;">
-              <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-              Refresh
-            </button>
-          </div>
-          <!-- Architecture Pipeline -->
-          <div id="wfMedallionDiagram" style="display:flex;align-items:center;justify-content:center;gap:0;overflow-x:auto;padding:20px 8px;">
-            <!-- SOURCE LAYER -->
-            <div class="mdl-layer" onclick="wfToggleLayerDetail('source')" id="mdlLayerSource">
-              <div class="mdl-layer-inner" style="background:linear-gradient(135deg,#1e40af,#3b82f6);box-shadow:0 4px 16px rgba(59,130,246,.3);">
-                <div style="font-size:24px;margin-bottom:6px;">🗄️</div>
-                <div style="font-weight:700;font-size:13px;">SQL Source</div>
-                <div style="font-size:10px;opacity:.8;margin-top:2px;">SQL Server / Azure SQL</div>
-                <div class="mdl-count" id="mdlSrcCount">0 tables</div>
-              </div>
-            </div>
-
-            <!-- Arrow: Source → Landing -->
-            <div class="mdl-arrow" id="mdlArrow1">
-              <div class="mdl-arrow-label">EXTRACT</div>
-              <div class="mdl-arrow-line" style="background:linear-gradient(90deg,#3b82f6,#f97316);">
-                <div class="mdl-arrow-tip" style="color:#f97316;"></div>
-              </div>
-              <div class="mdl-arrow-job">SqlExtract_*</div>
-              <div style="font-size:8px;color:var(--t4);margin-top:1px;" id="mdlArrow1Count">0 jobs</div>
-            </div>
-
-            <!-- LANDING LAYER -->
-            <div class="mdl-layer" onclick="wfToggleLayerDetail('landing')" id="mdlLayerLanding">
-              <div class="mdl-layer-inner" style="background:linear-gradient(135deg,#c2410c,#f97316);box-shadow:0 4px 16px rgba(249,115,22,.3);">
-                <div style="font-size:24px;margin-bottom:6px;">📥</div>
-                <div style="font-weight:700;font-size:13px;">Landing Zone</div>
-                <div style="font-size:10px;opacity:.8;margin-top:2px;">Raw Parquet / CSV</div>
-                <div class="mdl-count" id="mdlLandingCount">0 tables</div>
-              </div>
-            </div>
-
-            <!-- Arrow: Landing → Bronze -->
-            <div class="mdl-arrow" id="mdlArrow2">
-              <div class="mdl-arrow-label">INGEST</div>
-              <div class="mdl-arrow-line" style="background:linear-gradient(90deg,#f97316,#a16207);">
-                <div class="mdl-arrow-tip" style="color:#a16207;"></div>
-              </div>
-              <div class="mdl-arrow-job">LandingToBronze_*</div>
-              <div style="font-size:8px;color:var(--t4);margin-top:1px;" id="mdlArrow2Count">0 jobs</div>
-            </div>
-
-            <!-- BRONZE LAYER -->
-            <div class="mdl-layer" onclick="wfToggleLayerDetail('bronze')" id="mdlLayerBronze">
-              <div class="mdl-layer-inner" style="background:linear-gradient(135deg,#92400e,#a16207);box-shadow:0 4px 16px rgba(161,98,7,.3);">
-                <div style="font-size:24px;margin-bottom:6px;">🥉</div>
-                <div style="font-weight:700;font-size:13px;">Bronze Layer</div>
-                <div style="font-size:10px;opacity:.8;margin-top:2px;">Delta — Schema Enforced</div>
-                <div class="mdl-count" id="mdlBronzeCount">0 tables</div>
-              </div>
-            </div>
-
-            <!-- Arrow: Bronze → Silver -->
-            <div class="mdl-arrow" id="mdlArrow3">
-              <div class="mdl-arrow-label">CLEANSE</div>
-              <div class="mdl-arrow-line" style="background:linear-gradient(90deg,#a16207,#6b7280);">
-                <div class="mdl-arrow-tip" style="color:#6b7280;"></div>
-              </div>
-              <div class="mdl-arrow-job">BronzeToSilver_*</div>
-              <div style="font-size:8px;color:var(--t4);margin-top:1px;" id="mdlArrow3Count">0 jobs</div>
-            </div>
-
-            <!-- SILVER LAYER -->
-            <div class="mdl-layer" onclick="wfToggleLayerDetail('silver')" id="mdlLayerSilver">
-              <div class="mdl-layer-inner" style="background:linear-gradient(135deg,#374151,#6b7280);box-shadow:0 4px 16px rgba(107,114,128,.3);">
-                <div style="font-size:24px;margin-bottom:6px;">🥈</div>
-                <div style="font-weight:700;font-size:13px;">Silver Layer</div>
-                <div style="font-size:10px;opacity:.8;margin-top:2px;">Delta — Cleansed & Conformed</div>
-                <div class="mdl-count" id="mdlSilverCount">0 tables</div>
-              </div>
-            </div>
-
-            <!-- Arrow: → Databricks -->
-            <div class="mdl-arrow" id="mdlArrow4">
-              <div class="mdl-arrow-label">SERVE</div>
-              <div class="mdl-arrow-line" style="background:linear-gradient(90deg,#6b7280,#FF3621);">
-                <div class="mdl-arrow-tip" style="color:#FF3621;"></div>
-              </div>
-              <div class="mdl-arrow-job">Unity Catalog</div>
-            </div>
-
-            <!-- DATABRICKS TARGET -->
-            <div class="mdl-layer" id="mdlLayerTarget">
-              <div class="mdl-layer-inner" style="background:var(--accent-gradient);box-shadow:0 4px 16px rgba(255,54,33,.3);">
-                <div style="font-size:24px;margin-bottom:6px;">⚡</div>
-                <div style="font-weight:700;font-size:13px;">Databricks</div>
-                <div style="font-size:10px;opacity:.8;margin-top:2px;">Unity Catalog / Delta Lake</div>
-                <div class="mdl-count">Production Ready</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Layer Detail Panel (hidden, shows on click) -->
-          <div id="mdlDetailPanel" class="mdl-detail">
-            <div class="mdl-detail-hd">
-              <div class="mdl-detail-title" id="mdlDetailTitle">Layer Details</div>
-              <button class="mdl-detail-close" onclick="wfCloseLayerDetail()">&times;</button>
-            </div>
-            <div id="mdlDetailContent" class="mdl-detail-jobs">
-              <div style="color:var(--t4);text-align:center;padding:12px;">Click a layer above to see pipeline details</div>
-            </div>
-          </div>
-        </div>
 
         <!-- Data Source — uses saved config from Settings -->
         <div class="card">
@@ -3627,23 +3488,44 @@
       <div class="card-title">Select Tables for Data Model</div>
       <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
         <span id="dmSelBadge" style="display:none;font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(245,158,11,.15);color:#F59E0B;font-weight:700;">0 selected</span>
-        <button class="btn btn-ghost btn-xs" onclick="dmLoadTables()" title="Refresh Tables">
+        <button class="btn btn-ghost btn-xs" onclick="dmLoadTablesMulti()" title="Refresh Tables">
           <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> Refresh
         </button>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-      <div>
-        <label style="font-size:11px;font-weight:600;color:var(--t3);margin-bottom:4px;display:block;">Catalog</label>
-        <select class="inp" id="dmCatalog" onchange="dmOnCatalogChange()" style="width:100%;font-size:12px;">
-          <option value="">— Select catalog —</option>
-        </select>
+    <!-- Multi-Catalog/Schema Selector -->
+    <div style="margin-bottom:12px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <span style="font-size:11px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.05em;">📂 Sources</span>
+        <span style="font-size:10px;color:var(--t4);">— select tables from multiple catalogs & schemas</span>
+        <button class="btn btn-ghost btn-xs" onclick="dmToggleMultiMode()" id="dmMultiModeBtn" style="margin-left:auto;font-size:10px;padding:3px 8px;border:1px solid #8B5CF6;color:#8B5CF6;border-radius:6px;">Multi-Source Mode</button>
       </div>
-      <div>
-        <label style="font-size:11px;font-weight:600;color:var(--t3);margin-bottom:4px;display:block;">Schema</label>
-        <select class="inp" id="dmSchema" onchange="dmLoadTables()" style="width:100%;font-size:12px;">
-          <option value="">— Select schema —</option>
-        </select>
+      <!-- Single mode (default) -->
+      <div id="dmSingleSourcePanel" style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end;">
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--t3);margin-bottom:4px;display:block;">Catalog</label>
+          <select class="inp" id="dmCatalog" onchange="dmOnCatalogChange()" style="width:100%;font-size:12px;">
+            <option value="">— Select catalog —</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--t3);margin-bottom:4px;display:block;">Schema</label>
+          <select class="inp" id="dmSchema" onchange="dmLoadTables()" style="width:100%;font-size:12px;">
+            <option value="">— Select schema —</option>
+          </select>
+        </div>
+        <button class="btn btn-ghost btn-xs" onclick="dmAddSource()" title="Add this catalog.schema as source" style="font-size:10px;padding:6px 10px;border:1px solid #10B981;color:#10B981;border-radius:6px;height:34px;">+ Add</button>
+      </div>
+      <!-- Multi-source mode panel -->
+      <div id="dmMultiSourcePanel" style="display:none;margin-top:8px;">
+        <div id="dmSourceTags" style="display:flex;flex-wrap:wrap;gap:6px;min-height:32px;padding:8px;border:1px dashed var(--border);border-radius:8px;background:var(--bg1);margin-bottom:8px;">
+          <span style="font-size:10px;color:var(--t4);padding:4px;">No sources added yet. Use dropdowns above to add catalog.schema pairs.</span>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button class="btn btn-ghost btn-xs" onclick="dmLoadTablesMulti()" style="font-size:10px;padding:4px 10px;border:1px solid #3B82F6;color:#3B82F6;">🔄 Load All Tables</button>
+          <button class="btn btn-ghost btn-xs" onclick="dmClearSources()" style="font-size:10px;padding:4px 10px;color:#EF4444;">✕ Clear All</button>
+          <span id="dmMultiSourceCount" style="font-size:10px;color:var(--t4);margin-left:auto;">0 sources</span>
+        </div>
       </div>
     </div>
     <!-- Search + quick-select toolbar -->
@@ -3720,22 +3602,85 @@
     </div>
 
     <!-- ER Diagram Sub-pane -->
-    <div id="dmSubER" class="card" style="min-height:500px;position:relative;overflow:hidden;">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+    <div id="dmSubER" class="card" style="min-height:800px;position:relative;overflow:auto;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
         <span style="font-size:12px;font-weight:700;color:var(--t1);">Entity Relationship Diagram</span>
         <span id="dmSchemaTypeBadge" style="font-size:10px;padding:2px 10px;border-radius:12px;font-weight:700;background:rgba(245,158,11,.15);color:#F59E0B;">—</span>
-        <div style="margin-left:auto;display:flex;gap:6px;">
+        <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn btn-ghost btn-xs" onclick="dmDetectChanges()" title="Detect DDL drift from live source" style="font-size:10px;border:1px solid #8B5CF6;color:#8B5CF6;border-radius:6px;">🔍 Detect Changes</button>
+          <button class="btn btn-ghost btn-xs" onclick="dmSuggestRelationships()" title="AI-suggest missing relationships" style="font-size:10px;border:1px solid #F59E0B;color:#F59E0B;border-radius:6px;">🧠 Suggest Relations</button>
+          <button class="btn btn-ghost btn-xs" onclick="dmLoadViews()" title="Load views from Databricks" style="font-size:10px;border:1px solid #F59E0B;color:#F59E0B;border-radius:6px;">👁 Load Views</button>
+          <button class="btn btn-ghost btn-xs" onclick="dmShowCreateViewDialog()" title="Create a new view" style="font-size:10px;border:1px solid #10B981;color:#10B981;border-radius:6px;">+ New View</button>
+          <button class="btn btn-ghost btn-xs" onclick="dmShowAddTableDialog()" title="Add a new table" style="font-size:10px;border:1px solid #3B82F6;color:#3B82F6;border-radius:6px;">+ New Table</button>
+          <span style="border-left:1px solid var(--border);margin:0 2px;"></span>
+          <button class="btn btn-ghost btn-xs" onclick="dmToggleNotation()" id="dmNotationBtn" title="Toggle Crow's Foot / Arrow notation" style="font-size:10px;">⟁ Crow's Foot</button>
+          <button class="btn btn-ghost btn-xs" onclick="dmAutoLayout()" title="Auto-arrange layout">⊞ Layout</button>
+          <button class="btn btn-ghost btn-xs" onclick="dmFitView()" title="Fit to view">⊡ Fit</button>
           <button class="btn btn-ghost btn-xs" onclick="dmZoom(1.2)" title="Zoom In">+</button>
           <button class="btn btn-ghost btn-xs" onclick="dmZoom(0.8)" title="Zoom Out">−</button>
           <button class="btn btn-ghost btn-xs" onclick="dmZoom(0)" title="Reset">⌂</button>
         </div>
       </div>
-      <svg id="dmErSvg" width="100%" height="460" style="background:#FAFBFC;border:1px solid var(--border);border-radius:8px;cursor:grab;">
+      <!-- Changes Alert Banner (hidden by default) -->
+      <div id="dmChangesAlert" style="display:none;background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(239,68,68,.05));border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+          <span style="font-size:12px;">⚠️</span>
+          <span style="font-size:11px;font-weight:700;color:#B45309;">Schema Drift Detected</span>
+          <span id="dmChangeCount" style="font-size:10px;padding:1px 8px;border-radius:10px;background:rgba(239,68,68,.12);color:#DC2626;font-weight:700;">0</span>
+          <button class="btn btn-ghost btn-xs" onclick="dmApplyDetectedChanges()" style="margin-left:auto;font-size:10px;border:1px solid #10B981;color:#10B981;border-radius:6px;">✓ Apply All</button>
+          <button class="btn btn-ghost btn-xs" onclick="G('dmChangesAlert').style.display='none'" style="font-size:10px;color:var(--t4);">✕ Dismiss</button>
+        </div>
+        <div id="dmChangesList" style="font-size:10px;color:var(--t3);max-height:80px;overflow-y:auto;"></div>
+      </div>
+      <!-- Suggestions Panel (hidden by default) -->
+      <div id="dmSuggestPanel" style="display:none;background:linear-gradient(135deg,rgba(139,92,246,.05),rgba(59,130,246,.05));border:1px solid rgba(139,92,246,.2);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+          <span style="font-size:12px;">🧠</span>
+          <span style="font-size:11px;font-weight:700;color:#6D28D9;">Suggested Relationships</span>
+          <button class="btn btn-ghost btn-xs" onclick="dmAcceptAllSuggestions()" style="margin-left:auto;font-size:10px;border:1px solid #10B981;color:#10B981;border-radius:6px;">✓ Accept All</button>
+          <button class="btn btn-ghost btn-xs" onclick="G('dmSuggestPanel').style.display='none'" style="font-size:10px;color:var(--t4);">✕ Dismiss</button>
+        </div>
+        <div id="dmSuggestList" style="font-size:10px;color:var(--t3);max-height:120px;overflow-y:auto;"></div>
+      </div>
+      <svg id="dmErSvg" width="2400" height="900" style="min-width:100%;background:#F8FAFC;border:1px solid #CBD5E1;border-radius:4px;cursor:grab;">
         <defs>
-          <marker id="dmArrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#94A3B8"/></marker>
+          <marker id="dmArrow" markerWidth="12" markerHeight="8" refX="12" refY="4" orient="auto"><polygon points="0 0, 12 4, 0 8" fill="#475569"/></marker>
+          <marker id="dmCrowMany" markerWidth="14" markerHeight="14" refX="14" refY="7" orient="auto">
+            <line x1="0" y1="7" x2="14" y2="0" stroke="#334155" stroke-width="2"/>
+            <line x1="0" y1="7" x2="14" y2="7" stroke="#334155" stroke-width="2"/>
+            <line x1="0" y1="7" x2="14" y2="14" stroke="#334155" stroke-width="2"/>
+          </marker>
+          <marker id="dmCrowOne" markerWidth="14" markerHeight="14" refX="14" refY="7" orient="auto">
+            <line x1="10" y1="0" x2="10" y2="14" stroke="#334155" stroke-width="2"/>
+            <line x1="0" y1="7" x2="14" y2="7" stroke="#334155" stroke-width="2"/>
+          </marker>
+          <marker id="dmCrowManyFill" markerWidth="16" markerHeight="16" refX="0" refY="8" orient="auto">
+            <line x1="16" y1="8" x2="0" y2="0" stroke="#334155" stroke-width="2"/>
+            <line x1="16" y1="8" x2="0" y2="8" stroke="#334155" stroke-width="2"/>
+            <line x1="16" y1="8" x2="0" y2="16" stroke="#334155" stroke-width="2"/>
+          </marker>
+          <marker id="dmCrowOneFill" markerWidth="16" markerHeight="16" refX="0" refY="8" orient="auto">
+            <line x1="4" y1="0" x2="4" y2="16" stroke="#334155" stroke-width="2"/>
+            <line x1="0" y1="8" x2="16" y2="8" stroke="#334155" stroke-width="2"/>
+          </marker>
         </defs>
         <g id="dmErGroup"></g>
       </svg>
+      <!-- Minimap & Legend -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;padding:0 4px;">
+        <div style="display:flex;gap:12px;font-size:10px;color:var(--t3);">
+          <span><span style="display:inline-block;width:12px;height:8px;background:#BE185D;border-radius:2px;vertical-align:middle;"></span> Fact</span>
+          <span><span style="display:inline-block;width:12px;height:8px;background:#047857;border-radius:2px;vertical-align:middle;"></span> Dimension</span>
+          <span><span style="display:inline-block;width:12px;height:8px;background:#D97706;border-radius:2px;vertical-align:middle;"></span> View</span>
+          <span><b style="color:#7C3AED;font-family:Consolas,monospace;">P</b> PK</span>
+          <span><b style="color:#059669;font-family:Consolas,monospace;">F</b> FK</span>
+          <span><b style="color:#DC2626;font-family:Consolas,monospace;">*</b> NOT NULL</span>
+          <span><b style="color:#4F46E5;font-family:Consolas,monospace;">U</b> Unique</span>
+          <span>&#x27c1; Many</span>
+          <span>| One</span>
+        </div>
+        <div style="font-size:10px;color:var(--t4);">Double-click or &#x25BC; to edit &bull; Right-click for menu &bull; Drag to move &bull; Scroll to zoom</div>
+      </div>
     </div>
 
     <!-- Table Details Sub-pane (hidden) -->
@@ -3743,7 +3688,9 @@
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
         <span style="font-size:12px;font-weight:700;color:var(--t1);">Facts & Dimensions</span>
         <span style="font-size:10px;color:var(--t3);">Click role badge to toggle Fact ↔ Dimension</span>
-        <button class="btn btn-ghost btn-xs" onclick="dmShowAddTableDialog()" style="margin-left:auto;font-size:10px;color:#F59E0B;border:1px solid #F59E0B44;border-radius:6px;padding:2px 8px;">+ Add New Table</button>
+        <button class="btn btn-ghost btn-xs" onclick="dmShowAddTableDialog()" style="margin-left:auto;font-size:10px;color:#3B82F6;border:1px solid #3B82F644;border-radius:6px;padding:2px 8px;">+ Add New Table</button>
+        <button class="btn btn-ghost btn-xs" onclick="dmShowCreateViewDialog()" style="font-size:10px;color:#F59E0B;border:1px solid #F59E0B44;border-radius:6px;padding:2px 8px;">+ Create View</button>
+        <button class="btn btn-ghost btn-xs" onclick="dmLoadViews()" style="font-size:10px;color:#F59E0B;border:1px solid #F59E0B44;border-radius:6px;padding:2px 8px;">👁 Load Views</button>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
         <!-- Facts -->
@@ -3766,18 +3713,31 @@
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
           <span style="font-size:11px;font-weight:700;color:var(--t1);text-transform:uppercase;letter-spacing:.08em;">Relationships</span>
           <button class="btn btn-ghost btn-xs" onclick="dmShowAddRelDialog()" style="font-size:10px;">+ Add Relationship</button>
+          <button class="btn btn-ghost btn-xs" onclick="dmSuggestRelationships()" style="font-size:10px;color:#8B5CF6;">🧠 AI Suggest</button>
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:11px;">
           <thead>
             <tr style="background:var(--bg2);">
               <th style="padding:6px 10px;text-align:left;font-weight:600;color:var(--t3);">From</th>
               <th style="padding:6px 10px;text-align:left;font-weight:600;color:var(--t3);">To</th>
-              <th style="padding:6px 10px;text-align:center;font-weight:600;color:var(--t3);">Type</th>
+              <th style="padding:6px 10px;text-align:center;font-weight:600;color:var(--t3);">Cardinality</th>
+              <th style="padding:6px 10px;text-align:center;font-weight:600;color:var(--t3);">FK Column</th>
               <th style="padding:6px 10px;text-align:center;font-weight:600;color:var(--t3);">Actions</th>
             </tr>
           </thead>
           <tbody id="dmRelsBody"></tbody>
         </table>
+      </div>
+      <!-- Views Section -->
+      <div style="margin-top:16px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span style="font-size:11px;font-weight:700;color:#F59E0B;text-transform:uppercase;letter-spacing:.08em;">👁 Views</span>
+          <button class="btn btn-ghost btn-xs" onclick="dmShowCreateViewDialog()" style="font-size:10px;">+ Create View</button>
+          <button class="btn btn-ghost btn-xs" onclick="dmLoadViews()" style="font-size:10px;color:#F59E0B;">Load from DB</button>
+        </div>
+        <div id="dmViewsList" style="display:flex;flex-direction:column;gap:6px;">
+          <div style="font-size:10px;color:var(--t4);padding:8px;">No views in model. Use "Load Views" or "Create View" to add.</div>
+        </div>
       </div>
     </div>
 
@@ -4097,18 +4057,19 @@
 <!-- ════════════════════════════════════════════════════════════════════════════
      JAVASCRIPT — all logic unchanged, just the file
      ════════════════════════════════════════════════════════════════════════════ -->
-<script src="/static/main.js?v=18"></script>
+<script src="/static/main.js?v=19"></script>
+<script src="/static/discovery.js?v=19"></script>
 
 <!-- Post-diagnostic: runs AFTER the main script to verify & add fallback listeners -->
-<script src="/static/charts.js?v=18"></script>
+<script src="/static/charts.js?v=19"></script>
 
 <!-- D3.js for Discovery Dependency Graph -->
-<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js" defer onerror="console.warn('D3 CDN failed to load')"></script>
 <!-- Chart.js for Reports & Analytics -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
-<script src="/static/reports.js?v=18"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer onerror="console.warn('Chart.js CDN failed to load')"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js" defer onerror="console.warn('jsPDF CDN failed to load')"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js" defer onerror="console.warn('jsPDF autotable CDN failed to load')"></script>
+<script src="/static/reports.js?v=19"></script>
 
 <!-- ═══════ ACCELERATOR VIDEO MODAL ═══════ -->
 <div class="vid-overlay" id="vidOverlay" onclick="if(event.target===this)closeAcceleratorVideo()">
@@ -4142,8 +4103,7 @@
     </div>
   </div>
 </div>
-<script src="/static/supplementary.js?v=18"></script>
-<script src="/static/discovery.js?v=18"></script>
+<script src="/static/supplementary.js?v=19"></script>
 
 <!-- ═══════════ ACCESSIBILITY INIT ═══════════ -->
 <script>

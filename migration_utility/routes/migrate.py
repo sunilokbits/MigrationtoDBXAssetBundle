@@ -7,6 +7,8 @@ from .auth import login_required
 from log_config import get_logger
 from data_migrator import DataMigrator, MIGRATION_JOBS, _build_conn_str
 from unity_catalog_executor import UnityCatalogExecutor
+from config_cache import get_source_password, get_databricks_token
+from keyvault_helper import is_masked
 import persistence as db
 
 logger = get_logger(__name__)
@@ -23,6 +25,8 @@ def migrate_list_tables():
         database = d.get("database", "").strip()
         username = d.get("username", "").strip()
         password = d.get("password", "")
+        if not password or is_masked(password):
+            password = get_source_password()
         if not all([server, database, username]):
             return jsonify({"success": False, "error": "server, database and username required"}), 400
         conn_str = _build_conn_str(source_type, server, database, username, password)
@@ -43,6 +47,8 @@ def migrate_describe_table():
         database = d.get("database", "").strip()
         username = d.get("username", "").strip()
         password = d.get("password", "")
+        if not password or is_masked(password):
+            password = get_source_password()
         schema = d.get("schema", "dbo").strip()
         table = d.get("table", "").strip()
         conn_str = _build_conn_str(source_type, server, database, username, password)
@@ -60,6 +66,8 @@ def migrate_list_warehouses():
         d = request.get_json()
         host = d.get("host", "").strip()
         token = d.get("token", "").strip()
+        if not token or is_masked(token):
+            token = get_databricks_token()
         if not host or not token:
             return jsonify({"success": False, "error": "host and token required"}), 400
         uc = UnityCatalogExecutor(host, token)
@@ -78,8 +86,12 @@ def migrate_start():
         database = d.get("database", "").strip()
         username = d.get("username", "").strip()
         password = d.get("password", "")
+        if not password or is_masked(password):
+            password = get_source_password()
         dbx_host = (d.get("host") or d.get("dbx_host") or "").strip()
         dbx_token = (d.get("token") or d.get("dbx_token") or "").strip()
+        if not dbx_token or is_masked(dbx_token):
+            dbx_token = get_databricks_token()
         catalog = d.get("catalog", "main").strip()
         schema = d.get("schema", "default").strip()
         warehouse_id = d.get("warehouse_id", "").strip()
