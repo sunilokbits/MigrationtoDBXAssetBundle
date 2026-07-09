@@ -23,6 +23,7 @@ _secret_cache: dict[str, str] = {}
 # Well-known secret names
 SOURCE_PASSWORD_SECRET = "source-Azuresql-password"
 DATABRICKS_TOKEN_SECRET = "databricks-token"
+DEVOPS_TOKEN_SECRET = "devops-token"
 
 MASKED_VALUE = "xxxxxxxxxxxxxxxxx"
 
@@ -171,6 +172,11 @@ def get_source_password() -> str:
 def get_databricks_token() -> str:
     """Get the Databricks PAT token from Key Vault."""
     return get_secret(DATABRICKS_TOKEN_SECRET)
+
+
+def get_devops_token() -> str:
+    """Get the Azure DevOps PAT token from Key Vault."""
+    return get_secret(DEVOPS_TOKEN_SECRET)
 
 
 def clear_cache():

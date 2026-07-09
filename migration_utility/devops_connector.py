@@ -4,12 +4,13 @@ Uses the Azure DevOps REST API (Git Pushes) to atomically commit files
 (DDL .sql + ER diagram PNG + optional model JSON) to a branch.
 """
 import base64
+from urllib.parse import quote
 import requests
 from log_config import get_logger
 
 logger = get_logger(__name__)
 
-_API_VERSION = "7.1-preview.1"
+_API_VERSION = "7.0"
 
 
 def _headers(pat: str) -> dict:
@@ -21,15 +22,43 @@ def _headers(pat: str) -> dict:
     }
 
 
-def _api_url(org: str, project: str, repo: str, path: str) -> str:
-    """Build Azure DevOps REST API URL."""
+def _parse_org(org: str) -> str:
+    """Normalise org input — strip /_git/... or /project/... suffixes.
+
+    Users may paste a full clone URL like:
+      https://dev.azure.com/EMEA-SalesOps/AI%20Accelerator/_git/AI%20Accelerator
+    We only need the org base:  https://dev.azure.com/EMEA-SalesOps
+    """
     org = org.strip().rstrip("/")
-    # Support full URL or just org name
-    if org.startswith("http"):
-        base = org.rstrip("/")
-    else:
-        base = f"https://dev.azure.com/{org}"
-    return f"{base}/{project}/_apis/git/repositories/{repo}/{path}?api-version={_API_VERSION}"
+    if not org.startswith("http"):
+        return f"https://dev.azure.com/{org}"
+    # Strip anything after the org name in the URL
+    # Pattern: https://dev.azure.com/{org}  or  https://{org}.visualstudio.com
+    if "dev.azure.com" in org or "azure.com" in org:
+        # Remove path segments after org name: /_git/*, /project/*
+        parts = org.split("/")
+        # https://dev.azure.com/OrgName  → 4 parts minimum
+        # Keep only scheme + host + org
+        if len(parts) > 4:
+            org = "/".join(parts[:4])
+    elif "visualstudio.com" in org:
+        # https://org.visualstudio.com/...  → keep scheme + host only
+        parts = org.split("/")
+        if len(parts) > 3:
+            org = "/".join(parts[:3])
+    return org
+
+
+def _api_url(org: str, project: str, repo: str, path: str) -> str:
+    """Build Azure DevOps REST API URL with properly encoded components."""
+    base = _parse_org(org)
+    # URL-encode project and repo names (spaces, special chars)
+    enc_project = quote(project.strip(), safe="")
+    enc_repo = quote(repo.strip(), safe="")
+    enc_path = quote(path.strip(), safe="/") if path else ""
+    if enc_path:
+        return f"{base}/{enc_project}/_apis/git/repositories/{enc_repo}/{enc_path}?api-version={_API_VERSION}"
+    return f"{base}/{enc_project}/_apis/git/repositories/{enc_repo}?api-version={_API_VERSION}"
 
 
 def _get_branch_ref(org: str, project: str, repo: str, branch: str, pat: str) -> str | None:
@@ -49,8 +78,6 @@ def _get_branch_ref(org: str, project: str, repo: str, branch: str, pat: str) ->
 def _get_default_branch_ref(org: str, project: str, repo: str, pat: str) -> tuple[str, str]:
     """Get the default branch name and objectId."""
     url = _api_url(org, project, repo, "")
-    # Remove trailing path separator
-    url = url.replace("//", "/").replace("/?", "?")
     resp = requests.get(url, headers=_headers(pat), timeout=30)
     if resp.status_code != 200:
         raise RuntimeError(f"Cannot access repo: HTTP {resp.status_code} — {resp.text[:200]}")
@@ -169,3 +196,31 @@ def push_files_to_repo(
         error_msg = resp.text[:500]
         logger.error("Push failed: HTTP %d — %s", resp.status_code, error_msg)
         raise RuntimeError(f"Push failed (HTTP {resp.status_code}): {error_msg}")
+
+
+def test_connection(org: str, project: str, repo: str, pat: str) -> dict:
+    """Test connectivity to an Azure DevOps repo (read-only, no push).
+
+    Returns dict with success, repo_name, default_branch.
+    """
+    if not org or not project or not repo or not pat:
+        raise ValueError("org, project, repo, and pat are all required")
+
+    url = _api_url(org, project, repo, "")
+    resp = requests.get(url, headers=_headers(pat), timeout=30)
+
+    if resp.status_code == 203:
+        raise RuntimeError("Authentication failed — PAT is invalid or expired.")
+    if resp.status_code == 401:
+        raise RuntimeError("Authentication failed — PAT is invalid or expired (401).")
+    if resp.status_code == 403:
+        raise RuntimeError("Access denied — PAT does not have permission to this repo (403).")
+    if resp.status_code == 404:
+        raise RuntimeError(f"Repository '{repo}' not found in project '{project}'. Check org/project/repo names.")
+    if resp.status_code != 200:
+        raise RuntimeError(f"Cannot access repo: HTTP {resp.status_code} — {resp.text[:200]}")
+
+    data = resp.json()
+    repo_name = data.get("name", repo)
+    default_branch = data.get("defaultBranch", "refs/heads/main").replace("refs/heads/", "")
+    return {"success": True, "repo_name": repo_name, "default_branch": default_branch}

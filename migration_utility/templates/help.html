@@ -385,7 +385,7 @@ body{font-family:var(--font);font-size:15px;line-height:1.7;color:var(--t1);back
     </div>
   </div>
   <div class="section-body">
-    <p>The heart of the migration. This module connects to your SQL Server source, discovers Stored Procedures, Views, and UDFs, and converts them to Databricks-compatible PySpark notebooks using AI-powered transformation.</p>
+    <p>The heart of the migration. This module connects to your SQL Server source, discovers Stored Procedures, Views, and UDFs, and converts them to Databricks-compatible PySpark notebooks using automated transformation.</p>
 
     <div class="img-placeholder">
       <div class="img-inner">
@@ -413,7 +413,7 @@ body{font-family:var(--font);font-size:15px;line-height:1.7;color:var(--t1);back
         <p>Automatic discovery of SPs, Views, and UDFs with counts displayed in KPI stat pills.</p>
       </div>
       <div class="feat-card">
-        <h4><span class="feat-icon">🤖</span> AI Conversion</h4>
+        <h4><span class="feat-icon">🤖</span> Conversion</h4>
         <p>Intelligent SQL-to-PySpark conversion handling joins, CTEs, temp tables, cursors, and complex patterns.</p>
       </div>
       <div class="feat-card">
@@ -831,26 +831,26 @@ body{font-family:var(--font);font-size:15px;line-height:1.7;color:var(--t1);back
     </div>
   </div>
   <div class="section-body">
-    <p>AI-driven data modeling engine that analyzes your tables and automatically classifies them into Star Schema or Snowflake Schema patterns. Generate ER diagrams, DDL scripts, and edit models interactively.</p>
+    <p>Data modeling engine that analyzes your tables and automatically classifies them into Star Schema or Snowflake Schema patterns. Generate ER diagrams, DDL scripts, and edit models interactively.</p>
 
     <div class="img-placeholder">
       <div class="img-inner">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="14"/><circle cx="6" cy="19" r="3"/><circle cx="18" cy="19" r="3"/><line x1="12" y1="14" x2="6" y2="16"/><line x1="12" y1="14" x2="18" y2="16"/></svg>
-        <div class="img-cap">Data Modeling — AI classifies tables as Facts/Dimensions, generates ER diagrams and DDL</div>
+        <div class="img-cap">Data Modeling — Classifies tables as Facts/Dimensions, generates ER diagrams and DDL</div>
       </div>
     </div>
 
     <div class="steps">
       <div class="step-item"><p><strong>Select Catalog &amp; Schema</strong> — Pick source tables from Unity Catalog or load sample demo data.</p></div>
-      <div class="step-item"><p><strong>Choose Schema Type</strong> — Select Auto (AI decides), Star Schema, or Snowflake Schema.</p></div>
-      <div class="step-item"><p><strong>Generate Model</strong> — AI classifies tables as Fact or Dimension, identifies relationships, and builds the ER diagram.</p></div>
+      <div class="step-item"><p><strong>Choose Schema Type</strong> — Select Auto (system decides), Star Schema, or Snowflake Schema.</p></div>
+      <div class="step-item"><p><strong>Generate Model</strong> — Classifies tables as Fact or Dimension, identifies relationships, and builds the ER diagram.</p></div>
       <div class="step-item"><p><strong>Edit Interactively</strong> — Rename tables, add/remove columns, change roles, edit PK/nullable flags, and manage relationships.</p></div>
       <div class="step-item"><p><strong>Generate DDL</strong> — Export CREATE TABLE statements for all modeled tables.</p></div>
     </div>
 
     <div class="feat-grid">
       <div class="feat-card">
-        <h4><span class="feat-icon">🤖</span> AI Classification</h4>
+        <h4><span class="feat-icon">🤖</span> Auto Classification</h4>
         <p>GPT-powered analysis identifies Fact vs Dimension tables based on naming patterns, column types, and relationships.</p>
       </div>
       <div class="feat-card">
@@ -870,6 +870,69 @@ body{font-family:var(--font);font-size:15px;line-height:1.7;color:var(--t1);back
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- 16b. AZURE DEVOPS GIT INTEGRATION -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="section" id="devops-integration">
+  <div class="section-header">
+    <div class="section-icon" style="background:linear-gradient(135deg,#0078D4,#106EBE);">
+      <svg viewBox="0 0 24 24"><path d="M0 0h24v24H0z" fill="none"/><path d="M12 2L2 7l10 5 10-5-10-5z" fill="currentColor" opacity=".3"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+    </div>
+    <div>
+      <h2>Azure DevOps — Git Integration</h2>
+      <span class="badge badge-blue">DevOps</span>
+    </div>
+  </div>
+  <div class="section-body">
+    <p>Push Data Model DDL scripts, ER diagram images (PNG), and model JSON to an Azure DevOps Git repository directly from the Data Modeling module. Uses PAT authentication stored securely in Azure Key Vault.</p>
+
+    <div class="img-placeholder">
+      <div class="img-inner">
+        <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        <div class="img-cap">Azure DevOps Integration — Push DDL & ER diagrams to Git with Key Vault PAT</div>
+      </div>
+    </div>
+
+    <div class="steps">
+      <div class="step-item"><p><strong>Configure Settings</strong> — In Settings → Azure DevOps section, enter Organization, Project, Repository, and Branch name.</p></div>
+      <div class="step-item"><p><strong>Store PAT in Key Vault</strong> — Store your Azure DevOps Personal Access Token as <code>devops-token</code> secret in Azure Key Vault (e.g. <code>kv-dbxmigrator-west3</code>).</p></div>
+      <div class="step-item"><p><strong>Test Connection</strong> — Click "Test Connection" to verify the PAT and repo access. A green success message confirms connectivity.</p></div>
+      <div class="step-item"><p><strong>Generate Model</strong> — Go to Data Modeling, generate your Star/Snowflake schema, and review the ER diagram and DDL.</p></div>
+      <div class="step-item"><p><strong>Push to DevOps</strong> — Click the "Push to DevOps" button in the ER Diagram toolbar. Enter a commit message and the files are committed atomically.</p></div>
+    </div>
+
+    <div class="feat-grid">
+      <div class="feat-card">
+        <h4><span class="feat-icon">🔗</span> One-Click Git Push</h4>
+        <p>DDL (.sql), ER diagram (.png), and model (.json) are pushed in a single atomic commit to your configured branch.</p>
+      </div>
+      <div class="feat-card">
+        <h4><span class="feat-icon">🔐</span> Key Vault Security</h4>
+        <p>PAT is never stored in config or UI — resolved at runtime from Azure Key Vault secret <code>devops-token</code>.</p>
+      </div>
+      <div class="feat-card">
+        <h4><span class="feat-icon">🌿</span> Auto Branch Creation</h4>
+        <p>If the target branch doesn't exist, it's automatically created from the default branch (usually <code>main</code>).</p>
+      </div>
+      <div class="feat-card">
+        <h4><span class="feat-icon">✅</span> Test Connection</h4>
+        <p>Validates organization, project, repo, and PAT before pushing — shows repo name and default branch on success.</p>
+      </div>
+    </div>
+
+    <div class="callout callout-info" style="margin-top:16px;">
+      <strong>Configuration Fields:</strong>
+      <ul style="margin:8px 0 0;padding-left:20px;">
+        <li><strong>Organization</strong> — Azure DevOps org name (e.g. <code>EMEA-SalesOps</code>) or full URL</li>
+        <li><strong>Project</strong> — Project name (e.g. <code>AI Accelerator</code>)</li>
+        <li><strong>Repository</strong> — Git repository name</li>
+        <li><strong>Branch</strong> — Target branch (auto-created if missing, defaults to <code>data-modeling</code>)</li>
+        <li><strong>PAT</strong> — Stored in Key Vault as secret name <code>devops-token</code></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
 <!-- 17. SYSTEM HEALTH CHECK -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <div class="section" id="healer">
@@ -883,18 +946,18 @@ body{font-family:var(--font);font-size:15px;line-height:1.7;color:var(--t1);back
     </div>
   </div>
   <div class="section-body">
-    <p>Paste any error message or exception traceback and get AI-powered diagnosis with actionable fix suggestions. Supports Databricks, Spark, Python, and SQL error patterns.</p>
+    <p>Paste any error message or exception traceback and get automated diagnosis with actionable fix suggestions. Supports Databricks, Spark, Python, and SQL error patterns.</p>
 
     <div class="img-placeholder">
       <div class="img-inner">
         <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-        <div class="img-cap">System Health Check — Paste an error, get AI diagnosis and fix recommendations</div>
+        <div class="img-cap">System Health Check — Paste an error, get automated diagnosis and fix recommendations</div>
       </div>
     </div>
 
     <div class="steps">
       <div class="step-item"><p><strong>Paste Error</strong> — Copy-paste the full error message or stack trace into the text area.</p></div>
-      <div class="step-item"><p><strong>Analyze</strong> — Click "Diagnose" to send the error to the AI analysis engine.</p></div>
+      <div class="step-item"><p><strong>Analyze</strong> — Click "Diagnose" to send the error to the analysis engine.</p></div>
       <div class="step-item"><p><strong>Review Fix</strong> — The bot returns root cause analysis, suggested fixes, and prevention tips in a formatted card.</p></div>
     </div>
 

@@ -39,7 +39,7 @@ const TAB_META={
   deploy:{title:'Deploy Notebooks',sub:'Connect to Databricks & upload notebooks to your workspace',step:2},
   uc:{title:'Databricks SQL Editor',sub:'Browse catalogs, run SQL queries & preview table data',step:3},
   healer:{title:'System Health Check',sub:'Intelligent failure detection, auto-recovery, and system health monitoring',step:4},
-  'wf-dashboard':{title:'AI Workflow Manager',sub:'Dashboard — metadata-driven pipeline orchestration overview',step:5},
+  'wf-dashboard':{title:'Workflow Manager',sub:'Dashboard — metadata-driven pipeline orchestration overview',step:5},
   'wf-metadata':{title:'MetadataFlow',sub:'Configure Databricks connection & provision Delta metadata tables',step:5},
   'wf-pipelines':{title:'Pipeline Studio',sub:'Connect data sources, create & manage medallion pipelines',step:5},
   'wf-jobs':{title:'Job Manager',sub:'Create workflow jobs, monitor runs & track watermarks',step:5},
@@ -50,12 +50,12 @@ const TAB_META={
   'wf-dq':{title:'Data Quality Dashboard',sub:'Validate completeness, accuracy, consistency & freshness across all migrated tables',step:5},
   'wf-schema':{title:'Schema Comparison',sub:'Compare source SQL Server & target Databricks schemas — column types, nullability & drift detection',step:5},
   'wf-recon':{title:'Reconciliation Report',sub:'Source vs Bronze aggregate reconciliation — row counts, numeric sums & variance analysis',step:5},
-  'wf-datamodel':{title:'AI Data Modeling',sub:'Auto-generate Star & Snowflake schemas with ER diagrams & Databricks DDL',step:5},
+  'wf-datamodel':{title:'Data Modeling',sub:'Auto-generate Star & Snowflake schemas with ER diagrams & Databricks DDL',step:5},
   'wf-settings':{title:'Settings',sub:'Configure Azure infrastructure, storage, connectors & Unity Catalog deployment',step:5},
   'wf-admin':{title:'User Management',sub:'Add, edit & remove users — assign role-based access (Admin only)',step:5},
   'wf-discovery':{title:'Discovery',sub:'Scan & analyse SQL objects — complexity scoring, dependency graph & migration readiness',step:5},
 };
-const WF_LBL=['Convert SQL Objects','Deploy Notebooks','Databricks SQL Editor','System Health Check','AI Workflow Manager'];
+const WF_LBL=['Convert SQL Objects','Deploy Notebooks','Databricks SQL Editor','System Health Check','Workflow Manager'];
 const TAB_ICONS={
   convert:'<polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/>',
   deploy:'<polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/>',
@@ -997,7 +997,7 @@ async function hlRefreshStats(){
 })();
 
 // ═════════════════════════════════════════════════════════════════════════════
-// AI WORKFLOW MANAGER — JAVASCRIPT
+// WORKFLOW MANAGER — JAVASCRIPT
 // ═════════════════════════════════════════════════════════════════════════════
 
 /* ─── MetadataFlow — Databricks Persistence ─── */
@@ -2988,7 +2988,7 @@ function _collectConfig(){
     devops_project: G('cfgDevOpsProject')?.value?.trim()||'',
     devops_repo:    G('cfgDevOpsRepo')?.value?.trim()||'',
     devops_branch:  G('cfgDevOpsBranch')?.value?.trim()||'data-modeling',
-    devops_pat:     G('cfgDevOpsPat')?.value||'',
+    devops_pat:     'xxxxxxxxxxxxxxxxx',
   };
 }
 
@@ -3016,7 +3016,7 @@ function _populateConfig(c){
   if(G('cfgDevOpsProject'))G('cfgDevOpsProject').value=c.devops_project||'';
   if(G('cfgDevOpsRepo'))   G('cfgDevOpsRepo').value=c.devops_repo||'';
   if(G('cfgDevOpsBranch')) G('cfgDevOpsBranch').value=c.devops_branch||'data-modeling';
-  if(G('cfgDevOpsPat'))    G('cfgDevOpsPat').value=c.devops_pat||'';
+  if(G('cfgDevOpsPat'))    G('cfgDevOpsPat').value='••••••••••••••••••••••• (Key Vault: devops-token)';
   // External locations
   const elList=G('cfgExtLocList'); elList.innerHTML='';
   const elEntries=Object.entries(c.external_locations||{});
@@ -3707,7 +3707,7 @@ async function loadDeployConfig(){
 })();
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  DATA MODELING — AI-driven Star / Snowflake Schema Builder
+//  DATA MODELING — Star / Snowflake Schema Builder
 // ═══════════════════════════════════════════════════════════════════════════════
 
 let _dmModel = null;    // current model from backend
@@ -3728,7 +3728,7 @@ let _dmNotation = 'crowsfoot'; // 'arrow' or 'crowsfoot'
 let _dmDetectedChanges = [];
 let _dmSuggestions = [];
 
-// ── AI role hints (pure client-side heuristic, no backend call) ────────────
+// ── Role hints (pure client-side heuristic, no backend call) ───────────────
 const _DM_FACT_RX = /(transaction|order|sale|invoice|payment|event|log|detail|line_?item|entry|fact|history|audit|session)/i;
 const _DM_DIM_RX  = /(customer|employee|product|department|location|region|store|category|status|type|dim|lookup|geo|channel|vendor|supplier|account|currency|calendar|date)/i;
 function _dmRoleHint(name){
@@ -3841,7 +3841,7 @@ async function dmLoadTables(){
   }catch(e){box.innerHTML='<div style="padding:24px;text-align:center;color:#EF4444;font-size:11px;">Error loading tables</div>';toast('Failed to load tables','terr');}
 }
 
-// ── Render checkbox table list with AI role hints + multi-source grouping ─────
+// ── Render checkbox table list with role hints + multi-source grouping ────────
 function _dmRenderTableList(){
   const box=G('dmTableList');
   const q=(G('dmTableSearch').value||'').toLowerCase().trim();
@@ -4035,7 +4035,7 @@ function _dmInstallShortcuts(){
   });
 }
 
-// ── AI Insights (client-side derivation from generated model) ─────────────
+// ── Insights (client-side derivation from generated model) ────────────────
 function _dmDeriveInsights(d){
   const out=[];
   const facts=d.facts||[], dims=d.dimensions||[], rels=d.relationships||[];
@@ -4075,7 +4075,7 @@ function _dmDeriveInsights(d){
   dims.forEach(dm=>{
     if(!related.has(dm.table_name)){
       out.push({icon:'\u26a0\ufe0f',tone:'warn',title:dm.table_name+' has no relationships',
-        desc:'This dimension is not connected to any fact. Use 🧠 AI Suggest Relations to find connections.',
+        desc:'This dimension is not connected to any fact. Use 🧠 Suggest Relations to find connections.',
         action:'dmSuggestRelationships',actionLabel:'🧠 Suggest'});
     }
   });
@@ -4135,7 +4135,7 @@ function _dmDeriveInsights(d){
   const density=maxRels>0?Math.round(rels.length/maxRels*100):0;
   if(density<50 && rels.length>0 && maxRels>2){
     out.push({icon:'📶',tone:'info',title:'Relationship density: '+density+'%',
-      desc:'Only '+rels.length+' of '+maxRels+' possible fact-dim connections exist. Use AI Suggest to find missing links.',
+      desc:'Only '+rels.length+' of '+maxRels+' possible fact-dim connections exist. Use Suggest to find missing links.',
       action:'dmSuggestRelationships',actionLabel:'🧠 Suggest'});
   }
   // 13. Indexing suggestion for FK columns
@@ -4302,6 +4302,8 @@ function dmRenderER(er){
   const dims=er.nodes.filter(n=>n.type==='dimension');
   const views=er.nodes.filter(n=>n.type==='view');
   const nodeW_layout=300, gapX=80, gapY=60, pad=40;
+  // padTop accounts for the metadata panel height so nodes don't overlap
+  const padTop=200;
 
   // Calculate actual height for a node
   function _nodeH(n){
@@ -4343,7 +4345,7 @@ function dmRenderER(er){
       // ── RADIAL LAYOUT: Place fact(s) at center, dims in a ring ──
       const ringRadius=Math.max(400, dims.length*80);
       const centerX=ringRadius+nodeW_layout/2+pad;
-      const centerY=ringRadius+factMaxH/2+pad;
+      const centerY=ringRadius+factMaxH/2+padTop;
 
       // Place facts at center
       facts.forEach((n,i)=>{if(n.x===undefined||n._autoLayout){
@@ -4379,12 +4381,12 @@ function dmRenderER(er){
       const factRow=Math.floor(cols/2)-Math.floor(facts.length/2);
       facts.forEach((n,i)=>{if(n.x===undefined||n._autoLayout){
         n.x=pad+(factRow+i)*(nodeW_layout+gapX);
-        n.y=pad;
+        n.y=padTop;
         n._autoLayout=true;
       }});
 
       // Place dims in rows below
-      const dimStartY=pad+factMaxH+gapY;
+      const dimStartY=padTop+factMaxH+gapY;
       const dimCols=Math.max(2, Math.ceil(Math.sqrt(dims.length*2)));
       dims.forEach((n,i)=>{if(n.x===undefined||n._autoLayout){
         const col=i%dimCols;
@@ -4433,12 +4435,12 @@ function dmRenderER(er){
       if(!moved) break;
     }
 
-    // Ensure no negative positions
+    // Ensure no negative positions and no overlap with metadata panels
     let minX=Infinity, minY=Infinity;
     er.nodes.forEach(n=>{if(n.x<minX)minX=n.x; if(n.y<minY)minY=n.y;});
-    if(minX<pad||minY<pad){
+    if(minX<pad||minY<padTop){
       const shiftX=minX<pad?pad-minX:0;
-      const shiftY=minY<pad?pad-minY:0;
+      const shiftY=minY<padTop?padTop-minY:0;
       er.nodes.forEach(n=>{n.x+=shiftX; n.y+=shiftY;});
     }
   }
@@ -5721,7 +5723,7 @@ async function dmApplyDetectedChanges(){
   toast('Model refreshed with latest schema','tok');
 }
 
-// ── AI Relationship Suggestions ─────────────────────────────────────────────────────
+// ── Relationship Suggestions ────────────────────────────────────────────────────────
 async function dmSuggestRelationships(){
   if(!_dmModelId){toast('Generate a model first','terr');return;}
   toast('Analyzing column patterns for relationships...','tok');
@@ -6168,7 +6170,6 @@ async function dmPushToDevOps(){
   const project=(G('cfgDevOpsProject')||{}).value||'';
   const repo=(G('cfgDevOpsRepo')||{}).value||'';
   const branch=(G('cfgDevOpsBranch')||{}).value||'data-modeling';
-  const pat=(G('cfgDevOpsPat')||{}).value||'';
   if(!org||!project||!repo){toast('Configure Azure DevOps in Settings first (org/project/repo)','terr');return;}
   // Capture ER diagram as PNG base64
   let erBase64='';
@@ -6205,7 +6206,7 @@ async function dmPushToDevOps(){
   try{
     const r=await fetch('/api/v1/datamodel/push-devops',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
-        org,project,repo,branch,pat,
+        org,project,repo,branch,
         ddl:_dmDdl||'',
         er_image_base64:erBase64,
         model_json:_dmModel||null,
@@ -6229,18 +6230,16 @@ async function cfgTestDevOps(){
   const org=(G('cfgDevOpsOrg')||{}).value?.trim()||'';
   const project=(G('cfgDevOpsProject')||{}).value?.trim()||'';
   const repo=(G('cfgDevOpsRepo')||{}).value?.trim()||'';
-  const pat=(G('cfgDevOpsPat')||{}).value||'';
   const status=G('cfgDevOpsStatus');
-  if(!org||!project||!repo||!pat){toast('Fill in org, project, repo, and PAT','terr');return;}
+  if(!org||!project||!repo){toast('Fill in org, project, and repo','terr');return;}
   const btn=G('btnTestDevOps');btn.disabled=true;btn.textContent='Testing…';
   if(status)status.textContent='';
   try{
-    const r=await fetch('/api/v1/datamodel/push-devops',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({org,project,repo,pat,ddl:'-- Test connection from Migration Studio\n-- This file can be safely deleted.\nSELECT 1;',
-        commit_message:'test: verify DevOps connection from Migration Studio',model_name:'_connection_test'})});
+    const r=await fetch('/api/v1/datamodel/test-devops',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({org,project,repo})});
     const d=await r.json();
     if(d.success){
-      if(status){status.style.color='#16a34a';status.textContent='✓ Connected — test commit pushed ('+d.commit_id.substring(0,8)+')';}
+      if(status){status.style.color='#16a34a';status.textContent='✓ Connected — repo: '+d.repo_name+', default branch: '+d.default_branch;}
       toast('DevOps connection successful!','tok');
     }else{
       if(status){status.style.color='#dc2626';status.textContent='✕ '+d.error;}

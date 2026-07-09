@@ -196,6 +196,8 @@ def save_deploy_config():
         # The actual secrets are stored in Azure Key Vault.
         if "databricks_token" in cfg:
             cfg["databricks_token"] = MASKED_VALUE
+        if "devops_pat" in cfg:
+            cfg["devops_pat"] = MASKED_VALUE
         if "source" in cfg and isinstance(cfg["source"], dict) and "password" in cfg["source"]:
             cfg["source"]["password"] = MASKED_VALUE
 

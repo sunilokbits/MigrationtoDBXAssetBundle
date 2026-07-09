@@ -169,27 +169,29 @@ var sections=[
 
 /* 2 ─ Accelerator Overview */
 {id:'overview',title:'Accelerator Overview',color:'#6366F1',icon:'🚀',content:function(){return `
-<p>The <strong>SQL → Databricks Migration Accelerator</strong> is an AI-powered, browser-based platform that automates the full migration lifecycle in a single unified UI. It compresses months of migration effort into <strong>days or weeks</strong>.</p>
+<p>The <strong>SQL → Databricks Migration Accelerator</strong> is a browser-based platform that automates the full migration lifecycle in a single unified UI. It compresses months of migration effort into <strong>days or weeks</strong>.</p>
 <h3>Core Modules</h3>
 <div class="feat-grid">
   <div class="feat-card"><div class="feat-card-ico">🔌</div><h4>Source Connection</h4><p>Connect to SQL Server / Azure SQL, auto-discover SPs, Views, and UDFs with checkbox selection.</p></div>
-  <div class="feat-card"><div class="feat-card-ico">🤖</div><h4>AI Convert to PySpark</h4><p>One-click AI conversion of T-SQL to production-ready PySpark notebooks.</p></div>
+  <div class="feat-card"><div class="feat-card-ico">🤖</div><h4>Convert to PySpark</h4><p>One-click conversion of T-SQL to production-ready PySpark notebooks.</p></div>
   <div class="feat-card"><div class="feat-card-ico">📦</div><h4>Deploy to Databricks</h4><p>Push notebooks via Databricks Asset Bundles with auto folder structure.</p></div>
   <div class="feat-card"><div class="feat-card-ico">🏛️</div><h4>Databricks SQL Editor</h4><p>Browse catalogs, schemas, tables — preview data and run queries in-browser.</p></div>
-  <div class="feat-card"><div class="feat-card-ico">🩺</div><h4>System Health Check</h4><p>AI-powered error diagnosis — paste any exception for root cause & fix.</p></div>
+  <div class="feat-card"><div class="feat-card-ico">🩺</div><h4>System Health Check</h4><p>Automated error diagnosis — paste any exception for root cause & fix.</p></div>
   <div class="feat-card"><div class="feat-card-ico">⚙️</div><h4>Workflow Orchestration</h4><p>Create jobs, CRON schedules, monitor pipelines, track run history.</p></div>
-  <div class="feat-card"><div class="feat-card-ico">🗂️</div><h4>Data Modeling</h4><p>AI-driven Star/Snowflake classification with interactive ER diagrams.</p></div>
+  <div class="feat-card"><div class="feat-card-ico">🗂️</div><h4>Data Modeling</h4><p>Star/Snowflake classification with interactive ER diagrams.</p></div>
+  <div class="feat-card"><div class="feat-card-ico">🔗</div><h4>Azure DevOps Integration</h4><p>Push DDL & ER diagrams to Azure DevOps Git repos with PAT authentication via Key Vault.</p></div>
 </div>
 `;}},
 
 /* 3 ─ Unique Technical Capabilities */
 {id:'capabilities',title:'Unique Technical Capabilities',color:'#0EA5E9',icon:'🔬',content:function(){return `
 <div class="feat-grid">
-  <div class="feat-card"><div class="feat-card-ico">🧠</div><h4>AI-Powered Conversion Engine</h4><p>Uses advanced AI to understand T-SQL semantics — CTEs, temp tables, cursors, dynamic SQL — and produce idiomatic PySpark code.</p></div>
-  <div class="feat-card"><div class="feat-card-ico">📐</div><h4>Intelligent Schema Classifier</h4><p>AI classifies tables as Facts or Dimensions and generates Star/Snowflake schemas with interactive ER diagrams.</p></div>
-  <div class="feat-card"><div class="feat-card-ico">🩹</div><h4>Self-Healing Diagnostics</h4><p>AI-powered error analysis understands Spark, Python, and Databricks exceptions — provides root cause and specific fixes.</p></div>
+  <div class="feat-card"><div class="feat-card-ico">🧠</div><h4>Automated Conversion Engine</h4><p>Understands T-SQL semantics — CTEs, temp tables, cursors, dynamic SQL — and produce idiomatic PySpark code.</p></div>
+  <div class="feat-card"><div class="feat-card-ico">📐</div><h4>Intelligent Schema Classifier</h4><p>Classifies tables as Facts or Dimensions and generates Star/Snowflake schemas with interactive ER diagrams.</p></div>
+  <div class="feat-card"><div class="feat-card-ico">🩹</div><h4>Self-Healing Diagnostics</h4><p>Automated error analysis understands Spark, Python, and Databricks exceptions — provides root cause and specific fixes.</p></div>
   <div class="feat-card"><div class="feat-card-ico">📡</div><h4>Real-Time Pipeline Monitoring</h4><p>Live job status, execution history, success/failure rates, and one-click Run Now from the dashboard.</p></div>
   <div class="feat-card"><div class="feat-card-ico">🔐</div><h4>Config-Driven Security</h4><p>Host, tokens, and catalogs managed via deployconfig.json — no credentials exposed in the UI.</p></div>
+  <div class="feat-card"><div class="feat-card-ico">🔗</div><h4>Azure DevOps Git Push</h4><p>One-click push of DDL scripts, ER diagrams (PNG), and model JSON to Azure DevOps repositories — PAT stored securely in Key Vault.</p></div>
 </div>
 `;}},
 
@@ -199,8 +201,8 @@ var sections=[
 <thead><tr><th>Benefit</th><th>Without Accelerator</th><th>With Accelerator</th></tr></thead>
 <tbody>
 <tr><td><strong>Migration Timeline</strong></td><td>6–18 months</td><td><span class="arch-tag" style="background:#DCFCE7;color:#166534">2–4 weeks</span></td></tr>
-<tr><td><strong>Code Conversion</strong></td><td>Manual rewrite</td><td><span class="arch-tag" style="background:#DCFCE7;color:#166534">AI-automated</span></td></tr>
-<tr><td><strong>Error Resolution</strong></td><td>Hours of debugging</td><td><span class="arch-tag" style="background:#DCFCE7;color:#166534">Instant AI diagnosis</span></td></tr>
+<tr><td><strong>Code Conversion</strong></td><td>Manual rewrite</td><td><span class="arch-tag" style="background:#DCFCE7;color:#166534">Automated</span></td></tr>
+<tr><td><strong>Error Resolution</strong></td><td>Hours of debugging</td><td><span class="arch-tag" style="background:#DCFCE7;color:#166534">Instant diagnosis</span></td></tr>
 <tr><td><strong>Schema Modeling</strong></td><td>Manual ER design</td><td><span class="arch-tag" style="background:#DCFCE7;color:#166534">Auto Star/Snowflake</span></td></tr>
 <tr><td><strong>Deployment</strong></td><td>Manual notebook upload</td><td><span class="arch-tag" style="background:#DCFCE7;color:#166534">Asset Bundle push</span></td></tr>
 <tr><td><strong>Data Pipeline</strong></td><td>Custom ETL scripts</td><td><span class="arch-tag" style="background:#DCFCE7;color:#166534">Auto-generated pipelines</span></td></tr>
@@ -216,7 +218,7 @@ var sections=[
 <div class="feat-grid">
   <div class="feat-card"><div class="feat-card-ico">👨‍💻</div><h4>Data Engineer</h4><p>Converts SPs and builds data pipelines without deep Spark knowledge.</p></div>
   <div class="feat-card"><div class="feat-card-ico">🏗️</div><h4>Solution Architect</h4><p>Designs Star/Snowflake schemas and validates Unity Catalog structure.</p></div>
-  <div class="feat-card"><div class="feat-card-ico">📊</div><h4>DBA / SQL Developer</h4><p>Migrates familiar SQL objects with AI-assisted conversion — minimal ramp-up.</p></div>
+  <div class="feat-card"><div class="feat-card-ico">📊</div><h4>DBA / SQL Developer</h4><p>Migrates familiar SQL objects with Automated conversion — minimal ramp-up.</p></div>
   <div class="feat-card"><div class="feat-card-ico">📋</div><h4>Project Manager</h4><p>Tracks migration progress, pipeline runs, and audit history from a single dashboard.</p></div>
 </div>
 <h3>Key Scenarios</h3>
@@ -244,10 +246,11 @@ var sections=[
 <tbody>
 <tr><td><span class="arch-tag" style="background:#DBEAFE;color:#1E40AF">1</span></td><td>Source Connection</td><td>Connect to SQL Server, discover objects</td><td>SP/View/UDF inventory</td></tr>
 <tr><td><span class="arch-tag" style="background:#D1FAE5;color:#065F46">2</span></td><td>Discovery</td><td>Scan SQL objects — complexity scoring, RCA, dependency graph</td><td>Migration readiness report, BOM, effort estimates</td></tr>
-<tr><td><span class="arch-tag" style="background:#FEE2E2;color:#991B1B">3</span></td><td>Convert to PySpark</td><td>AI converts T-SQL to PySpark notebooks</td><td>Databricks notebooks</td></tr>
+<tr><td><span class="arch-tag" style="background:#FEE2E2;color:#991B1B">3</span></td><td>Convert to PySpark</td><td>Converts T-SQL to PySpark notebooks</td><td>Databricks notebooks</td></tr>
 <tr><td><span class="arch-tag" style="background:#DCFCE7;color:#166534">4</span></td><td>Deploy to Databricks</td><td>Push via Asset Bundles to workspace</td><td>Live notebooks in workspace</td></tr>
 <tr><td><span class="arch-tag" style="background:#EDE9FE;color:#5B21B6">5</span></td><td>Workflow Orchestration</td><td>Create jobs, set schedules, monitor runs</td><td>Automated production pipelines</td></tr>
-<tr><td><span class="arch-tag" style="background:#E0F2FE;color:#0C4A6E">6</span></td><td>Data Modeling</td><td>AI classifies Star/Snowflake schemas</td><td>ER diagrams + DDL</td></tr>
+<tr><td><span class="arch-tag" style="background:#E0F2FE;color:#0C4A6E">6</span></td><td>Data Modeling</td><td>Classifies Star/Snowflake schemas</td><td>ER diagrams + DDL</td></tr>
+<tr><td><span class="arch-tag" style="background:#DBEAFE;color:#1E40AF">7</span></td><td>Azure DevOps Push</td><td>Push DDL & ER diagrams to Git repo</td><td>Versioned artifacts in DevOps</td></tr>
 </tbody>
 </table>
 <p>Supporting modules (<strong>Discovery</strong>, <strong>Databricks SQL Editor</strong>, <strong>System Health Check</strong>) are available at every step for validation and troubleshooting.</p>
@@ -261,12 +264,13 @@ var sections=[
 <tr><td><strong>Frontend</strong></td><td>Single-page HTML/CSS/JS</td><td>Responsive UI with sidebar navigation, real-time updates</td></tr>
 <tr><td><strong>Discovery Engine</strong></td><td>Python (regex + ODBC)</td><td>SQL object scanning, complexity scoring, RCA, dependency graph</td></tr>
 <tr><td><strong>Backend</strong></td><td>Python Flask</td><td>REST API serving all modules, template rendering</td></tr>
-<tr><td><strong>AI Engine</strong></td><td>OpenAI / Azure OpenAI</td><td>T-SQL → PySpark conversion, schema classification, error diagnosis</td></tr>
+<tr><td><strong>Conversion Engine</strong></td><td>OpenAI / Azure OpenAI</td><td>T-SQL → PySpark conversion, schema classification, error diagnosis</td></tr>
 <tr><td><strong>SQL Connector</strong></td><td>pyodbc / pymssql</td><td>Source SQL Server connection and object extraction</td></tr>
 <tr><td><strong>Databricks SDK</strong></td><td>Databricks REST API</td><td>Workspace, jobs, clusters, Unity Catalog operations</td></tr>
 <tr><td><strong>Asset Bundles</strong></td><td>Databricks CLI</td><td>Notebook deployment and workspace organization</td></tr>
 <tr><td><strong>Config Store</strong></td><td>deployconfig.json</td><td>Host, token, catalogs, schemas — secure config management</td></tr>
 <tr><td><strong>Scheduler</strong></td><td>Databricks Jobs API</td><td>CRON-based job scheduling and trigger management</td></tr>
+<tr><td><strong>DevOps Connector</strong></td><td>Azure DevOps REST API v7.0</td><td>Push DDL, ER diagrams & model JSON to Git repos with Key Vault PAT</td></tr>
 </tbody>
 </table>
 `;}},
@@ -299,7 +303,7 @@ var sections=[
     </div>
     <div style="text-align:center">
       <div style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);padding:12px 20px;border-radius:10px;font-size:12px">sp_converter.py</div>
-      <div style="color:#A5B4FC;font-size:10px;margin-top:4px">AI Conversion</div>
+      <div style="color:#A5B4FC;font-size:10px;margin-top:4px">Conversion Engine</div>
     </div>
     <div style="text-align:center">
       <div style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);padding:12px 20px;border-radius:10px;font-size:12px">data_modeling.py</div>
@@ -327,14 +331,14 @@ var sections=[
 /* 9 ─ Customer Story */
 {id:'story',title:'Customer Story',color:'#EC4899',icon:'📖',content:function(){return `
 <div style="background:linear-gradient(135deg,#FDF2F8,#FCE7F3);border:1px solid #FBCFE8;border-radius:14px;padding:28px;margin-bottom:16px">
-  <p style="font-size:1.1rem;font-style:italic;color:#831843;line-height:1.7;margin-bottom:16px">"We had over 200 stored procedures and 80 views to migrate from SQL Server to Databricks. The team estimated 8 months of manual effort. Using the Migration Accelerator, we completed the conversion in <strong>3 weeks</strong> — with AI handling 90% of the code translation and the system health check catching edge cases we never would have found manually."</p>
+  <p style="font-size:1.1rem;font-style:italic;color:#831843;line-height:1.7;margin-bottom:16px">"We had over 200 stored procedures and 80 views to migrate from SQL Server to Databricks. The team estimated 8 months of manual effort. Using the Migration Accelerator, we completed the conversion in <strong>3 weeks</strong> — with the system health check catching edge cases we never would have found manually."</p>
   <p style="font-weight:700;color:#9D174D;margin-bottom:0">— Enterprise Data Engineering Lead, Fortune 500 Financial Services</p>
 </div>
 <h3>Migration Metrics</h3>
 <div class="feat-grid">
   <div class="feat-card" style="text-align:center"><div class="feat-card-ico">📝</div><h4 style="font-size:2rem;color:#6366F1">200+</h4><p>Stored Procedures Converted</p></div>
   <div class="feat-card" style="text-align:center"><div class="feat-card-ico">⏱️</div><h4 style="font-size:2rem;color:#10B981">3 Weeks</h4><p>Total Migration Time</p></div>
-  <div class="feat-card" style="text-align:center"><div class="feat-card-ico">🤖</div><h4 style="font-size:2rem;color:#F59E0B">90%</h4><p>AI-Automated Conversion</p></div>
+  <div class="feat-card" style="text-align:center"><div class="feat-card-ico">🤖</div><h4 style="font-size:2rem;color:#F59E0B">90%</h4><p>Automated Conversion</p></div>
   <div class="feat-card" style="text-align:center"><div class="feat-card-ico">💰</div><h4 style="font-size:2rem;color:#EF4444">70%</h4><p>Cost Reduction</p></div>
 </div>
 `;}},
@@ -357,10 +361,10 @@ var sections=[
 <h3>What It Does</h3>
 <ul>
   <li><strong>Discovers</strong> SQL Server objects (Stored Procedures, Views, UDFs) via ODBC/TDS connections</li>
-  <li><strong>Converts</strong> T-SQL code to PySpark notebooks using AI (OpenAI / Azure OpenAI)</li>
+  <li><strong>Converts</strong> T-SQL code to PySpark notebooks using OpenAI / Azure OpenAI</li>
   <li><strong>Deploys</strong> notebooks to Databricks workspaces via Asset Bundles with organized folder structures</li>
   <li><strong>Orchestrates</strong> Databricks Jobs with CRON scheduling, cluster configuration, and run monitoring</li>
-  <li><strong>Models</strong> data schemas using AI-driven Star/Snowflake classification with interactive ER diagrams</li>
+  <li><strong>Models</strong> data schemas using Star/Snowflake classification with interactive ER diagrams</li>
   <li><strong>Heals</strong> errors automatically by analyzing exceptions and suggesting targeted fixes</li>
   <li><strong>Explores</strong> Databricks SQL Editor — browse catalogs/schemas/tables, preview data, run SQL queries</li>
 </ul>
@@ -368,7 +372,7 @@ var sections=[
 <ul>
   <li><strong>Backend:</strong> Python 3.11, Flask, pyodbc, Databricks REST API SDK</li>
   <li><strong>Frontend:</strong> Single-page HTML/CSS/JS (no framework dependency)</li>
-  <li><strong>AI:</strong> OpenAI GPT / Azure OpenAI for code conversion and analysis</li>
+  <li><strong>Engine:</strong> OpenAI GPT / Azure OpenAI for code conversion and analysis</li>
   <li><strong>Config:</strong> deployconfig.json for secure credential and catalog management</li>
   <li><strong>Deployment:</strong> Databricks Asset Bundles CLI (DABs)</li>
 </ul>
@@ -383,7 +387,7 @@ var sections=[
 <tr><td><strong>Large SQL Server Estate</strong></td><td>50+ stored procedures, multiple databases, complex T-SQL logic</td></tr>
 <tr><td><strong>Cloud Migration Initiative</strong></td><td>Active Azure / Databricks adoption program underway</td></tr>
 <tr><td><strong>Data Lakehouse Journey</strong></td><td>Moving from traditional DW to Lakehouse architecture</td></tr>
-<tr><td><strong>Limited Spark Expertise</strong></td><td>SQL-heavy teams that need AI-assisted PySpark conversion</td></tr>
+<tr><td><strong>Limited Spark Expertise</strong></td><td>SQL-heavy teams that need automated PySpark conversion</td></tr>
 <tr><td><strong>Compliance Requirements</strong></td><td>Need Unity Catalog governance for data access and lineage</td></tr>
 </tbody>
 </table>

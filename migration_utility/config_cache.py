@@ -83,3 +83,16 @@ def get_databricks_token() -> str:
     cfg = get_config()
     val = cfg.get("databricks_token", "")
     return "" if is_masked(val) else val
+
+
+def get_devops_token() -> str:
+    """Get DevOps PAT: resolve from Key Vault, fall back to config value."""
+    from keyvault_helper import get_devops_token as _kv_devops_token, is_masked
+    # Try Key Vault first
+    kv_val = _kv_devops_token()
+    if kv_val:
+        return kv_val
+    # Fall back to config value (only if not masked)
+    cfg = get_config()
+    val = cfg.get("devops_pat", "")
+    return "" if is_masked(val) else val

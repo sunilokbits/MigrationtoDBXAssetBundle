@@ -643,7 +643,7 @@
       </div>
     </div>
 
-    <!-- ═══════════ AI WORKFLOW MANAGER — DASHBOARD ═══════════ -->
+    <!-- ═══════════ WORKFLOW MANAGER — DASHBOARD ═══════════ -->
     <div id="pane-wf-dashboard" class="tab-pane" style="padding:16px 22px 20px;gap:12px;">
       <!-- Page Header (compact) -->
       <div>
@@ -652,7 +652,7 @@
             <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:white;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
           </div>
           <div>
-            <h2 style="margin:0;font-size:18px;font-weight:800;color:var(--t1);letter-spacing:-.3px;">AI Workflow Manager</h2>
+            <h2 style="margin:0;font-size:18px;font-weight:800;color:var(--t1);letter-spacing:-.3px;">Workflow Manager</h2>
             <p style="margin:1px 0 0;font-size:11px;color:var(--t3);">Metadata-driven pipeline orchestration &amp; job management on Databricks</p>
           </div>
           <button class="btn btn-ghost btn-xs" onclick="wfRefreshAll()" style="margin-left:auto;">
@@ -912,7 +912,7 @@
               <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:#F59E0B;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="14"/><circle cx="6" cy="19" r="3"/><circle cx="18" cy="19" r="3"/><line x1="12" y1="14" x2="6" y2="16"/><line x1="12" y1="14" x2="18" y2="16"/></svg>
             </div>
             <div style="font-weight:700;font-size:13px;color:var(--t1);margin-bottom:4px;">Data Modeling</div>
-            <div style="font-size:10px;color:var(--t3);line-height:1.4;">AI-driven Star &amp; Snowflake schema builder</div>
+            <div style="font-size:10px;color:var(--t3);line-height:1.4;">Star &amp; Snowflake schema builder</div>
             <div style="margin-top:8px;font-size:10px;font-weight:700;color:#F59E0B;">Model &rarr;</div>
           </div>
         </div>
@@ -979,7 +979,7 @@
       </div>
     </div>
 
-    <!-- ═══════════ AI WORKFLOW MANAGER — SETTINGS ═══════════ -->
+    <!-- ═══════════ WORKFLOW MANAGER — SETTINGS ═══════════ -->
     <div id="pane-wf-settings" class="tab-pane">
       <!-- Page Header -->
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
@@ -987,7 +987,7 @@
           <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
         <div style="font-size:11px;color:var(--t4);">
-          <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">AI Workflow Manager</a>
+          <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">Workflow Manager</a>
           <span style="margin:0 4px;">/</span>
           <span style="color:var(--t1);font-weight:600;">Settings</span>
         </div>
@@ -1414,9 +1414,9 @@
             </div>
           </div>
           <div style="margin-top:8px;">
-            <label class="lbl">Personal Access Token (PAT) <button type="button" class="cfg-auto-btn" onclick="cfgTogglePw('cfgDevOpsPat',this)">Show</button></label>
-            <input class="inp" id="cfgDevOpsPat" type="password" placeholder="PAT with Code (Read & Write) scope">
-            <div style="font-size:9px;color:var(--t4);margin-top:3px;">Stored in deployconfig.json. For production, store as <code>devops-pat</code> secret in Key Vault.</div>
+            <label class="lbl">Personal Access Token (PAT)</label>
+            <input class="inp" id="cfgDevOpsPat" type="password" placeholder="Stored in Key Vault as devops-token" disabled>
+            <div style="font-size:9px;color:var(--t4);margin-top:3px;">Stored in deployconfig.json as masked. For production, store as <code>devops-token</code> secret in Key Vault.</div>
           </div>
           <div style="margin-top:10px;">
             <button class="btn btn-ghost btn-xs" onclick="cfgTestDevOps()" id="btnTestDevOps" style="border:1px solid #0078D4;color:#0078D4;">
@@ -1514,7 +1514,7 @@
           <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
         <div style="font-size:11px;color:var(--t4);">
-          <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">AI Workflow Manager</a>
+          <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">Workflow Manager</a>
           <span style="margin:0 4px;">/</span>
           <span style="color:var(--t1);font-weight:600;">User Management</span>
         </div>
@@ -1656,7 +1656,7 @@
       </div>
     </div>
 
-    <!-- ═══════════ AI WORKFLOW MANAGER — METADATAFLOW ═══════════ -->
+    <!-- ═══════════ WORKFLOW MANAGER — METADATAFLOW ═══════════ -->
     <div id="pane-wf-metadata" class="tab-pane">
 
       <!-- Page Header -->
@@ -1665,7 +1665,7 @@
           <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
         <div style="font-size:11px;color:var(--t4);">
-          <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">AI Workflow Manager</a>
+          <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">Workflow Manager</a>
           <span style="margin:0 4px;">/</span>
           <span style="color:var(--t1);font-weight:600;">MetadataFlow</span>
         </div>
@@ -1935,7 +1935,7 @@
       </div>
     </div>
 
-    <!-- ═══════════ AI WORKFLOW MANAGER — PIPELINE STUDIO ═══════════ -->
+    <!-- ═══════════ WORKFLOW MANAGER — PIPELINE STUDIO ═══════════ -->
     <div id="pane-wf-pipelines" class="tab-pane">
 
         <!-- Data Source — uses saved config from Settings -->
@@ -2140,7 +2140,7 @@
         </div>
       </div>
 
-    <!-- ═══════════ AI WORKFLOW MANAGER — JOB MANAGER ═══════════ -->
+    <!-- ═══════════ WORKFLOW MANAGER — JOB MANAGER ═══════════ -->
     <div id="pane-wf-jobs" class="tab-pane">
         <!-- Page Header + Left Column -->
         <div class="l-col">
@@ -2150,7 +2150,7 @@
               <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="15 18 9 12 15 6"/></svg>
             </button>
             <div style="font-size:11px;color:var(--t4);">
-              <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">AI Workflow Manager</a>
+              <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">Workflow Manager</a>
               <span style="margin:0 4px;">/</span>
               <span style="color:var(--t1);font-weight:600;">Job Manager</span>
             </div>
@@ -2327,7 +2327,7 @@
             <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <div style="font-size:11px;color:var(--t4);">
-            <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">AI Workflow Manager</a>
+            <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">Workflow Manager</a>
             <span style="margin:0 4px;">/</span>
             <span style="color:var(--t1);font-weight:600;">Reports & Analytics</span>
           </div>
@@ -2509,7 +2509,7 @@
             <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <div style="font-size:11px;color:var(--t4);">
-            <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">AI Workflow Manager</a>
+            <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">Workflow Manager</a>
             <span style="margin:0 4px;">/</span>
             <span style="color:var(--t1);font-weight:600;">Migration Progress Tracker</span>
           </div>
@@ -2644,7 +2644,7 @@
             <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <div style="font-size:11px;color:var(--t4);">
-            <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">AI Workflow Manager</a>
+            <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">Workflow Manager</a>
             <span style="margin:0 4px;">/</span>
             <span style="color:var(--t1);font-weight:600;">Audit & Compliance Log</span>
           </div>
@@ -2825,7 +2825,7 @@
             <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <div style="font-size:11px;color:var(--t4);">
-            <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">AI Workflow Manager</a>
+            <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">Workflow Manager</a>
             <span style="margin:0 4px;">/</span>
             <span style="color:var(--t1);font-weight:600;">Job Scheduler</span>
           </div>
@@ -3002,7 +3002,7 @@
             <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <div style="font-size:11px;color:var(--t4);">
-            <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">AI Workflow Manager</a>
+            <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">Workflow Manager</a>
             <span style="margin:0 4px;">/</span>
             <span style="color:var(--t1);font-weight:600;">Data Quality Dashboard</span>
           </div>
@@ -3131,7 +3131,7 @@
             <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <div style="font-size:11px;color:var(--t4);">
-            <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">AI Workflow Manager</a>
+            <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">Workflow Manager</a>
             <span style="margin:0 4px;">/</span>
             <span style="color:var(--t1);font-weight:600;">Schema Comparison</span>
           </div>
@@ -3287,7 +3287,7 @@
             <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <div style="font-size:11px;color:var(--t4);">
-            <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">AI Workflow Manager</a>
+            <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">Workflow Manager</a>
             <span style="margin:0 4px;">/</span>
             <span style="color:var(--t1);font-weight:600;">Reconciliation Report</span>
           </div>
@@ -3422,7 +3422,7 @@
     </div>
 
 <!-- ════════════════════════════════════════════════════════════════════════════
-     DATA MODELING PANE — AI-driven Star / Snowflake Schema Builder
+     DATA MODELING PANE — Star / Snowflake Schema Builder
      ════════════════════════════════════════════════════════════════════════════ -->
 <div id="pane-wf-datamodel" class="tab-pane" style="flex-direction:column;">
   <!-- Breadcrumb -->
@@ -3431,9 +3431,9 @@
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
     <div style="font-size:11px;color:var(--t4);">
-      <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">AI Workflow Manager</a>
+      <a href="#" onclick="switchTab('wf-dashboard',G('nav-wf-dashboard'));return false;" style="color:var(--t4);text-decoration:none;">Workflow Manager</a>
       <span style="margin:0 4px;">/</span>
-      <span style="color:var(--t1);font-weight:600;">AI Data Modeling</span>
+      <span style="color:var(--t1);font-weight:600;">Data Modeling</span>
     </div>
   </div>
 
@@ -3616,10 +3616,10 @@
   <!-- Results Area (hidden until generated) -->
   <div id="dmResultArea" style="display:none;">
 
-    <!-- AI Insights Panel — auto-populated after generation -->
+    <!-- Insights Panel — auto-populated after generation -->
     <div id="dmInsightsPanel" class="card" style="margin-bottom:6px;padding:10px 14px;background:linear-gradient(135deg,rgba(139,92,246,.04),rgba(59,130,246,.04));border:1px solid rgba(139,92,246,.18);">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-        <span style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#8B5CF6;">🧠 AI Insights</span>
+        <span style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#8B5CF6;">🧠 Insights</span>
         <span id="dmInsightBadge" style="font-size:10px;padding:1px 8px;border-radius:10px;background:rgba(139,92,246,.12);color:#8B5CF6;font-weight:700;">0 findings</span>
         <button class="btn btn-ghost btn-xs" onclick="dmToggleInsights()" id="dmInsightToggle" style="margin-left:auto;font-size:10px;padding:3px 8px;">Hide</button>
       </div>
@@ -3660,7 +3660,7 @@
         <span id="dmSchemaTypeBadge" style="font-size:10px;padding:2px 10px;border-radius:12px;font-weight:700;background:rgba(245,158,11,.15);color:#F59E0B;">—</span>
         <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;">
           <button class="btn btn-ghost btn-xs" onclick="dmDetectChanges()" title="Detect DDL drift from live source" style="font-size:10px;border:1px solid #8B5CF6;color:#8B5CF6;border-radius:6px;">🔍 Detect Changes</button>
-          <button class="btn btn-ghost btn-xs" onclick="dmSuggestRelationships()" title="AI-suggest missing relationships" style="font-size:10px;border:1px solid #F59E0B;color:#F59E0B;border-radius:6px;">🧠 Suggest Relations</button>
+          <button class="btn btn-ghost btn-xs" onclick="dmSuggestRelationships()" title="Suggest missing relationships" style="font-size:10px;border:1px solid #F59E0B;color:#F59E0B;border-radius:6px;">🧠 Suggest Relations</button>
           <button class="btn btn-ghost btn-xs" onclick="dmLoadViews()" title="Load views from Databricks" style="font-size:10px;border:1px solid #F59E0B;color:#F59E0B;border-radius:6px;">👁 Load Views</button>
           <button class="btn btn-ghost btn-xs" onclick="dmShowCreateViewDialog()" title="Create a new view" style="font-size:10px;border:1px solid #10B981;color:#10B981;border-radius:6px;">+ New View</button>
           <button class="btn btn-ghost btn-xs" onclick="dmShowAddTableDialog()" title="Add a new table" style="font-size:10px;border:1px solid #3B82F6;color:#3B82F6;border-radius:6px;">+ New Table</button>
@@ -3765,7 +3765,7 @@
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
           <span style="font-size:11px;font-weight:700;color:var(--t1);text-transform:uppercase;letter-spacing:.08em;">Relationships</span>
           <button class="btn btn-ghost btn-xs" onclick="dmShowAddRelDialog()" style="font-size:10px;">+ Add Relationship</button>
-          <button class="btn btn-ghost btn-xs" onclick="dmSuggestRelationships()" style="font-size:10px;color:#8B5CF6;">🧠 AI Suggest</button>
+          <button class="btn btn-ghost btn-xs" onclick="dmSuggestRelationships()" style="font-size:10px;color:#8B5CF6;">🧠 Suggest</button>
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:11px;">
           <thead>

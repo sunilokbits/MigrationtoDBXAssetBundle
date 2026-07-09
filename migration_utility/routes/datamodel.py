@@ -445,20 +445,18 @@ def dm_push_devops():
     project = d.get("project") or cfg.get("devops_project", "")
     repo = d.get("repo") or cfg.get("devops_repo", "")
     branch = d.get("branch") or cfg.get("devops_branch", "data-modeling")
-    pat = d.get("pat") or cfg.get("devops_pat", "")
 
-    # Try KeyVault for PAT if not in config
-    if not pat:
-        try:
-            from keyvault_helper import get_secret
-            pat = get_secret("devops-pat") or ""
-        except Exception:
-            pass
+    # Resolve PAT: request body → config_cache (Key Vault → config fallback)
+    from config_cache import get_devops_token
+    pat = d.get("pat", "")
+    from keyvault_helper import is_masked
+    if not pat or is_masked(pat):
+        pat = get_devops_token()
 
     if not org or not project or not repo:
         return jsonify({"success": False, "error": "Azure DevOps org, project, and repo are required. Configure in Settings."})
     if not pat:
-        return jsonify({"success": False, "error": "Azure DevOps PAT is required. Configure in Settings or KeyVault."})
+        return jsonify({"success": False, "error": "Azure DevOps PAT is required. Store as 'devops-token' in Key Vault or configure in Settings."})
 
     ddl = d.get("ddl", "")
     er_image_base64 = d.get("er_image_base64", "")
@@ -492,4 +490,36 @@ def dm_push_devops():
         return jsonify(result)
     except Exception as e:
         logger.error("DevOps push failed: %s", e)
+        return jsonify({"success": False, "error": str(e)})
+
+
+@datamodel_bp.route("/datamodel/test-devops", methods=["POST"])
+@login_required
+def dm_test_devops():
+    """Test connection to Azure DevOps repo (read-only)."""
+    d = request.get_json(force=True)
+    cfg = get_config()
+
+    org = d.get("org") or cfg.get("devops_org", "")
+    project = d.get("project") or cfg.get("devops_project", "")
+    repo = d.get("repo") or cfg.get("devops_repo", "")
+
+    # Resolve PAT: request body → config_cache (Key Vault → config fallback)
+    from config_cache import get_devops_token
+    pat = d.get("pat", "")
+    from keyvault_helper import is_masked
+    if not pat or is_masked(pat):
+        pat = get_devops_token()
+
+    if not org or not project or not repo:
+        return jsonify({"success": False, "error": "Organization, project, and repo are required."})
+    if not pat:
+        return jsonify({"success": False, "error": "PAT is required. Store as 'devops-token' in Key Vault."})
+
+    try:
+        from devops_connector import test_connection
+        result = test_connection(org, project, repo, pat)
+        return jsonify(result)
+    except Exception as e:
+        logger.error("DevOps test connection failed: %s", e)
         return jsonify({"success": False, "error": str(e)})
