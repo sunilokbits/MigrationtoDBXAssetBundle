@@ -1015,6 +1015,9 @@
         <div class="cfg-status-pill" id="cfgStatCDC" onclick="cfgToggleAccordion('cfgAccCDC')">
           <span class="cfg-dot"></span>CDC / DLT
         </div>
+        <div class="cfg-status-pill" id="cfgStatDevOps" onclick="cfgToggleAccordion('cfgAccDevOps')">
+          <span class="cfg-dot"></span>DevOps
+        </div>
       </div>
 
       <!-- === ACCORDION SECTIONS === -->
@@ -1375,6 +1378,52 @@
               <div style="font-size:11px;color:var(--t2);">Change Data Feed on all layers</div>
               <div style="font-size:9px;color:var(--t4);">delta.enableChangeDataFeed = true</div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 6. Azure DevOps Integration -->
+      <div class="cfg-acc" id="cfgAccDevOps">
+        <button class="cfg-acc-hd" onclick="cfgToggleAccordion('cfgAccDevOps')">
+          <svg class="cfg-acc-ico" viewBox="0 0 24 24" style="color:#0078D4;"><path d="M22 4L12 2 4 5v6c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V4z"/></svg>
+          Azure DevOps — Git Integration
+          <span class="cfg-acc-chv">▾</span>
+        </button>
+        <div class="cfg-acc-body">
+          <div style="font-size:11px;color:var(--t3);margin-bottom:12px;">
+            Push Data Model DDL &amp; ER diagrams to an Azure DevOps Git repository. Uses PAT authentication.
+          </div>
+          <div class="cfg-grid">
+            <div>
+              <label class="lbl">Organization <span style="color:var(--t4);font-size:9px;">(name or full URL)</span></label>
+              <input class="inp" id="cfgDevOpsOrg" placeholder="e.g. my-org or https://dev.azure.com/my-org">
+            </div>
+            <div>
+              <label class="lbl">Project</label>
+              <input class="inp" id="cfgDevOpsProject" placeholder="e.g. DataPlatform">
+            </div>
+          </div>
+          <div class="cfg-grid" style="margin-top:8px;">
+            <div>
+              <label class="lbl">Repository</label>
+              <input class="inp" id="cfgDevOpsRepo" placeholder="e.g. data-models">
+            </div>
+            <div>
+              <label class="lbl">Branch <span style="color:var(--t4);font-size:9px;">(auto-created if missing)</span></label>
+              <input class="inp" id="cfgDevOpsBranch" placeholder="data-modeling" value="data-modeling">
+            </div>
+          </div>
+          <div style="margin-top:8px;">
+            <label class="lbl">Personal Access Token (PAT) <button type="button" class="cfg-auto-btn" onclick="cfgTogglePw('cfgDevOpsPat',this)">Show</button></label>
+            <input class="inp" id="cfgDevOpsPat" type="password" placeholder="PAT with Code (Read & Write) scope">
+            <div style="font-size:9px;color:var(--t4);margin-top:3px;">Stored in deployconfig.json. For production, store as <code>devops-pat</code> secret in Key Vault.</div>
+          </div>
+          <div style="margin-top:10px;">
+            <button class="btn btn-ghost btn-xs" onclick="cfgTestDevOps()" id="btnTestDevOps" style="border:1px solid #0078D4;color:#0078D4;">
+              <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              Test Connection
+            </button>
+            <span id="cfgDevOpsStatus" style="font-size:10px;margin-left:8px;"></span>
           </div>
         </div>
       </div>
@@ -3598,6 +3647,9 @@
         <button class="btn btn-ghost btn-xs" onclick="dmDownloadDDL()" title="Download SQL">
           <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> SQL
         </button>
+        <button class="btn btn-ghost btn-xs" onclick="dmPushToDevOps()" title="Push DDL &amp; ER to Azure DevOps" style="border:1px solid #0078D4;color:#0078D4;">
+          <svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg> Push to DevOps
+        </button>
       </div>
     </div>
 
@@ -3642,7 +3694,7 @@
         </div>
         <div id="dmSuggestList" style="font-size:10px;color:var(--t3);max-height:120px;overflow-y:auto;"></div>
       </div>
-      <svg id="dmErSvg" width="2400" height="900" style="min-width:100%;background:#F8FAFC;border:1px solid #CBD5E1;border-radius:4px;cursor:grab;">
+      <svg id="dmErSvg" width="2400" height="900" style="min-width:100%;background:#F8FAFC;border:1px solid #CBD5E1;border-radius:4px;cursor:grab;overflow:visible;">
         <defs>
           <marker id="dmArrow" markerWidth="12" markerHeight="8" refX="12" refY="4" orient="auto"><polygon points="0 0, 12 4, 0 8" fill="#475569"/></marker>
           <marker id="dmCrowMany" markerWidth="14" markerHeight="14" refX="14" refY="7" orient="auto">

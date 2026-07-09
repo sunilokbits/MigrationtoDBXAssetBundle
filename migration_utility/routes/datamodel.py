@@ -430,3 +430,66 @@ def dm_save_metadata():
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
+
+
+# ── Push to Azure DevOps ──────────────────────────────────────────────────────
+@datamodel_bp.route("/datamodel/push-devops", methods=["POST"])
+@login_required
+def dm_push_devops():
+    """Push DDL, ER diagram PNG, and model JSON to an Azure DevOps Git repo."""
+    d = request.get_json(force=True)
+    cfg = get_config()
+
+    # Get DevOps config from request or deployconfig
+    org = d.get("org") or cfg.get("devops_org", "")
+    project = d.get("project") or cfg.get("devops_project", "")
+    repo = d.get("repo") or cfg.get("devops_repo", "")
+    branch = d.get("branch") or cfg.get("devops_branch", "data-modeling")
+    pat = d.get("pat") or cfg.get("devops_pat", "")
+
+    # Try KeyVault for PAT if not in config
+    if not pat:
+        try:
+            from keyvault_helper import get_secret
+            pat = get_secret("devops-pat") or ""
+        except Exception:
+            pass
+
+    if not org or not project or not repo:
+        return jsonify({"success": False, "error": "Azure DevOps org, project, and repo are required. Configure in Settings."})
+    if not pat:
+        return jsonify({"success": False, "error": "Azure DevOps PAT is required. Configure in Settings or KeyVault."})
+
+    ddl = d.get("ddl", "")
+    er_image_base64 = d.get("er_image_base64", "")
+    model_json = d.get("model_json")
+    commit_message = d.get("commit_message", "Update data model — DDL & ER diagram")
+    folder_path = d.get("folder_path", "data_modeling").strip("/")
+    model_name = d.get("model_name", "model").strip()
+
+    # Sanitize model name for path
+    safe_name = "".join(c if c.isalnum() or c in "_-" else "_" for c in model_name)
+    target_folder = f"{folder_path}/{safe_name}"
+
+    files = []
+    if ddl:
+        files.append({"path": f"{target_folder}/ddl.sql", "content": ddl, "encoding": "utf-8"})
+    if er_image_base64:
+        # Strip data URL prefix if present
+        img_data = er_image_base64
+        if "," in img_data:
+            img_data = img_data.split(",", 1)[1]
+        files.append({"path": f"{target_folder}/er_diagram.png", "content": img_data, "encoding": "base64"})
+    if model_json:
+        files.append({"path": f"{target_folder}/model.json", "content": json.dumps(model_json, indent=2), "encoding": "utf-8"})
+
+    if not files:
+        return jsonify({"success": False, "error": "No files to push (DDL or ER image required)"})
+
+    try:
+        from devops_connector import push_files_to_repo
+        result = push_files_to_repo(org, project, repo, branch, files, commit_message, pat)
+        return jsonify(result)
+    except Exception as e:
+        logger.error("DevOps push failed: %s", e)
+        return jsonify({"success": False, "error": str(e)})

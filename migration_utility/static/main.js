@@ -2984,6 +2984,11 @@ function _collectConfig(){
     azure_tenant_id:  G('cfgTenantId')?.value?.trim()||'',
     azure_client_id:  G('cfgClientId')?.value?.trim()||'',
     azure_client_secret: G('cfgClientSecret')?.value||'',
+    devops_org:     G('cfgDevOpsOrg')?.value?.trim()||'',
+    devops_project: G('cfgDevOpsProject')?.value?.trim()||'',
+    devops_repo:    G('cfgDevOpsRepo')?.value?.trim()||'',
+    devops_branch:  G('cfgDevOpsBranch')?.value?.trim()||'data-modeling',
+    devops_pat:     G('cfgDevOpsPat')?.value||'',
   };
 }
 
@@ -3006,6 +3011,12 @@ function _populateConfig(c){
   if(c.azure_tenant_id&&c.azure_client_id&&c.azure_client_secret){
     const spSt=G('cfgSpStatus');if(spSt){spSt.innerHTML='<span style="color:#16a34a;">✓ Service Principal configured</span>';}
   }
+  // DevOps
+  if(G('cfgDevOpsOrg'))    G('cfgDevOpsOrg').value=c.devops_org||'';
+  if(G('cfgDevOpsProject'))G('cfgDevOpsProject').value=c.devops_project||'';
+  if(G('cfgDevOpsRepo'))   G('cfgDevOpsRepo').value=c.devops_repo||'';
+  if(G('cfgDevOpsBranch')) G('cfgDevOpsBranch').value=c.devops_branch||'data-modeling';
+  if(G('cfgDevOpsPat'))    G('cfgDevOpsPat').value=c.devops_pat||'';
   // External locations
   const elList=G('cfgExtLocList'); elList.innerHTML='';
   const elEntries=Object.entries(c.external_locations||{});
@@ -3095,6 +3106,7 @@ window.cfgUpdateStatus=function(){
   dot('cfgStatStorage',filled('cfgStorageAcct')&&filled('cfgContainer'));
   dot('cfgStatUC',G('cfgCatalogList')&&G('cfgCatalogList').children.length>0);
   dot('cfgStatCDC',filled('cfgCdcMode'));
+  dot('cfgStatDevOps',filled('cfgDevOpsOrg')&&filled('cfgDevOpsProject')&&filled('cfgDevOpsRepo'));
   const h=G('cfgHintAzure');if(h){const host=G('cfgDbrHost');h.textContent=host&&host.value?host.value.replace(/^https?:\/\//,'').slice(0,30):'';};
   const hs=G('cfgHintSrc');if(hs){const sv=G('cfgSrcServer');hs.textContent=sv&&sv.value?sv.value.slice(0,30):'';};
 };
@@ -4196,6 +4208,7 @@ async function dmGenerate(){
       G('dmSchemaTypeBadge').textContent=d.schema_type.toUpperCase()+' SCHEMA';
       G('dmSchemaTypeBadge').style.background=d.schema_type==='star'?'rgba(245,158,11,.15)':'rgba(59,130,246,.15)';
       G('dmSchemaTypeBadge').style.color=d.schema_type==='star'?'#F59E0B':'#3B82F6';
+      _dmSavedPositions={};
       dmRenderER(d.er_json);
       dmRenderDetails(d);
       _dmRenderInsights(d);
@@ -4241,6 +4254,7 @@ async function dmLoadSample(){
       G('dmSchemaTypeBadge').textContent=d.schema_type.toUpperCase()+' SCHEMA';
       G('dmSchemaTypeBadge').style.background=d.schema_type==='star'?'rgba(245,158,11,.15)':'rgba(59,130,246,.15)';
       G('dmSchemaTypeBadge').style.color=d.schema_type==='star'?'#F59E0B':'#3B82F6';
+      _dmSavedPositions={};
       dmRenderER(d.er_json);
       dmRenderDetails(d);
       _dmRenderInsights(d);
@@ -4287,27 +4301,160 @@ function dmRenderER(er){
   const facts=er.nodes.filter(n=>n.type==='fact');
   const dims=er.nodes.filter(n=>n.type==='dimension');
   const views=er.nodes.filter(n=>n.type==='view');
-  const W=Math.max(svg.clientWidth||1400,1200);
-  const H=Math.max(900, (facts.length+dims.length+views.length)*80);
+  const nodeW_layout=300, gapX=80, gapY=60, pad=40;
+
+  // Calculate actual height for a node
+  function _nodeH(n){
+    const cols=(n.columns||[]).length;
+    const pkCols=(n.columns||[]).filter(c=>c.is_pk).length;
+    const fkCols=(n.columns||[]).filter(c=>c.fk_table).length;
+    const constraintLines=(pkCols?1:0)+fkCols;
+    return 28+cols*22+6+(constraintLines?(constraintLines*20+12):0)+4;
+  }
+
+  // ── Smart Radial Layout: facts center, dims around in ring ──
+  // Build adjacency: which dims connect to which facts
+  const edges=er.edges||[];
+  const factIds=new Set(facts.map(n=>n.id));
+  const dimToFact={};
+  edges.forEach(e=>{
+    if(factIds.has(e.from)&&!factIds.has(e.to)) dimToFact[e.to]=e.from;
+    if(factIds.has(e.to)&&!factIds.has(e.from)) dimToFact[e.from]=e.to;
+  });
+
+  // Calculate heights for all nodes
+  const nodeHeights={};
+  er.nodes.forEach(n=>{nodeHeights[n.id]=_nodeH(n);});
+
+  // If only manual positions exist, skip auto layout
+  const needsLayout=er.nodes.some(n=>n.x===undefined||n._autoLayout!==false);
+
+  if(needsLayout){
+    // Calculate fact bounding
+    let factMaxH=0;
+    facts.forEach(n=>{const h=nodeHeights[n.id];if(h>factMaxH)factMaxH=h;});
+
+    // For a single fact with many dims: radial layout
+    // For multiple facts: horizontal facts with dims distributed
+    const totalNodes=er.nodes.length;
+    const dimMaxH=Math.max(...dims.map(n=>nodeHeights[n.id]),200);
+
+    if(facts.length<=2 && dims.length>=3){
+      // ── RADIAL LAYOUT: Place fact(s) at center, dims in a ring ──
+      const ringRadius=Math.max(400, dims.length*80);
+      const centerX=ringRadius+nodeW_layout/2+pad;
+      const centerY=ringRadius+factMaxH/2+pad;
+
+      // Place facts at center
+      facts.forEach((n,i)=>{if(n.x===undefined||n._autoLayout){
+        n.x=centerX-nodeW_layout/2 + i*(nodeW_layout+gapX);
+        n.y=centerY-factMaxH/2;
+        n._autoLayout=true;
+      }});
+
+      // Place dims in a ring around the fact(s)
+      const factCenterX=centerX + (facts.length-1)*(nodeW_layout+gapX)/2;
+      dims.forEach((n,i)=>{if(n.x===undefined||n._autoLayout){
+        const angle=-Math.PI/2 + (2*Math.PI*i)/dims.length;
+        const rx=ringRadius+nodeW_layout*0.2;
+        const ry=ringRadius*0.7;
+        n.x=factCenterX+Math.cos(angle)*rx - nodeW_layout/2;
+        n.y=centerY+Math.sin(angle)*ry - nodeHeights[n.id]/2;
+        n._autoLayout=true;
+      }});
+
+      // Place views outside the ring at bottom
+      const viewY=centerY+ringRadius*0.7+dimMaxH/2+gapY;
+      views.forEach((n,i)=>{if(n.x===undefined||n._autoLayout){
+        n.x=pad+i*(nodeW_layout+gapX);
+        n.y=viewY;
+        n._autoLayout=true;
+      }});
+
+    } else {
+      // ── GRID LAYOUT: multiple facts or few dims ──
+      const cols=Math.max(3, Math.ceil(Math.sqrt(totalNodes*1.8)));
+
+      // Place facts first, centered
+      const factRow=Math.floor(cols/2)-Math.floor(facts.length/2);
+      facts.forEach((n,i)=>{if(n.x===undefined||n._autoLayout){
+        n.x=pad+(factRow+i)*(nodeW_layout+gapX);
+        n.y=pad;
+        n._autoLayout=true;
+      }});
+
+      // Place dims in rows below
+      const dimStartY=pad+factMaxH+gapY;
+      const dimCols=Math.max(2, Math.ceil(Math.sqrt(dims.length*2)));
+      dims.forEach((n,i)=>{if(n.x===undefined||n._autoLayout){
+        const col=i%dimCols;
+        const row=Math.floor(i/dimCols);
+        const rowMaxH=dims.slice(row*dimCols, (row+1)*dimCols).reduce((m,d)=>Math.max(m,nodeHeights[d.id]),0);
+        n.x=pad+col*(nodeW_layout+gapX);
+        n.y=dimStartY+row*(rowMaxH+gapY);
+        n._autoLayout=true;
+      }});
+
+      // Views at the bottom
+      let bottomY=0;
+      er.nodes.forEach(n=>{const b=(n.y||0)+nodeHeights[n.id];if(b>bottomY)bottomY=b;});
+      views.forEach((n,i)=>{if(n.x===undefined||n._autoLayout){
+        n.x=pad+i*(nodeW_layout+gapX);
+        n.y=bottomY+gapY;
+        n._autoLayout=true;
+      }});
+    }
+
+    // ── Overlap resolution pass: push overlapping nodes apart ──
+    for(let iter=0;iter<5;iter++){
+      let moved=false;
+      for(let i=0;i<er.nodes.length;i++){
+        for(let j=i+1;j<er.nodes.length;j++){
+          const a=er.nodes[i], b=er.nodes[j];
+          const aW=nodeW_layout, aH=nodeHeights[a.id];
+          const bW=nodeW_layout, bH=nodeHeights[b.id];
+          const overlapX=(aW+gapX/2)-(Math.abs((a.x+aW/2)-(b.x+bW/2)));
+          const overlapY=((aH+bH)/2+gapY/2)-(Math.abs((a.y+aH/2)-(b.y+bH/2)));
+          if(overlapX>0 && overlapY>0){
+            // Push apart in the direction of least overlap
+            if(overlapX<overlapY){
+              const shift=overlapX/2+gapX/4;
+              if(a.x<b.x){a.x-=shift;b.x+=shift;}
+              else{a.x+=shift;b.x-=shift;}
+            } else {
+              const shift=overlapY/2+gapY/4;
+              if(a.y<b.y){a.y-=shift;b.y+=shift;}
+              else{a.y+=shift;b.y-=shift;}
+            }
+            moved=true;
+          }
+        }
+      }
+      if(!moved) break;
+    }
+
+    // Ensure no negative positions
+    let minX=Infinity, minY=Infinity;
+    er.nodes.forEach(n=>{if(n.x<minX)minX=n.x; if(n.y<minY)minY=n.y;});
+    if(minX<pad||minY<pad){
+      const shiftX=minX<pad?pad-minX:0;
+      const shiftY=minY<pad?pad-minY:0;
+      er.nodes.forEach(n=>{n.x+=shiftX; n.y+=shiftY;});
+    }
+  }
+
+  // Compute total dimensions and resize SVG
+  let totalW=0, totalH=0;
+  er.nodes.forEach(n=>{
+    const r=(n.x||0)+nodeW_layout+pad;
+    const b=(n.y||0)+nodeHeights[n.id]+pad;
+    if(r>totalW)totalW=r;
+    if(b>totalH)totalH=b;
+  });
+  const W=Math.max(totalW, svg.clientWidth||1400);
+  const H=Math.max(totalH, 900);
   svg.setAttribute('height', H);
-  svg.setAttribute('width', Math.max(2400, W));
-
-  // Position facts horizontally centered
-  const factW=300, factGap=80;
-  const totalFactW=facts.length*factW+(facts.length-1)*factGap;
-  let fx=Math.max(60,(W-totalFactW)/2);
-  facts.forEach((n,i)=>{if(n.x===undefined||n._autoLayout){n.x=fx+i*(factW+factGap);n.y=H/2-120;n._autoLayout=true;}});
-
-  // Position dims spread around facts
-  const cx=W/2, cy=H/2-20;
-  const rx=Math.min(W/2.2,600), ry=Math.min(H/2.4,320);
-  dims.forEach((n,i)=>{if(n.x===undefined||n._autoLayout){
-    const angle=Math.PI + Math.PI*(i+1)/(dims.length+1);
-    n.x=cx+Math.cos(angle)*rx-150;n.y=cy+Math.sin(angle)*ry-50;n._autoLayout=true;
-  }});
-
-  // Position views below
-  views.forEach((n,i)=>{if(n.x===undefined||n._autoLayout){n.x=80+i*360;n.y=H-180;n._autoLayout=true;}});
+  svg.setAttribute('width', W);
 
   // Draw edges first (behind nodes)
   _dmDrawEdges(er, g);
@@ -4537,6 +4684,9 @@ function dmRenderER(er){
     g.setAttribute('transform','translate('+_dmPanX+','+_dmPanY+') scale('+_dmZoomLevel+')');
   });
   svg.addEventListener('mouseup',()=>{_svgDragging=false;svg.style.cursor='grab';});
+
+  // Auto-fit to viewport after rendering
+  setTimeout(()=>dmFitView(), 80);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -5095,40 +5245,81 @@ function _dmDrawEdges(er, g){
   const firstNodeG=g.querySelector('g[data-node-id]');
   const nodeW=300;
 
+  // Calculate actual box height for a node
+  function _edgeNodeH(n){
+    const cols=(n.columns||[]).length;
+    const pkCols=(n.columns||[]).filter(c=>c.is_pk).length;
+    const fkCols=(n.columns||[]).filter(c=>c.fk_table).length;
+    const constraintLines=(pkCols?1:0)+fkCols;
+    return 28+cols*22+6+(constraintLines?(constraintLines*20+12):0)+4;
+  }
+
+  // Track port usage to offset multiple connections on same side
+  const portCounters={};
+  function _getPort(nodeId, side){
+    const key=nodeId+'_'+side;
+    if(!portCounters[key])portCounters[key]=0;
+    portCounters[key]++;
+    return portCounters[key];
+  }
+
   er.edges.forEach((e,ei)=>{
     const from=er.nodes.find(n=>n.id===e.from);
     const to=er.nodes.find(n=>n.id===e.to);
     if(!from||!to)return;
 
-    // Calculate box heights
-    const fromCols=from.columns||[];
-    const toCols=to.columns||[];
-    const fromH=28+fromCols.length*22+10;
-    const toH=28+toCols.length*22+10;
+    const fromH=_edgeNodeH(from);
+    const toH=_edgeNodeH(to);
 
-    // Find best connection points (nearest edges)
+    // Find best connection points (nearest edges, with port offsets)
     const fromCx=from.x+nodeW/2, fromCy=from.y+fromH/2;
     const toCx=to.x+nodeW/2, toCy=to.y+toH/2;
     const dx=toCx-fromCx, dy=toCy-fromCy;
 
-    let x1,y1,x2,y2;
-    if(Math.abs(dx)>Math.abs(dy)){
+    let x1,y1,x2,y2,side1,side2;
+    if(Math.abs(dx)>Math.abs(dy)*0.6){
       // Connect left/right sides
-      if(dx>0){x1=from.x+nodeW;y1=fromCy;x2=to.x;y2=toCy;}
-      else{x1=from.x;y1=fromCy;x2=to.x+nodeW;y2=toCy;}
+      if(dx>0){
+        side1='right';side2='left';
+        x1=from.x+nodeW;x2=to.x;
+      } else {
+        side1='left';side2='right';
+        x1=from.x;x2=to.x+nodeW;
+      }
+      // Offset y based on port count to avoid overlapping lines
+      const p1=_getPort(from.id,side1);
+      const p2=_getPort(to.id,side2);
+      const fromSlots=Math.max(4, Math.floor(fromH/30));
+      const toSlots=Math.max(4, Math.floor(toH/30));
+      y1=from.y+Math.min(fromH-10, 28+(p1*((fromH-36)/fromSlots)));
+      y2=to.y+Math.min(toH-10, 28+(p2*((toH-36)/toSlots)));
     } else {
       // Connect top/bottom
-      if(dy>0){x1=fromCx;y1=from.y+fromH;x2=toCx;y2=to.y;}
-      else{x1=fromCx;y1=from.y;x2=toCx;y2=to.y+toH;}
+      if(dy>0){
+        side1='bottom';side2='top';
+        y1=from.y+fromH;y2=to.y;
+      } else {
+        side1='top';side2='bottom';
+        y1=from.y;y2=to.y+toH;
+      }
+      const p1=_getPort(from.id,side1);
+      const p2=_getPort(to.id,side2);
+      const maxPorts=Math.max(3, Math.floor(nodeW/80));
+      x1=from.x+Math.min(nodeW-20, 40+(p1*((nodeW-60)/maxPorts)));
+      x2=to.x+Math.min(nodeW-20, 40+(p2*((nodeW-60)/maxPorts)));
     }
 
     // Orthogonal path (SQL Developer style — right-angle connectors)
     const mx=(x1+x2)/2, my=(y1+y2)/2;
     let pathD;
-    if(Math.abs(dx)>Math.abs(dy)){
-      pathD='M '+x1+' '+y1+' L '+mx+' '+y1+' L '+mx+' '+y2+' L '+x2+' '+y2;
+    if(side1==='right'||side1==='left'){
+      // Horizontal exit: go halfway then turn vertical
+      const midX=x1+(x2-x1)*0.5;
+      pathD='M '+x1+' '+y1+' L '+midX+' '+y1+' L '+midX+' '+y2+' L '+x2+' '+y2;
     } else {
-      pathD='M '+x1+' '+y1+' L '+x1+' '+my+' L '+x2+' '+my+' L '+x2+' '+y2;
+      // Vertical exit: go halfway then turn horizontal
+      const midY=y1+(y2-y1)*0.5;
+      pathD='M '+x1+' '+y1+' L '+x1+' '+midY+' L '+x2+' '+midY+' L '+x2+' '+y2;
     }
 
     const path=document.createElementNS('http://www.w3.org/2000/svg','path');
@@ -5136,7 +5327,7 @@ function _dmDrawEdges(er, g){
     path.setAttribute('d', pathD);
     path.setAttribute('fill','none');
     path.setAttribute('stroke','#475569');
-    path.setAttribute('stroke-width','1.5');
+    path.setAttribute('stroke-width','1.8');
     path.setAttribute('stroke-dasharray', e.label==='many-to-many'?'6,3':'none');
 
     // Crow's foot markers
@@ -5167,24 +5358,34 @@ function _dmDrawEdges(er, g){
     });
 
     // Hover effect
-    path.addEventListener('mouseover',()=>{path.setAttribute('stroke','#2563EB');path.setAttribute('stroke-width','2.5');});
-    path.addEventListener('mouseout',()=>{path.setAttribute('stroke','#475569');path.setAttribute('stroke-width','1.5');});
+    path.addEventListener('mouseover',()=>{path.setAttribute('stroke','#2563EB');path.setAttribute('stroke-width','2.8');});
+    path.addEventListener('mouseout',()=>{path.setAttribute('stroke','#475569');path.setAttribute('stroke-width','1.8');});
 
     if(firstNodeG) g.insertBefore(path,firstNodeG); else g.appendChild(path);
 
-    // Relationship label near midpoint
-    const lblX=mx+8, lblY=my-8;
+    // Relationship label on a background pill near midpoint
+    const lblX=mx, lblY=my-6;
+    // Label background for readability
+    const lblBg=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    lblBg.classList.add('dm-edge-el');
+    const relLabel=_dmNotation==='crowsfoot'?_dmCrowsFootLabel(e.label):(e.label||'');
+    const lblW=Math.max(40, relLabel.length*7+12);
+    lblBg.setAttribute('x',String(lblX-lblW/2));lblBg.setAttribute('y',String(lblY-12));
+    lblBg.setAttribute('width',String(lblW));lblBg.setAttribute('height','16');
+    lblBg.setAttribute('rx','3');
+    lblBg.setAttribute('fill','#FFFFFF');lblBg.setAttribute('stroke','#C7D2FE');lblBg.setAttribute('stroke-width','1');
+    if(firstNodeG) g.insertBefore(lblBg,firstNodeG); else g.appendChild(lblBg);
+
     const lbl=document.createElementNS('http://www.w3.org/2000/svg','text');
     lbl.classList.add('dm-edge-el');
-    lbl.setAttribute('x',lblX);lbl.setAttribute('y',lblY);
+    lbl.setAttribute('x',String(lblX));lbl.setAttribute('y',String(lblY));
     lbl.setAttribute('text-anchor','middle');
-    lbl.setAttribute('fill','#6366F1');lbl.setAttribute('font-size','11');
+    lbl.setAttribute('fill','#4338CA');lbl.setAttribute('font-size','10');
     lbl.setAttribute('font-family','Consolas, monospace');lbl.setAttribute('font-weight','600');
-    const relLabel=_dmNotation==='crowsfoot'?_dmCrowsFootLabel(e.label):e.label;
-    lbl.textContent=relLabel||'';
+    lbl.textContent=relLabel;
     if(firstNodeG) g.insertBefore(lbl,firstNodeG); else g.appendChild(lbl);
 
-    // FK column label
+    // FK column label near source
     if(e.via_column){
       const fkLbl=document.createElementNS('http://www.w3.org/2000/svg','text');
       fkLbl.classList.add('dm-edge-el');
@@ -5416,25 +5617,60 @@ function dmToggleNotation(){
 }
 
 function dmAutoLayout(){
-  if(!_dmErJson) return;
+  if(!_dmErJson||!_dmErJson.nodes||!_dmErJson.nodes.length) return;
+  // Clear saved positions to force re-layout
+  _dmSavedPositions={};
+  _dmErJson.nodes.forEach(n=>{n.x=undefined;n.y=undefined;n._autoLayout=true;});
+  // Re-render with fresh layout
   dmRenderER(_dmErJson);
-  toast('Layout recalculated','tok');
+  toast('Layout optimized','tok');
 }
 
 function dmFitView(){
   if(!_dmErJson||!_dmErJson.nodes||!_dmErJson.nodes.length)return;
   const svg=G('dmErSvg');
-  const W=svg.clientWidth||900, H=parseInt(svg.getAttribute('height'))||460;
+  const grp=G('dmErGroup');
+  const nodeW=300, rowH=22, hdrH=28;
+  const viewportW=svg.clientWidth||svg.parentElement.clientWidth||1200;
+  const viewportH=svg.clientHeight||svg.parentElement.clientHeight||700;
+
+  // Calculate true bounding box with actual node dimensions
   let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
   _dmErJson.nodes.forEach(n=>{
-    if(n.x<minX)minX=n.x; if(n.y<minY)minY=n.y;
-    if(n.x+200>maxX)maxX=n.x+200; if(n.y+100>maxY)maxY=n.y+100;
+    const cols=(n.columns||[]).length;
+    const pkCols=(n.columns||[]).filter(c=>c.is_pk).length;
+    const fkCols=(n.columns||[]).filter(c=>c.fk_table).length;
+    const constraintLines=(pkCols?1:0)+fkCols;
+    const h=hdrH+cols*rowH+6+(constraintLines?(constraintLines*20+12):0)+4;
+    if(n.x<minX)minX=n.x;
+    if(n.y<minY)minY=n.y;
+    if(n.x+nodeW>maxX)maxX=n.x+nodeW;
+    if(n.y+h>maxY)maxY=n.y+h;
   });
-  const cw=maxX-minX+40, ch=maxY-minY+40;
-  _dmZoomLevel=Math.min(W/cw, H/ch, 2);
-  _dmPanX=-minX*_dmZoomLevel+20;
-  _dmPanY=-minY*_dmZoomLevel+20;
-  G('dmErGroup').setAttribute('transform','translate('+_dmPanX+','+_dmPanY+') scale('+_dmZoomLevel+')');
+
+  // Add generous padding for readability
+  const pad=60;
+  minX-=pad; minY-=pad; maxX+=pad; maxY+=pad;
+  const contentW=maxX-minX;
+  const contentH=maxY-minY;
+
+  // Calculate scale to fit all content in viewport (don't zoom in more than 1.2x for readability)
+  const scaleX=viewportW/contentW;
+  const scaleY=viewportH/contentH;
+  _dmZoomLevel=Math.min(scaleX, scaleY, 1.2);
+  // Ensure minimum zoom so labels remain readable
+  _dmZoomLevel=Math.max(_dmZoomLevel, 0.25);
+
+  // Center the diagram in the viewport
+  const scaledW=contentW*_dmZoomLevel;
+  const scaledH=contentH*_dmZoomLevel;
+  _dmPanX=-minX*_dmZoomLevel + (viewportW-scaledW)/2;
+  _dmPanY=-minY*_dmZoomLevel + (viewportH-scaledH)/2;
+
+  // Smooth animated transition
+  grp.style.transition='transform 0.4s ease-in-out';
+  grp.setAttribute('transform','translate('+_dmPanX+','+_dmPanY+') scale('+_dmZoomLevel+')');
+  setTimeout(()=>{grp.style.transition='';}, 450);
 }
 
 function dmUpdateEdges(er){
@@ -5923,6 +6159,97 @@ function dmDownloadDDL(){
 function dmCopyDDL(){
   if(!_dmDdl)return;
   navigator.clipboard.writeText(_dmDdl).then(()=>toast('DDL copied to clipboard','tok')).catch(()=>toast('Copy failed','terr'));
+}
+
+// ── Push to Azure DevOps ─────────────────────────────────────────────────────
+async function dmPushToDevOps(){
+  if(!_dmDdl && !_dmErJson){toast('Generate a model first','terr');return;}
+  const org=(G('cfgDevOpsOrg')||{}).value||'';
+  const project=(G('cfgDevOpsProject')||{}).value||'';
+  const repo=(G('cfgDevOpsRepo')||{}).value||'';
+  const branch=(G('cfgDevOpsBranch')||{}).value||'data-modeling';
+  const pat=(G('cfgDevOpsPat')||{}).value||'';
+  if(!org||!project||!repo){toast('Configure Azure DevOps in Settings first (org/project/repo)','terr');return;}
+  // Capture ER diagram as PNG base64
+  let erBase64='';
+  try{
+    const svg=G('dmErSvg');
+    if(svg){
+      const clone=svg.cloneNode(true);
+      const grp=clone.querySelector('#dmErGroup');
+      if(grp)grp.setAttribute('transform','scale(1)');
+      const xml=new XMLSerializer().serializeToString(clone);
+      const svgBlob=new Blob(['<?xml version="1.0" encoding="UTF-8"?>'+xml],{type:'image/svg+xml'});
+      const url=URL.createObjectURL(svgBlob);
+      const img=new Image();
+      erBase64=await new Promise((resolve)=>{
+        img.onload=function(){
+          const canvas=document.createElement('canvas');
+          canvas.width=img.width*2;canvas.height=img.height*2;
+          const ctx=canvas.getContext('2d');
+          ctx.scale(2,2);ctx.fillStyle='#FFFFFF';ctx.fillRect(0,0,img.width,img.height);
+          ctx.drawImage(img,0,0);
+          resolve(canvas.toDataURL('image/png'));
+          URL.revokeObjectURL(url);
+        };
+        img.onerror=function(){resolve('');URL.revokeObjectURL(url);};
+        img.src=url;
+      });
+    }
+  }catch(e){console.warn('Could not capture ER as PNG:',e);}
+  // Model name from catalog + schema
+  const modelName=(G('dmCatalog').value||'model')+'_'+(G('dmSchema').value||'schema');
+  const commitMsg=prompt('Commit message:','Update data model: '+modelName);
+  if(commitMsg===null)return;
+  toast('Pushing to Azure DevOps…','tinfo');
+  try{
+    const r=await fetch('/api/v1/datamodel/push-devops',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        org,project,repo,branch,pat,
+        ddl:_dmDdl||'',
+        er_image_base64:erBase64,
+        model_json:_dmModel||null,
+        commit_message:commitMsg,
+        model_name:modelName,
+      })});
+    const d=await r.json();
+    if(d.success){
+      toast('Pushed to DevOps! Commit: '+d.commit_id.substring(0,8),'tok',5000);
+      if(d.url){
+        const link=document.createElement('a');link.href=d.url;link.target='_blank';link.click();
+      }
+    }else{
+      toast(d.error||'Push failed','terr',6000);
+    }
+  }catch(e){toast('Error: '+e.message,'terr');}
+}
+
+// ── Test DevOps Connection ───────────────────────────────────────────────────
+async function cfgTestDevOps(){
+  const org=(G('cfgDevOpsOrg')||{}).value?.trim()||'';
+  const project=(G('cfgDevOpsProject')||{}).value?.trim()||'';
+  const repo=(G('cfgDevOpsRepo')||{}).value?.trim()||'';
+  const pat=(G('cfgDevOpsPat')||{}).value||'';
+  const status=G('cfgDevOpsStatus');
+  if(!org||!project||!repo||!pat){toast('Fill in org, project, repo, and PAT','terr');return;}
+  const btn=G('btnTestDevOps');btn.disabled=true;btn.textContent='Testing…';
+  if(status)status.textContent='';
+  try{
+    const r=await fetch('/api/v1/datamodel/push-devops',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({org,project,repo,pat,ddl:'-- Test connection from Migration Studio\n-- This file can be safely deleted.\nSELECT 1;',
+        commit_message:'test: verify DevOps connection from Migration Studio',model_name:'_connection_test'})});
+    const d=await r.json();
+    if(d.success){
+      if(status){status.style.color='#16a34a';status.textContent='✓ Connected — test commit pushed ('+d.commit_id.substring(0,8)+')';}
+      toast('DevOps connection successful!','tok');
+    }else{
+      if(status){status.style.color='#dc2626';status.textContent='✕ '+d.error;}
+      toast(d.error||'Connection failed','terr');
+    }
+  }catch(e){
+    if(status){status.style.color='#dc2626';status.textContent='✕ '+e.message;}
+    toast(e.message,'terr');
+  }finally{btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" style="width:12px;height:12px;"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Test Connection';}
 }
 
 // Init on load
